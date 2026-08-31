@@ -91,7 +91,10 @@ distinct class string between them — so there is no styling channel either.
   where there is width for it — and pressing it also publishes that passage to
   the canvas, so whatever is showing that document highlights the passage the
   question was derived from. The card the canvas is standing on is marked. That
-  half needs a host; the disclosure works with nothing else running.
+  half needs a host; showing the passage here works with nothing else running.
+  Where the box is small enough that the module is showing one question at a
+  time, the passage is already on screen or one chip away, and the control does
+  only the pointing — see the ladder, below.
 - **Answering, and the record.** One press, a verdict, the key, the explanation.
   Answers survive a reload because they are on disk and not in the page.
 - **A store inside the project.** `<project>/.kehikot/learning/questions.json` — plain
@@ -183,14 +186,64 @@ whole box, and everything below follows from that.
   the source path the pointing control spells. It is one pure
   function with its own test file because "what shows at 220×300" should be a
   table somebody can read, not six ternaries spread across two components.
-- **Scrolling snaps below 520px of height, on `proximity`.** Never `mandatory`:
-  a card is taller than a short box, and a scroller that must come to rest on a
-  snap point cannot hold the bottom of one. The heading is a snap point too, or
-  the page loads already scrolled past the paper's name.
+- **Scrolling snaps below 520px of height, on `proximity`, and only where there
+  is a list left to snap.** Never `mandatory`: a card is taller than a short box,
+  and a scroller that must come to rest on a snap point cannot hold the bottom of
+  one. The heading is a snap point too, or the page loads already scrolled past
+  the paper's name.
 - **Nothing folded is unreachable.** The byline becomes the card's `title`, the
   retake note the button's, the passage an overlay filling the frame, and on an
   *answered* card the options that were neither chosen nor correct go behind one
   press. Nothing folds on an unanswered card: the options are the question.
+
+### The ladder: one whole question beats two partial ones
+
+The rule underneath all of that, said once: **do not squeeze many things in
+partially when one thing shown completely is more useful.** `ladder()` in
+`src/view/room.ts` puts the page on one of three rungs, and `dev/ladder.mjs`
+measures the result in a real frame.
+
+| rung | when | what the reader gets |
+|---|---|---|
+| `list` | two whole cards fit | the list, scrolling, snapping — as it has always been |
+| `one` | one whole question fits | that question entire: its text, every option, and the passage, with nothing to scroll and nothing to press open. A pager moves between questions |
+| `part` | not even one fits | one of `question`, `options`, `passage` at a time, with the question kept above as a two-line header |
+
+`list` versus the other two is a fact about the whole list; `one` versus `part`
+is a fact about the question being SHOWN, so a short question shows whole and the
+long one three along from it splits.
+
+**A person can answer at every size, and that is what the probe asserts.** The
+question is never a part shown on its own — its text is clamped to two lines
+above whichever part is showing, because a multiple-choice question you cannot
+read is not answerable. Nor is the control that points the canvas: it is drawn
+above the part rather than after it, since eight options at 220 wide are 516
+pixels of buttons and anything under them goes off the bottom. Switching parts
+and paging publish nothing, and `dev/pointing.mjs` counts that from the host's
+side.
+
+**The paged rungs draw no card and no heading.** The host already puts a
+container round this module, so a bordered, padded card inside it is a card on a
+card — 18 pixels in each axis, in a 220-pixel column, for an edge with nothing to
+separate the question from. The heading block goes too, replaced by the single
+row of controls those rungs need anyway; every card names its own document on its
+source control, so the paper is still on screen. At `list`, where there really
+are several questions, the card keeps its edge — that is the one job an edge
+does. Measured: the chrome above the first question falls from 43px to 8 at 220
+wide and from 25 to 8 at 320, and the text inside a card widens from 186 to 204
+and from 286 to 304.
+
+**How the fit is decided, and what it gets wrong.** By estimate, not by
+measurement: measuring a card in order to decide how to draw the card is a loop
+with the reader inside it, and a layout that flickers between rungs is worse than
+one rung too conservative. `lines()` is a greedy line-breaker over real font
+metrics (`src/view/text.ts`, a canvas), and it is exact — `dev/ladder.mjs` writes
+every estimate into the DOM beside the measured height and fails the run on any
+that came in under. The one thing it cannot know is the explanation of a question
+nobody has answered, because the server withholds it: so answering can push a
+card past its box and drop `one` to `part`, which lands on the part holding the
+verdict and the explanation. The list rung is measured as if nobody had answered
+anything, so working through a paper can never move it.
 
 ## Spaced repetition, which is deliberately not here
 
@@ -314,14 +367,17 @@ quiz/projects.ts   what is left of "which project" now the path is the partition
 dev/migrate.ts     the one-off move out of data/questions.json, run by hand
 dev/probe.mjs      a real browser: the key's absence, partitioning, no overflow
 dev/sizes.mjs      a real frame at four container sizes: what fits, and snapping
+dev/ladder.mjs     five sizes and three question lengths: how much you must
+                   scroll to read one question, and whether you can answer it
+dev/pointing.mjs   the one capability, counted from where a host sits
 dev/theme.mjs      the host's light/dark switch, both ways, on both machines
 page/document.ts   the document, generated per request so the ticket can reach it
 vite.config.ts     the doors as middleware, and the missing server.cors
-src/               the page: wire/, view/, view/room.ts, store/ask.ts, ui/
-test/              199 tests, no browser
+src/               the page: wire/, view/ (room.ts, text.ts), store/ask.ts, ui/
+test/              243 tests, no browser
 ```
 
-The three files under `dev/` need a running server and a chromium on disk, so
+The probes under `dev/` need a running server and a chromium on disk, so
 they are not part of `bun test` — a suite that cannot run on a fresh checkout is
 one people learn to skip. They measure the half `bun test` cannot: real layout
 at real sizes, and a DOM a browser actually built.

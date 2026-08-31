@@ -195,9 +195,18 @@
    * somewhere the reader cannot stay. `proximity` catches a flick that ended
    * near a card boundary and leaves a deliberate scroll where it was put.
    *
-   * And it is only on when the box is short. Where four cards are in view at
-   * once there is nothing to align, and snapping would only make a free scroll
-   * feel like it was arguing back.
+   * And it is only on when the box is short AND there is a list to snap. Where
+   * four cards are in view at once there is nothing to align, and snapping would
+   * only make a free scroll feel like it was arguing back.
+   *
+   * The second half of that condition is newer. Below the size at which two
+   * whole cards fit, this module stops drawing a list at all: it draws one
+   * question, or one part of one question, with nothing to scroll. A snap point
+   * there is a rule about a gesture nobody can make — and worse than idle,
+   * because `proximity` on a document that overruns its box by a few stray
+   * pixels drags the reader to a boundary on a screen that was supposed to have
+   * nothing to scroll. `ladder()` in `src/view/room.ts` ands the two conditions
+   * together and `src/app.tsx` writes the result here.
    */
   html[data-snap='on'] {
     scroll-snap-type: y proximity;

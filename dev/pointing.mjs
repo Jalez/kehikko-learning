@@ -23,6 +23,10 @@
  * 1. Loading and greeting produce ZERO `passage.set`.
  * 2. A second context — a canvas moving, which is the thing that arrives most
  *    often — produces zero.
+ * 3b. Switching between the PARTS of a question, and paging to another one,
+ *    produce zero. In a small box this module shows one part of one question at
+ *    a time; a switcher that pointed the canvas would move every container on it
+ *    five times while somebody read a single question.
  * 3. ANSWERING a question produces zero. This is the important one. A quiz that
  *    moved every container on the canvas when you chose an option would be
  *    answering for you, and it is the failure the press target was designed
@@ -205,7 +209,37 @@ for (const size of SIZES) {
   await page.waitForTimeout(600)
   const afterAnswer = await passages()
 
-  /* 4. The press. */
+  /*
+   * 3b. Moving around inside the module.
+   *
+   * In a box too small to hold one whole question this page shows one PART of it
+   * at a time — the question, the options, or the passage — and pages between
+   * questions with arrows. Those controls change what is on screen and nothing
+   * else. Pressing "passage" shows the reader the quote HERE; it does not ask
+   * every other container on the canvas to move, because navigating inside a
+   * module is not a person saying "take me there". Only the source control says
+   * that.
+   *
+   * Same argument as the one that kept the answer buttons from pointing, and it
+   * needs the same proof: a switcher wired to `onPoint` for convenience would
+   * look identical on screen and would move the canvas five times while somebody
+   * read one question.
+   */
+  for (const chip of await frame.locator('[data-part]').all()) {
+    await chip.click()
+    await page.waitForTimeout(120)
+  }
+  const onward = frame.locator('[data-page="on"]')
+  if (await onward.count()) {
+    await onward.click()
+    await page.waitForTimeout(200)
+    await frame.locator('[data-page="back"]').click()
+    await page.waitForTimeout(200)
+  }
+  const afterMoving = await passages()
+
+  /* 4. The press. The source control is drawn on every part, so it is reachable
+     wherever the switcher above left the reader. */
   await first.locator('[data-passage]').click()
   await page.waitForTimeout(400)
   const afterPress = await passages()
@@ -238,6 +272,7 @@ for (const size of SIZES) {
     'passage.set after load and greeting': afterLoad.length,
     'passage.set after a second context': afterContext.length,
     'passage.set after ANSWERING a question': afterAnswer.length,
+    'passage.set after switching parts and paging': afterMoving.length,
     'passage.set after pressing the source': afterPress.length,
     'the path sent': sent?.path ?? null,
     'the range sent': sent ? `${sent.from} … ${sent.to}` : null,
@@ -252,8 +287,9 @@ for (const size of SIZES) {
   if (afterLoad.length !== 0) at('pointed on load or greeting')
   if (afterContext.length !== 0) at('pointed on a context')
   if (afterAnswer.length !== afterContext.length) at('pointed when a question was ANSWERED')
-  if (afterPress.length !== afterAnswer.length + 1) {
-    at(`pressing the source sent ${afterPress.length - afterAnswer.length} passages, not 1`)
+  if (afterMoving.length !== afterAnswer.length) at('pointed when the reader switched parts or paged')
+  if (afterPress.length !== afterMoving.length + 1) {
+    at(`pressing the source sent ${afterPress.length - afterMoving.length} passages, not 1`)
   }
   if (sent && sent.path !== `${PROJECT}/${source}`) at(`sent ${sent.path}, not the project root joined onto ${source}`)
   if (sent && sent.page !== null) at('sent a page number for a document it has never paginated')

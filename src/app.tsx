@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ID } from '../manifest.ts'
 
@@ -6,9 +6,10 @@ import { answer, openEpic, retake, type Asked, type Standing } from '@/store/ask
 import { useRoadmap, type GotoHandler } from '@/wire/use-roadmap.ts'
 import { QuizView } from '@/view/quiz.tsx'
 import { NoEpic, NoProject } from '@/view/nowhere.tsx'
-import { room } from '@/view/room.ts'
+import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
+import { textWidth } from '@/view/text.ts'
 import { useFrame } from '@/view/use-frame.ts'
-import { pointedQuestion, pointingAt } from '@/wire/pointed.ts'
+import { pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
 
 /** Whether this page is in a frame. Unframed, it prints its own heading. */
 const framed = typeof window !== 'undefined' && window.parent !== window
@@ -67,6 +68,84 @@ export function App() {
      and asserted as one. */
   const frame = useFrame()
   const fits = room(frame)
+
+  /*
+   * Which question the reader is looking at, and which piece of it — the state
+   * the ladder's lower two rungs need, and the only state in this app that is
+   * about a screen rather than about the store.
+   *
+   * It is HERE rather than in `QuizView` because the rung depends on it: whether
+   * one whole question fits is a fact about the question being shown, so
+   * `ladder()` has to be told which one that is, and `ladder()` is also what
+   * decides whether the document snaps. Two consumers, one owner.
+   */
+  const [shown, setShown] = useState(0)
+  const [part, setPart] = useState<Part>('options')
+
+  /**
+   * Move to another question, and start it at its options.
+   *
+   * The reset is the whole reason this is a function rather than `setShown`
+   * handed down bare. A reader who was looking at the passage of question 3 and
+   * pressed "next" is not asking for the passage of question 4; they are asking
+   * for the next question, and the next question is a thing to answer. Carrying
+   * the part across was measured by `dev/ladder.mjs` as a screen with no options
+   * on it after a page, which reads as a broken button.
+   */
+  const show = useCallback((at: number) => {
+    setShown(at)
+    setPart('options')
+  }, [])
+
+  /* A different paper is a different set of questions; starting the reader
+     halfway through it because that is where they were in the last one would be
+     a position they never chose. */
+  useEffect(() => {
+    setShown(0)
+    setPart('options')
+  }, [projectPath, epic])
+
+  /*
+   * The font engine, asked once.
+   *
+   * `roughly` is the fallback and it is never good enough to lay out on — see
+   * `view/text.ts`. It is reached only where there is no document, and there is
+   * no document only where there is no measured frame, and an unmeasured frame
+   * is answered with `list` before the estimate is consulted at all.
+   */
+  const measure = useMemo(() => textWidth() ?? roughly, [])
+
+  /*
+   * The questions, reduced to the fields that decide how tall a card is.
+   *
+   * `view/room.ts` deliberately does not import `Asked`: it is a file of
+   * geometry, and a file of geometry that knew about attempts and answer keys
+   * would end up making decisions about them. The projection is here.
+   */
+  const cards = useMemo<Card[]>(
+    () =>
+      questions.map((question) => ({
+        question: question.question,
+        options: question.options,
+        source: sourceLabel(question.passage.path, fits.source),
+        path: question.passage.path,
+        quote: question.passage.quote,
+        why: question.why,
+        answered: question.attempts.length > 0,
+      })),
+    [questions, fits.source],
+  )
+
+  const rungs = useMemo(
+    () => ladder({ frame, epic: epic ?? '', cards, fits, shown, measure }),
+    [frame, epic, cards, fits, shown, measure],
+  )
+
+  const at = Math.min(Math.max(shown, 0), Math.max(0, cards.length - 1))
+  const parts = useMemo<Part[]>(() => {
+    const card = cards[at]
+    return card ? partsOf(card, frame.width, measure) : []
+  }, [cards, at, frame.width, measure])
 
   /* Held in a ref as well as in state so the poll can read the current pair
      without being re-created — and therefore re-scheduled — on every context
@@ -141,6 +220,21 @@ export function App() {
         }
         setTrouble(null)
         setQuestions((was) => was.map((question) => (question.id === id ? out.asked : question)))
+        /*
+         * Show the reader what they just earned.
+         *
+         * At the `part` rung the verdict and the explanation are drawn with the
+         * question rather than with the options — they are the answer to what
+         * was asked, and the options screen after a press already says which one
+         * was right in colour. So a press that produces an explanation moves to
+         * the part holding it. This is a response to the reader's own press and
+         * not a layout deciding things on its own; the options are one chip away
+         * and still carry their marks.
+         *
+         * At `list` and `one` nothing about this is visible, because the whole
+         * card is on screen and there are no parts.
+         */
+        setPart('question')
       } finally {
         writing.current = false
         setBusy(false)
@@ -243,15 +337,29 @@ export function App() {
    * So the attribute goes on `<html>` and `index.css` answers it. The precedent
    * is `wire/use-roadmap.ts`, which sets `.dark` on the same element for the
    * same reason: it is the one node above this component that CSS can key on.
+   *
+   * ## And it is `rungs.snap`, not `fits.snap`
+   *
+   * That comment above is also the reconciliation the ladder needed. Snapping
+   * was never a mechanism for making a card fit; it was a mechanism for making a
+   * LIST of cards land where a reader could read one, in a box too short to hold
+   * two. The ladder's top rung is that list, and snapping is still on for it.
+   *
+   * At `one` and `part` there is no list and nothing to scroll — the whole point
+   * of those rungs — so a snap point there is a rule about a gesture nobody can
+   * make. Worse than idle: a document that overruns its box by a few pixels
+   * would have `proximity` drag the reader to a boundary they did not ask for,
+   * on a screen that was supposed to have nothing to scroll. So it goes off, and
+   * it goes off in `ladder()` rather than here, where the table can assert it.
    */
   useEffect(() => {
     if (typeof document === 'undefined') return
     const root = document.documentElement
-    root.dataset.snap = fits.snap ? 'on' : 'off'
+    root.dataset.snap = rungs.snap ? 'on' : 'off'
     return () => {
       delete root.dataset.snap
     }
-  }, [fits.snap])
+  }, [rungs.snap])
 
   const screen =
     where === 'listening' ? (
@@ -273,11 +381,21 @@ export function App() {
         trouble={trouble}
         busy={busy}
         room={fits}
+        ladder={rungs}
+        parts={parts}
+        shown={at}
+        onShow={show}
+        part={part}
+        onPart={setPart}
       />
     )
 
   return (
-    <div ref={shell} className="flex min-w-0 flex-col gap-2 p-2 text-foreground @sm/container:p-3">
+    <div
+      ref={shell}
+      data-rung={rungs.rung}
+      className="flex min-w-0 flex-col gap-2 p-2 text-foreground @sm/container:p-3"
+    >
       {/*
         The heading, which only exists when nothing is framing this page.
 

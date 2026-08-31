@@ -165,6 +165,9 @@ async function main() {
           snapType: getComputedStyle(scroller).scrollSnapType,
           snapAlign: getComputedStyle(cards[0]).scrollSnapAlign,
           framed: !document.querySelector('h1'),
+          /* Which rung `ladder()` put the page on, which decides how much of the
+             rest of this file applies. See the essay at the top. */
+          rung: document.querySelector('[data-rung]')?.getAttribute('data-rung') ?? 'list',
           cards: cards.length,
           /* Pixels spent before the first word of the first question. */
           chromeAbove: Math.round(cards[0].getBoundingClientRect().top),
@@ -183,7 +186,7 @@ async function main() {
       const fits = Math.max(...m.cardHeights) <= m.viewport.h
 
       say(`\n=== ${width}×${height} ===`)
-      say(`  framed (no page heading): ${m.framed}`)
+      say(`  framed (no page heading): ${m.framed} · rung ${m.rung} · ${m.cards} card(s) drawn of ${SEED.length}`)
       say(
         `  scrollHeight ${m.scrollHeight} in ${m.viewport.h} of viewport → ${(m.scrollHeight / m.viewport.h).toFixed(1)} screens`,
       )
@@ -268,7 +271,18 @@ async function main() {
        * It does not apply — the body is the root scroller — but that is a fact
        * about this browser's layout, not one about this code, so it is measured.
        */
-      if (m.folded.passage) {
+      /*
+       * `rung === 'list'` is new here and it narrows this block considerably.
+       *
+       * The overlay exists where a card's passage cannot grow in place — which
+       * used to be every short box, and is now only a short box that still holds
+       * TWO whole cards, because anything shorter than that pages instead and a
+       * paged card shows its quote outright. That is a genuinely narrow case
+       * (short cards, two options, a one-line quote) and none of the four sizes
+       * above reach it with the six questions this file seeds. The code is still
+       * live and this assertion still guards it; it simply has to be asked for.
+       */
+      if (m.rung === 'list' && m.folded.passage) {
         const panel = await frame.evaluate(async () => {
           const scroller = document.scrollingElement
           scroller.scrollTo({ top: 600, behavior: 'instant' })
@@ -306,7 +320,17 @@ async function main() {
        * without the fold it is the tallest thing in the list.
        */
       const before = m.cardHeights[0]
-      await frame.click('[data-question] >> nth=0 >> button >> nth=0')
+      /*
+       * `button[data-slot="button"]` and not "the first button in the card".
+       *
+       * The first button in a card is no longer an option: at the `part` rung the
+       * control that points the canvas is drawn directly under the question, above
+       * whichever part is showing, so "the first button" would press it — and this
+       * probe would publish a passage onto the canvas on every run, which
+       * `dev/pointing.mjs` exists to say never happens. Only the options carry
+       * `data-slot`; the source control and the part chips are plain buttons.
+       */
+      await frame.click('[data-question] >> nth=0 >> button[data-slot="button"] >> nth=0')
       await frame.waitForSelector('[data-question][data-answered="yes"]', { timeout: 15000 })
       await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
       const done = await frame.evaluate(() => {
