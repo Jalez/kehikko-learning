@@ -18,7 +18,7 @@ describe('the manifest', () => {
     expect(MANIFEST.declares?.protocol).toBe(`>=${PROTOCOL} <${PROTOCOL + 1}`)
   })
 
-  test('the installed protocol package is 0.11, which is what carries the .kehikot convention', () => {
+  test('the installed protocol package is 0.12, which is what carries the shared client', () => {
     /* A stale copy STRIPS fields it has never heard of and `parse` does not
        complain, so a manifest field vanishes with no error at all. That has
        bitten four modules in this workspace. `bun pm cache rm` then `bun update`
@@ -26,14 +26,18 @@ describe('the manifest', () => {
        0.8 carried `projectPath`, which is where the store learns which project
        it is standing in; 0.11 carries `moduleDir` and `withKehikotIgnored`,
        which is where it learns what to call the folder and which folder inside
-       it is this module's. A copy without them does
-       not strip a field quietly — `store.ts` fails to import — but the pin is
-       here because the version is the thing that has to move, and a test that
-       names it is the note somebody reads when the import breaks. */
+       it is this module's; 0.12 carries `roadmap-module-protocol/client`, which
+       is the wire this module no longer writes for itself. A copy without them
+       does not strip a field quietly — `store.ts` fails to import — but the pin
+       is here because the version is the thing that has to move, and a test
+       that names it is the note somebody reads when the import breaks. Moving
+       this line is part of moving the pin: `bun update` will NOT advance a
+       `#main` git dependency, so the resolved sha in `bun.lock` is edited by
+       hand and this number goes with it. */
     const packaged = JSON.parse(
       readFileSync(join(here, 'node_modules/roadmap-module-protocol/package.json'), 'utf8'),
     ) as { version: string }
-    expect(packaged.version.startsWith('0.11.')).toBe(true)
+    expect(packaged.version.startsWith('0.12.')).toBe(true)
   })
 
   test('says who it is, and the filename register.ts writes matches', () => {

@@ -1,9 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { connect, type Host, type HostEvents } from './host.ts'
+import { connect, type Connection, type HostEvents } from 'roadmap-module-protocol/client'
 
 /**
  * The context, as React state, and nothing else.
+ *
+ * ## What used to be underneath this
+ *
+ * `wire/host.ts` and `wire/mailbox.ts` — 418 lines, near-identical to the copy
+ * in six sibling modules — are `roadmap-module-protocol/client` now. Nothing
+ * this page says on the wire changed: `ready` to every greeting, the `goto`
+ * handed straight to the caller's handler, and a backstop of 500ms, which is
+ * this module's lineage and the client's default so it needed no option.
+ *
+ * The context was already passed through whole here rather than rebuilt from a
+ * list of named fields, so no field starts or stops arriving. What did go is
+ * the two-variable box below `connect` that caught an arrival which came too
+ * early: the client splits `connect` from `listen()`, so the ordering is three
+ * plain lines instead of a workaround for one module's copy of a hazard every
+ * module had.
  *
  * ## Why there is no `state.set` here, where Checklist has one
  *
@@ -55,7 +70,7 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
   const [epic, setEpic] = useState<string | null>(null)
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [project, setProject] = useState<string | null>(null)
-  const host = useRef<Host | null>(null)
+  const host = useRef<Connection | null>(null)
 
   /* The handler is read through a ref so that a caller re-creating it does not
      tear down the bridge — reconnecting would mean missing the greeting, which
@@ -86,32 +101,26 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
       setProject(context.project ?? null)
     }
 
-    type Context = { epic: string | null; theme: 'light' | 'dark'; project?: string | null; projectPath?: string | null }
     /*
-     * The greeting can arrive before this effect has finished running.
+     * The greeting can arrive before this effect has finished running, so the
+     * connection is stored BEFORE it is told to listen.
      *
-     * `mailbox.ts` installs the listener at module scope precisely so that
-     * nothing is missed, and it replays what it kept the moment `connect`
-     * subscribes — which happens INSIDE this effect, on the line below, before
-     * `ready` is set. So a replayed greeting is delivered to a callback whose
-     * surrounding state setters are fine but whose ordering is not yet
-     * established. Holding it and delivering it one statement later costs two
-     * variables and removes a class of bug that only appears under load.
+     * The client's `mailbox` installs its listener at module scope precisely so
+     * that nothing is missed, and it replays what it kept SYNCHRONOUSLY the
+     * moment `listen()` subscribes. Anything a handler reads must therefore be
+     * assigned already. What stood here was two variables holding an early
+     * arrival and delivering it one statement later — a workaround for this
+     * module's copy of a hazard every module in the family had. `connect` and
+     * `listen` are two calls now, so the order is three plain lines that read
+     * in the order they happen.
      */
-    let ready = false
-    const early: { context: Context | null } = { context: null }
-    const heldEarly = (context: Context) => {
-      if (ready) arrived(context)
-      else early.context = context
-    }
-
-    host.current = connect(id, {
-      onHello: (context) => heldEarly(context as Context),
-      onContext: (context) => heldEarly(context as Context),
+    const live = connect(id, {
+      onHello: (context) => arrived(context),
+      onContext: (context) => arrived(context),
       onGoto: (message, answer) => goto.current(message, answer),
     })
-    ready = true
-    if (early.context) arrived(early.context)
+    host.current = live
+    live.listen()
 
     const grace = setTimeout(() => {
       setWhere((was) => (was === 'listening' ? 'unhosted' : was))
@@ -119,8 +128,10 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
 
     return () => {
       clearTimeout(grace)
-      host.current?.stop()
-      host.current = null
+      live.stop()
+      /* Cleared only if it is still ours: under StrictMode the second mount has
+         already assigned its own connection by the time some cleanups run. */
+      if (host.current === live) host.current = null
     }
   }, [id])
 
