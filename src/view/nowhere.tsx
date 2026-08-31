@@ -1,4 +1,4 @@
-import type { ProjectStanding, Standing } from '@/store/ask.ts'
+import type { Standing } from '@/store/ask.ts'
 import { Badge } from '@/components/ui/badge.tsx'
 
 /**
@@ -63,18 +63,27 @@ export function NoEpic({ project, standings }: { project: string | null; standin
  * Nothing said which project this canvas is standing in.
  *
  * `context.projectPath` is nullable — a host with no filesystem of its own knows
- * the project's name and has no folder to point at — and this page must not
- * guess. Guessing means showing one project's questions inside another, which is
- * the exact failure the partition exists to prevent, and two projects both
- * having an epic called `bridge` is the expected collision rather than a
- * hypothetical one.
+ * the project's name and has no folder to point at, and a page opened directly
+ * has no canvas at all — and this page must not guess. Guessing is not a display
+ * mistake here: questions are kept INSIDE the project, at
+ * `.kehikot/learning/questions.json`, so a guessed path is somebody's questions written
+ * into a folder they will never open, under a pane that said they were saved.
  *
- * So the pane says so, and lists what this app is holding for whom. That list is
- * not a picker: choosing one here would be this page deciding where it is
- * standing, which is the thing it has just said it cannot know. It is a receipt,
- * for a person wondering where the questions an agent wrote have gone.
+ * ## Why there is no longer a list of projects on this screen
+ *
+ * There used to be one. This app kept a single store beside itself, keyed by
+ * project, so it could say "questions are held for these paths" — a receipt, for
+ * a person wondering where the ones an agent wrote had gone. It was deliberately
+ * not a picker: choosing here would be the page deciding where it is standing,
+ * which is the thing it has just said it cannot know.
+ *
+ * The store moved into the projects, so there is nothing left to enumerate: this
+ * process is handed one project at a time and forgets it. The receipt is gone
+ * and the question it answered is answered better — the file is
+ * `.kehikot/learning/questions.json` in the folder you were working in, and `ls` finds it
+ * without asking anybody.
  */
-export function NoProject({ projects, unhosted }: { projects: ProjectStanding[]; unhosted: boolean }) {
+export function NoProject({ unhosted }: { unhosted: boolean }) {
   return (
     <section className="flex min-w-0 flex-col gap-1.5">
       <h2 className="text-[0.8rem] font-semibold">
@@ -82,32 +91,18 @@ export function NoProject({ projects, unhosted }: { projects: ProjectStanding[];
       </h2>
       <p className="text-[0.7rem] leading-4 text-muted-foreground">
         {unhosted
-          ? 'Opened directly, this page has no canvas to tell it which project it is standing in. Everything below is '
-            + 'held here, on this machine, and works with nothing else running — but which questions to show is a '
-            + 'question only a host can answer.'
-          : 'A host may know a project’s name and have no folder to point at, and this pane will not guess: questions '
-            + 'are kept apart by project, and showing one project’s questions inside another is the failure that '
-            + 'partition exists to prevent.'}
+          ? 'Opened directly, this page has no canvas to tell it which project it is standing in — and the questions '
+            + 'are kept inside the project, so without one there is no file to open. Nothing is wrong and nothing is '
+            + 'lost: open this pane on a canvas that has a project, and its questions appear.'
+          : 'A host may know a project’s name and have no folder to point at, and this pane will not guess. Questions '
+            + 'live inside the project they are about, so a guessed path would write somebody’s questions into a '
+            + 'folder they will never open.'}
       </p>
-      {projects.length ? (
-        <>
-          <p className="text-[0.65rem] leading-4 text-muted-foreground">This app is holding questions for:</p>
-          <ul className="flex min-w-0 flex-col gap-1">
-            {projects.map((row) => (
-              <li key={row.project} className="min-w-0 rounded border bg-card px-2 py-1">
-                <code className="text-[0.65rem] [overflow-wrap:anywhere]">{row.project}</code>
-                <p className="text-[0.65rem] leading-4 text-muted-foreground">
-                  {row.questions} question{row.questions === 1 ? '' : 's'}, about {row.epics.join(', ')}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : (
-        <p className="text-[0.65rem] leading-4 text-muted-foreground">
-          No questions have been written yet, for any project.
-        </p>
-      )}
+      <p className="text-[0.65rem] leading-4 text-muted-foreground">
+        Wherever they are, they are in plain sight: each project keeps its own in{' '}
+        <code className="[overflow-wrap:anywhere]">.kehikot/learning/questions.json</code>, beside the work rather than inside
+        this app.
+      </p>
     </section>
   )
 }

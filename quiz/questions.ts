@@ -1,11 +1,9 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 
 import { z } from 'zod'
 
-import { dataDir } from '../store.ts'
-import { projectKey } from './projects.ts'
-import type { Asked, Attempt, ProjectStanding, Question, Standing } from './types.ts'
+import { dataFile, makeDir } from '../store.ts'
+import type { Asked, Attempt, Question, Standing } from './types.ts'
 
 /* ------------------------------------------------------------------------ *
  * Bounds
@@ -93,14 +91,20 @@ const questionSchema = z.object({
 })
 
 /**
- * The whole store, keyed by project first, and holding an ARRAY.
+ * The whole store — one project's — holding an ARRAY.
  *
- * ## Why the project is the outer key
+ * ## Where the project went
  *
- * The nesting IS the partition and there is nothing else enforcing it — a
- * question cannot be in two projects because it is not a row with a project
- * column, it is a value under a project key. That is worth more than a check,
- * because a check can be forgotten at a new call site and a shape cannot.
+ * There used to be a `projects` record above this, keyed by path, and the
+ * nesting WAS the partition: a question could not be in two projects because it
+ * was not a row with a project column, it was a value under a project key.
+ *
+ * The partition is still real and is now the path itself. This file lives at
+ * `<projectPath>/.kehikot/learning/questions.json`, so the store a reader opened is
+ * already that project's and there is nothing left for an outer key to say. That
+ * is the same argument taken one step further rather than abandoned — a check
+ * can be forgotten at a new call site, a shape cannot, and a file in a different
+ * folder cannot even be reached from the wrong place. See `store.ts`.
  *
  * ## Why the questions inside are an array and not a record keyed by id
  *
@@ -128,40 +132,60 @@ const questionSchema = z.object({
  * `test/questions.test.ts` asserts it against the file on disk.
  */
 const storeSchema = z.object({
-  projects: z.record(z.string(), z.object({ questions: z.array(questionSchema).default([]) })).default({}),
+  questions: z.array(questionSchema).default([]),
 })
 
 type Store = z.infer<typeof storeSchema>
 
-export function questionsFile(): string {
-  return join(dataDir(), 'questions.json')
+/** Where one project's questions are, or a sentence, or nowhere. See `store.ts`. */
+export function questionsFile(projectPath: string | null | undefined): { path: string | null; trouble: string | null } {
+  return dataFile(projectPath)
 }
 
 const empty = (): Store => storeSchema.parse({})
 
 /**
- * The store, or a sentence about why there is not one.
+ * The store for one project — or a sentence about why there is not one, or the
+ * plain fact that there is no project.
  *
- * A file that will not parse is NOT treated as an empty store, and this is the
- * single most important line in this file. Everything here is authored — a
- * person or an agent wrote every question and a person gave every answer — so
- * "there is nothing here" and "this could not be read" must never look the same
- * on screen, and a program that returned empty for a broken file would then
- * WRITE over it on the next `add_quiz` and destroy the recoverable original.
+ * ## Three states, and why collapsing any two of them destroys something
+ *
+ * `nowhere` means no project is open: the host had no folder to point at, or
+ * nothing is framing this page. It is an ORDINARY state with a screen of its
+ * own. It is not an error and it is not an empty store — and that last
+ * distinction is the load-bearing one, because a caller handed an empty store
+ * for "nowhere" would go on to WRITE it, and a write with no project is a write
+ * with nowhere to go or, worse, somewhere guessed.
+ *
+ * `trouble` is a project that was named and could not be used: it does not
+ * exist, it is not a folder, its `.kehikot` resolves outside it, or the file
+ * inside will not parse. A file that will not parse is NOT treated as an empty
+ * store, and that is the single most important line in this file. Everything
+ * here is authored — a person or an agent wrote every question and a person gave
+ * every answer — so "there is nothing here" and "this could not be read" must
+ * never look the same on screen, and a program that returned empty for a broken
+ * file would then WRITE over it on the next `add_quiz` and destroy the
+ * recoverable original.
  *
  * So a bad file yields an empty store AND a trouble sentence, and every write
  * path refuses while trouble is set. The file stays exactly as it is, and the
  * sentence says so, because a person who can see the words "recoverable: fix or
  * move it" is a person who does not delete the directory.
  */
-function read(): { store: Store; trouble: string | null } {
-  const path = questionsFile()
-  if (!existsSync(path)) return { store: empty(), trouble: null }
+function read(projectPath: string | null | undefined): { store: Store; trouble: string | null; nowhere: boolean } {
+  const { path, trouble } = dataFile(projectPath)
+  if (trouble) return { store: empty(), trouble, nowhere: false }
+  if (path === null) return { store: empty(), trouble: null, nowhere: true }
+  /* An absent file in a real project is an empty store and not trouble: it is
+     what a project nobody has written a question about looks like, and it is the
+     ordinary first run. */
+  if (!existsSync(path)) return { store: empty(), trouble: null, nowhere: false }
   try {
-    return { store: storeSchema.parse(JSON.parse(readFileSync(path, 'utf8'))), trouble: null }
+    return { store: storeSchema.parse(JSON.parse(readFileSync(path, 'utf8'))), trouble: null, nowhere: false }
   } catch (e) {
     return {
       store: empty(),
+      nowhere: false,
       trouble:
         `${path} could not be read (${e instanceof Error ? (e.message.split('\n')[0] ?? '') : String(e)}), so no `
         + 'question is being shown and nothing will be written over it. Every question in that file and every answer '
@@ -170,8 +194,29 @@ function read(): { store: Store; trouble: string | null } {
   }
 }
 
-function save(store: Store): void {
-  writeFileSync(questionsFile(), `${JSON.stringify(storeSchema.parse(store), null, 2)}\n`)
+/**
+ * Write one project's questions, making the folder first.
+ *
+ * `makeDir` is called here and nowhere on the read path, so that opening a pane
+ * against a repository leaves no `.kehikot` in it until somebody actually writes
+ * something. It is also where the project's `.gitignore` learns about the folder
+ * — once, on the run that created it.
+ *
+ * Returns a sentence rather than throwing when the folder cannot be made or does
+ * not stay inside the project, because every caller of this already has a place
+ * to put a refusal and none of them has a place to put an exception.
+ */
+function save(projectPath: string | null | undefined, store: Store): string | null {
+  const { dir, trouble } = makeDir(projectPath)
+  if (trouble) return trouble
+  if (dir === null) {
+    return 'no project is open, so there is nowhere to write. Nothing was recorded.'
+  }
+  const { path, trouble: after } = dataFile(projectPath)
+  if (after) return after
+  if (path === null) return 'no project is open, so there is nowhere to write. Nothing was recorded.'
+  writeFileSync(path, `${JSON.stringify(storeSchema.parse(store), null, 2)}\n`)
+  return null
 }
 
 function newId(): string {
@@ -249,29 +294,24 @@ export function asked(question: Question): Asked {
  * Reading
  * ------------------------------------------------------------------------ */
 
-/** Every project this store holds questions for, with what is in each. */
-export function projects(): { projects: ProjectStanding[]; trouble: string | null } {
-  const { store, trouble } = read()
-  const out = Object.entries(store.projects)
-    .map(([project, held]) => {
-      return {
-        project,
-        questions: held.questions.length,
-        epics: [...new Set(held.questions.map((q) => q.epic))].sort((a, b) => a.localeCompare(b)),
-      }
-    })
-    .filter((row) => row.questions > 0)
-    .sort((a, b) => a.project.localeCompare(b.project))
-  return { projects: out, trouble }
+/**
+ * What every reader here answers with, beyond its own material.
+ *
+ * `nowhere` is carried out to the callers rather than folded into `trouble`
+ * because the two get different screens and different sentences: one says "open
+ * a project", the other says what went wrong with the project that was named.
+ */
+export interface Read {
+  trouble: string | null
+  nowhere: boolean
 }
 
 /** What each epic in one project adds up to. The no-epic screen is drawn from this. */
-export function standings(project: string): { standings: Standing[]; trouble: string | null } {
-  const { store, trouble } = read()
-  const held = store.projects[project]
-  if (!held) return { standings: [], trouble }
+export function standings(projectPath: string | null | undefined): { standings: Standing[] } & Read {
+  const { store, trouble, nowhere } = read(projectPath)
+  if (trouble || nowhere) return { standings: [], trouble, nowhere }
   const by = new Map<string, Standing>()
-  for (const question of held.questions) {
+  for (const question of store.questions) {
     const row = by.get(question.epic) ?? { epic: question.epic, questions: 0, answered: 0, right: 0 }
     row.questions += 1
     const last = question.attempts.at(-1)
@@ -281,7 +321,7 @@ export function standings(project: string): { standings: Standing[]; trouble: st
     }
     by.set(question.epic, row)
   }
-  return { standings: [...by.values()].sort((a, b) => a.epic.localeCompare(b.epic)), trouble }
+  return { standings: [...by.values()].sort((a, b) => a.epic.localeCompare(b.epic)), trouble, nowhere }
 }
 
 /**
@@ -291,13 +331,12 @@ export function standings(project: string): { standings: Standing[]; trouble: st
  * chapter top to bottom and wrote questions as it went has already put them in
  * the reader's order, and re-sorting by anything else would throw that away.
  */
-export function forEpic(project: string, epic: string): { questions: Asked[]; trouble: string | null } {
-  const { store, trouble } = read()
-  const held = store.projects[project]
-  if (!held) return { questions: [], trouble }
+export function forEpic(projectPath: string | null | undefined, epic: string): { questions: Asked[] } & Read {
+  const { store, trouble, nowhere } = read(projectPath)
+  if (trouble || nowhere) return { questions: [], trouble, nowhere }
   /* No sort. The array's order is the order they were written in. */
-  const questions = held.questions.filter((question) => question.epic === epic).map(asked)
-  return { questions, trouble }
+  const questions = store.questions.filter((question) => question.epic === epic).map(asked)
+  return { questions, trouble, nowhere }
 }
 
 /**
@@ -308,12 +347,14 @@ export function forEpic(project: string, epic: string): { questions: Asked[]; tr
  * separate function rather than a flag on `forEpic` so that the call sites are
  * countable: `grep -n 'withKey' doors.ts` is the whole audit.
  */
-export function withKey(project: string, epic: string | null): { questions: Question[]; trouble: string | null } {
-  const { store, trouble } = read()
-  const held = store.projects[project]
-  if (!held) return { questions: [], trouble }
-  const questions = held.questions.filter((question) => epic === null || question.epic === epic)
-  return { questions, trouble }
+export function withKey(
+  projectPath: string | null | undefined,
+  epic: string | null,
+): { questions: Question[] } & Read {
+  const { store, trouble, nowhere } = read(projectPath)
+  if (trouble || nowhere) return { questions: [], trouble, nowhere }
+  const questions = store.questions.filter((question) => epic === null || question.epic === epic)
+  return { questions, trouble, nowhere }
 }
 
 /* ------------------------------------------------------------------------ *
@@ -328,11 +369,16 @@ export function withKey(project: string, epic: string | null): { questions: Ques
  * callers of the same rules, and two entry points would eventually enforce them
  * two slightly different ways. The bounds are applied at the doors, where a
  * string arrives; the RULES are here, where the questions are.
+ *
+ * `project` is the path of the folder the questions live in, and it is on every
+ * variant rather than being a second parameter so that no operation can be
+ * constructed without one. A write with no project has nowhere to go, and the
+ * type is where that is said first.
  */
 export type Op =
   | {
       op: 'add'
-      project: string
+      project: string | null
       epic: string
       question: string
       options: string[]
@@ -342,9 +388,17 @@ export type Op =
       by: string
       viaMcp?: boolean
     }
-  | { op: 'reword'; project: string; id: string; question?: string; options?: string[]; answer?: number; why?: string }
-  | { op: 'drop'; project: string; id: string }
-  | { op: 'retake'; project: string; epic: string }
+  | {
+      op: 'reword'
+      project: string | null
+      id: string
+      question?: string
+      options?: string[]
+      answer?: number
+      why?: string
+    }
+  | { op: 'drop'; project: string | null; id: string }
+  | { op: 'retake'; project: string | null; epic: string }
 
 export type Done =
   | { ok: true; said: string; id: string }
@@ -352,19 +406,26 @@ export type Done =
 
 const no = (error: string): Done => ({ ok: false, error })
 
+/**
+ * The sentence a write gets when there is no project to write into.
+ *
+ * Written once, here, because all four operations get it and the page and the
+ * MCP door both surface it. It says what to do rather than merely refusing:
+ * a caller told only "no" writes the question somewhere else, or twice.
+ */
+const NOWHERE =
+  'no project is open, so there is nowhere to put this. Questions live inside the project they are about, at '
+  + '.kehikot/learning/questions.json, so this app needs to be told which folder that is before it can write anything. '
+  + 'Nothing was recorded.'
+
 export function change(op: Op): Done {
-  const { store, trouble } = read()
-  /* Nothing is written while the file is unreadable. See `read`. */
+  const { store, trouble, nowhere } = read(op.project)
+  /* Nothing is written while there is no project, and nothing is written while
+     the file is unreadable. The second is the sharper rule — see `read`. */
+  if (nowhere) return no(NOWHERE)
   if (trouble) return no(trouble)
 
-  const project = projectKey(op.project)
-  if (!project) {
-    return no(
-      'that did not say which project the question belongs to. Questions here are partitioned by project so that one '
-      + "project's questions never appear on another's — give the path of the project you are working in.",
-    )
-  }
-  const held = (store.projects[project] ??= { questions: [] })
+  const held = store
 
   if (op.op === 'add') {
     if (held.questions.length >= MAX_QUESTIONS) {
@@ -443,14 +504,16 @@ export function change(op: Op): Done {
       at: now(),
       attempts: [],
     })
-    save(store)
+    const wrote = save(op.project, store)
+    if (wrote) return no(wrote)
     return { ok: true, said: `Question ${id} written about ${op.epic}`, id }
   }
 
   if (op.op === 'retake') {
     const forgotten = held.questions.filter((question) => question.epic === op.epic && question.attempts.length)
     for (const question of forgotten) question.attempts = []
-    save(store)
+    const wrote = save(op.project, store)
+    if (wrote) return no(wrote)
     return {
       ok: true,
       said: `${forgotten.length} answer${forgotten.length === 1 ? '' : 's'} forgotten for ${op.epic}`,
@@ -461,14 +524,16 @@ export function change(op: Op): Done {
   const question = held.questions.find((held_) => held_.id === op.id)
   if (!question) {
     return no(
-      `there is no question "${op.id}" in ${project}. Questions are addressed by the id the quizzes tool prints `
-      + 'beside each one, and a question written about another project is not addressable from this one.',
+      `there is no question "${op.id}" in this project. Questions are addressed by the id the quizzes tool prints `
+      + 'beside each one, and a question written about another project lives in that project’s own file — it is not '
+      + 'addressable from this one.',
     )
   }
 
   if (op.op === 'drop') {
     held.questions = held.questions.filter((held_) => held_.id !== op.id)
-    save(store)
+    const wrote = save(op.project, store)
+    if (wrote) return no(wrote)
     return { ok: true, said: `Question ${op.id} dropped, along with ${question.attempts.length} answer(s) to it`, id: op.id }
   }
 
@@ -494,7 +559,8 @@ export function change(op: Op): Done {
   question.options = options
   question.answer = answer
   question.why = op.why ?? question.why
-  save(store)
+  const wrote = save(op.project, store)
+  if (wrote) return no(wrote)
   return { ok: true, said: `Question ${op.id} reworded`, id: op.id }
 }
 
@@ -526,15 +592,17 @@ export interface Scored {
  * store that recorded the second as the first would put a fictional attempt in
  * somebody's history.
  */
-export function score(project: string, id: string, chose: number): { scored: Scored } | { error: string } {
-  const { store, trouble } = read()
+export function score(
+  projectPath: string | null | undefined,
+  id: string,
+  chose: number,
+): { scored: Scored } | { error: string } {
+  const { store, trouble, nowhere } = read(projectPath)
+  if (nowhere) return { error: NOWHERE }
   if (trouble) return { error: trouble }
-  const key = projectKey(project)
-  if (!key) return { error: 'that answer did not say which project the question is in.' }
-  const held = store.projects[key]
-  const question = held?.questions.find((one) => one.id === id)
-  if (!held || !question) {
-    return { error: `there is no question "${id.slice(0, MAX_ID)}" in ${key}, so there is nothing to answer.` }
+  const question = store.questions.find((one) => one.id === id)
+  if (!question) {
+    return { error: `there is no question "${id.slice(0, MAX_ID)}" in this project, so there is nothing to answer.` }
   }
   if (!Number.isInteger(chose) || chose < 0 || chose >= question.options.length) {
     return {
@@ -549,6 +617,7 @@ export function score(project: string, id: string, chose: number): { scored: Sco
   if (question.attempts.length > MAX_ATTEMPTS) {
     question.attempts = question.attempts.slice(question.attempts.length - MAX_ATTEMPTS)
   }
-  save(store)
+  const wrote = save(projectPath, store)
+  if (wrote) return { error: wrote }
   return { scored: { right: attempt.right, answer: question.answer, why: question.why, attempt, asked: asked(question) } }
 }

@@ -14,11 +14,11 @@
 #   - `exec`, and the foreground. A script that forks and returns leaves whoever
 #     started it holding a pid that stops nothing, and Stop is only ever offered
 #     for what a host started.
-#   - `cd` to this script's own directory, so this app's store is beside the
-#     program however it was invoked. That is not a detail here: `data/` holds
-#     every question anybody wrote and every answer anybody gave, and the whole
-#     claim of the module is that the directory can be copied to another machine
-#     and run.
+#   - `cd` to this script's own directory, so `node_modules` and the Vite config
+#     are found however the script was invoked. It no longer has anything to do
+#     with where the store is: the questions are not here any more. Each project
+#     keeps its own in `<project>/.kehikot/learning/questions.json`, which is the folder
+#     the host names in `roadmap.context`.
 #
 # It does NOT register. Registration is a deliberate act by a person — see
 # `register.ts` — and a start script that quietly wrote into somebody's home
@@ -47,14 +47,19 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Said out loud rather than left to a default, and the reason is in `store.ts`:
-# Vite bundles its own config into `node_modules/.vite-temp/`, so anything in
-# that graph asking where it lives gets the wrong answer — or, under Node,
-# `undefined`. Naming the directory here is the one place that cannot be moved by
-# a bundler, and it is `$PWD` because of the `cd` above, so the store is beside
-# this script however the script was invoked. Somebody who has already set the
-# variable keeps their own answer.
-export LEARNING_DATA="${LEARNING_DATA:-$PWD/data}"
+# `LEARNING_DATA` used to be exported here, naming the directory the store lived
+# in, because Vite bundles its own config into `node_modules/.vite-temp/` and
+# anything in that graph asking where it lives gets the wrong answer — or, under
+# Node, `undefined`. Saying it in the launch script was the one place a bundler
+# could not move.
+#
+# There is nothing left for it to name. The questions are inside the projects
+# they are about, at `<project>/.kehikot/learning/questions.json`, and the project is a
+# path the HOST supplies per canvas in `roadmap.context` — one process now serves
+# whichever project is open rather than one directory it was pointed at. A
+# variable that still moved "the store" would be a second answer to a question
+# the host already answers, and the two would disagree the first time somebody
+# switched project.
 
 if [ ! -d node_modules ]; then
   echo "installing…" >&2

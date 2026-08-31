@@ -181,19 +181,22 @@ describe('the screens that are not errors', () => {
     expect(screen.getByText(/No questions have been written about anything in this project yet/)).toBeTruthy()
   })
 
-  test('no project offers a receipt and NOT a picker', () => {
-    /* Choosing one here would be this page deciding where it is standing, which
-       is the thing it has just said it cannot know. */
-    const { container } = render(
-      <NoProject projects={[{ project: '/Users/x/Projects/roadmap', questions: 4, epics: ['bridge'] }]} unhosted={false} />,
-    )
+  test('no project says where the questions live, and offers NOT a picker', () => {
+    /* This screen used to carry a receipt: the projects this app held questions
+       for, listed out of its own store. There is no such store now — the
+       questions are inside the projects — so it names the file instead, which is
+       a better answer to the question the receipt was really for.
+       It is still not a picker, and never was: choosing one here would be this
+       page deciding where it is standing, which is the thing it has just said it
+       cannot know. */
+    const { container } = render(<NoProject unhosted={false} />)
     expect(screen.getByText('This canvas did not say where it is')).toBeTruthy()
-    expect(screen.getByText('/Users/x/Projects/roadmap')).toBeTruthy()
+    expect(screen.getByText('.kehikot/learning/questions.json')).toBeTruthy()
     expect(container.querySelectorAll('button')).toHaveLength(0)
   })
 
   test('opened directly, it says that instead of blaming the host', () => {
-    render(<NoProject projects={[]} unhosted />)
+    render(<NoProject unhosted />)
     expect(screen.getByText('Nothing is framing this page')).toBeTruthy()
   })
 })

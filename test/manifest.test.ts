@@ -18,15 +18,22 @@ describe('the manifest', () => {
     expect(MANIFEST.declares?.protocol).toBe(`>=${PROTOCOL} <${PROTOCOL + 1}`)
   })
 
-  test('the installed protocol package is 0.8, which is what carries projectPath', () => {
+  test('the installed protocol package is 0.11, which is what carries the .kehikot convention', () => {
     /* A stale copy STRIPS fields it has never heard of and `parse` does not
        complain, so a manifest field vanishes with no error at all. That has
        bitten four modules in this workspace. `bun pm cache rm` then `bun update`
-       — the update alone does not move a git dependency. */
+       — the update alone does not move a git dependency.
+       0.8 carried `projectPath`, which is where the store learns which project
+       it is standing in; 0.11 carries `moduleDir` and `withKehikotIgnored`,
+       which is where it learns what to call the folder and which folder inside
+       it is this module's. A copy without them does
+       not strip a field quietly — `store.ts` fails to import — but the pin is
+       here because the version is the thing that has to move, and a test that
+       names it is the note somebody reads when the import breaks. */
     const packaged = JSON.parse(
       readFileSync(join(here, 'node_modules/roadmap-module-protocol/package.json'), 'utf8'),
     ) as { version: string }
-    expect(packaged.version.startsWith('0.8.')).toBe(true)
+    expect(packaged.version.startsWith('0.11.')).toBe(true)
   })
 
   test('says who it is, and the filename register.ts writes matches', () => {

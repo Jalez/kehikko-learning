@@ -160,9 +160,14 @@ export interface Standing {
   right: number
 }
 
-/** A project as this app names one: the absolute path, and what is in it. */
-export interface ProjectStanding {
-  project: string
-  questions: number
-  epics: string[]
-}
+/*
+ * `ProjectStanding` used to be here: a project's path and what was in it, for
+ * the screen and the tool that listed every project one central store held
+ * questions for.
+ *
+ * It has no subject any more. Questions live inside the project they are about,
+ * at `.kehikot/learning/questions.json`, so this app never holds more than one project's
+ * at a time and cannot enumerate the others — it is handed a path and forgets
+ * it. A shape describing a list nothing can build is a shape somebody will one
+ * day try to fill.
+ */

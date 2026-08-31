@@ -12,13 +12,12 @@ import {
   MIN_OPTIONS,
   change,
   forEpic,
-  projects,
   score,
   standings,
   withKey,
   type Op,
 } from './quiz/questions.ts'
-import { MAX_PROJECT, defaultProject, projectKey } from './quiz/projects.ts'
+import { MAX_PROJECT, defaultProject, usablePath } from './quiz/projects.ts'
 
 /**
  * Every door this app answers on that is not the page itself.
@@ -110,18 +109,21 @@ const AGENT = process.env.LEARNING_AGENT ?? process.env.ROADMAP_AGENT ?? 'an age
  * How a tool says which project it means, written once because every tool here
  * needs it and would otherwise say it four slightly different ways.
  *
- * It is one argument and not an optional convenience: see the essay in
- * `quiz/projects.ts` for why every available default is wrong, and why an
- * unpartitioned bucket is a place questions go to be invisible.
+ * It is one argument and not an optional convenience, and it is now the thing
+ * that says WHERE THE FILE IS rather than which key to look under: questions
+ * live at `<project>/.kehikot/learning/questions.json`. See the essay in
+ * `quiz/projects.ts` for why every available default is wrong, and why there is
+ * no unpartitioned bucket left to fall back to.
  */
 const PROJECT_PROPERTY = {
   project: {
     type: 'string',
     description:
       'The absolute path of the project this is about — the folder you are working in, the same one the canvas is '
-      + 'standing in. Questions are partitioned by it so that one project’s questions never appear on another’s; two '
-      + 'projects both having an epic called "bridge" is the expected collision, not a hypothetical one. Required '
-      + 'unless LEARNING_PROJECT is set in this app’s environment.',
+      + 'standing in. Questions are kept INSIDE it, at .kehikot/learning/questions.json, so this is not a label but the place '
+      + 'the file is; two projects both having an epic called "bridge" is the expected collision, not a hypothetical '
+      + 'one, and they do not collide because they are two files in two folders. Required unless LEARNING_PROJECT is '
+      + 'set in this app’s environment.',
   },
 } as const
 
@@ -157,8 +159,8 @@ function tools() {
       description:
         'The questions written about a paper, and how they were answered. With no epic it answers with every epic in '
         + 'the project and what each adds up to; with an epic it prints that epic’s questions in the order they were '
-        + 'written. With no project at all it lists the projects this app holds questions for, which is how you find '
-        + 'where yours went. Read this BEFORE writing questions, so you do not ask the same thing twice, and AFTER a '
+        + 'written. A project is always needed: the questions are kept in the project’s own folder, so there is no '
+        + 'central store to list. Read this BEFORE writing questions, so you do not ask the same thing twice, and AFTER a '
         + 'reader has been through them: a question somebody got wrong is the part of your explanation that did not '
         + 'work, and is worth more to you than the ones they got right.',
       inputSchema: {
@@ -284,30 +286,41 @@ function tools() {
  * The answers, in words
  * ------------------------------------------------------------------ */
 
-/** Every project, for an agent that did not say which. */
-function projectsText(): string {
-  const { projects: rows, trouble } = projects()
-  if (trouble) return trouble
-  if (!rows.length) {
-    return (
-      'This app holds no questions yet, for any project. Nothing is wrong: nothing here ships a question, so an empty '
-      + 'store means nobody has written one. add_quiz writes the first.\n\n'
-      + 'Give a project path to see or write questions for one. Questions are partitioned by project, and the path is '
-      + 'the folder you are working in.'
-    )
-  }
-  return [
-    'Questions are held for these projects:',
-    ...rows.map((row) => `  ${row.project} — ${row.questions} question${row.questions === 1 ? '' : 's'} about ${row.epics.join(', ')}`),
-    '',
-    'Give one as `project` to read or write its questions. A project not listed here has no questions yet, which is '
-    + 'not the same as not existing.',
-  ].join('\n')
+/**
+ * The refusal for a call that did not say which project it meant.
+ *
+ * ## Why this replaced a listing, and what was lost
+ *
+ * `quizzes` with no project used to answer "which projects hold questions",
+ * enumerated out of the one store this app kept. It was the most useful thing
+ * that could be said to a caller who had not passed a path, because it told them
+ * where their questions had actually gone.
+ *
+ * It cannot be said any more, and the reason is the point of the change: this
+ * app no longer holds anybody's questions. They are inside the projects, at
+ * `.kehikot/learning/questions.json`, and this process is handed one path at a time and
+ * forgets it. Keeping a register of every project it had ever been shown, purely
+ * to answer this, would be rebuilding the central store that was just removed.
+ *
+ * So this says where to look instead, which is a worse answer to the question
+ * the caller asked and a better answer to the question behind it: the file is in
+ * the folder, in plain sight, and `ls` finds it.
+ */
+function noProjectText(name: string): string {
+  return (
+    `${name} needs a project: the absolute path of the folder this is about. Questions are kept INSIDE the project `
+    + 'they are about, at .kehikot/learning/questions.json, so the path is not a label — it is where the file is, and there is '
+    + 'no central store to fall back to or to list. There is no default that would be right: this app is handed one '
+    + 'project at a time and forgets it, and a guess would write somebody’s questions into a folder they will never '
+    + `open. A path may not be empty, longer than ${MAX_PROJECT} characters, or contain a control character. Nothing `
+    + 'was written.'
+  )
 }
 
 /** One project, epic by epic, for an agent that did not name an epic. */
 function standingsText(project: string): string {
-  const { standings: rows, trouble } = standings(project)
+  const { standings: rows, trouble, nowhere } = standings(project)
+  if (nowhere) return noProjectText('quizzes')
   if (trouble) return trouble
   if (!rows.length) {
     return (
@@ -337,7 +350,8 @@ function standingsText(project: string): string {
  * which is reading what did and did not land.
  */
 function epicText(project: string, epic: string, reveal: boolean): string {
-  const { questions, trouble } = withKey(project, epic)
+  const { questions, trouble, nowhere } = withKey(project, epic)
+  if (nowhere) return noProjectText('quizzes')
   if (trouble) return trouble
   if (!questions.length) {
     return (
@@ -542,24 +556,12 @@ function mcp(rpc: Rpc): Reply {
     try {
       /* The project is settled once, before any tool runs, because every tool
          here needs one and a refusal about it is the same sentence in all four
-         cases. `quizzes` with no project is the one exception and is handled
-         first: "which projects hold questions" is a perfectly good question, and
-         answering it with a complaint about a missing project would be refusing
-         the very question that tells the caller what to pass. */
+         cases. There used to be an exception — `quizzes` with no project listed
+         the projects this app held questions for — and it is gone with the
+         central store it read: see `noProjectText`. */
       const gave = args.project !== undefined && args.project !== null && args.project !== ''
-      if (name === 'quizzes' && !gave && !defaultProject()) return text(projectsText())
-
-      const project = gave ? projectKey(args.project) : defaultProject()
-      if (!project) {
-        return text(
-          `${name} needs a project: the path of the folder this is about, which is how questions are kept apart. Two `
-          + 'projects both having an epic called "bridge" is the expected collision, not a hypothetical one, so there '
-          + 'is no default that would be right — call quizzes with no arguments to see which projects already hold '
-          + `questions. A path may not be empty, longer than ${MAX_PROJECT} characters, or contain a control `
-          + 'character. Nothing was written.',
-          true,
-        )
-      }
+      const project = gave ? usablePath(args.project) : defaultProject()
+      if (!project) return text(noProjectText(name), true)
 
       if (name === 'quizzes') {
         const epic = str(args.epic, MAX_EPIC)
@@ -595,15 +597,22 @@ export function answer(
   body: Record<string, unknown> | null,
   ticket: string | null,
 ): Reply | null {
+  /*
+   * Alive, and deliberately saying nothing about anybody's questions.
+   *
+   * It used to count them — projects held, questions in all of them — because
+   * there was one store beside this program and counting it was free. There is
+   * no such store now: every question is inside the project it is about, and a
+   * health check has no project. It could not answer the old question without
+   * being handed a path, and a health check that needs an argument is not one.
+   *
+   * `ok` is therefore unconditionally true and means only what it says: this
+   * process is running and answering. Whether one particular project's file
+   * parses is a question with a project in it, and the doors that have one
+   * answer it, with a sentence.
+   */
   if (path === '/healthz') {
-    const { projects: rows, trouble } = projects()
-    return ok({
-      ok: !trouble,
-      id: ID,
-      version: VERSION,
-      projects: rows.length,
-      questions: rows.reduce((sum, row) => sum + row.questions, 0),
-    })
+    return ok({ ok: true, id: ID, version: VERSION })
   }
 
   if (path === '/mcp') {
@@ -612,13 +621,6 @@ export function answer(
       return { status: 400, body: { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'not a request' } } }
     }
     return mcp(body as Rpc)
-  }
-
-  /* Which projects hold questions — what the page shows when the host had no
-     path to give it, and what a person uses to find where their questions went. */
-  if (path === '/api/projects' && method === 'GET') {
-    const { projects: rows, trouble } = projects()
-    return ok({ ok: true, projects: rows, trouble })
   }
 
   /*
@@ -631,11 +633,12 @@ export function answer(
    * needed a ticket to read what it is about to draw.
    */
   if (path === '/api/questions' && method === 'GET') {
-    const project = projectKey(query.get('project'))
+    const project = usablePath(query.get('project'))
     if (!project) {
       return bad(
-        'that did not say which project. Questions here are partitioned by project so that one project’s questions '
-        + 'never appear on another’s; ask /api/projects for the ones that hold any.',
+        'that did not say which project. Questions are kept inside the project they are about, at '
+        + '.kehikot/learning/questions.json, so without a path there is no file to open — and this app will not guess one, '
+        + 'because a guess is one project’s questions shown under another project’s name.',
       )
     }
     const epic = str(query.get('epic'), MAX_EPIC)
@@ -666,8 +669,13 @@ export function answer(
     if (ticket !== TICKET) return bad('that press did not come from this app’s own page', 403)
     if (!body) return bad('that was not a request')
 
-    const project = projectKey(body.project)
-    if (!project) return bad('that did not say which project the question is in.')
+    const project = usablePath(body.project)
+    if (!project) {
+      return bad(
+        'that did not say which project the question is in. Questions are kept inside the project, at '
+        + '.kehikot/learning/questions.json, so without a path there is no file to write to and nothing was recorded.',
+      )
+    }
 
     /*
      * The one place the answer key crosses the wire.

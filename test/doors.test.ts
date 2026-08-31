@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+import { KEHIKOT_DIR } from 'roadmap-module-protocol'
 
 import { TICKET, answer } from '../doors.ts'
 
@@ -16,21 +18,28 @@ import { TICKET, answer } from '../doors.ts'
  */
 
 let dir = ''
+let A = ''
+let B = ''
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'learning-doors-'))
-  process.env.LEARNING_DATA = dir
+  /* Two REAL directories. The store resolves a project path with `realpathSync`
+     before it writes under it, so a plausible-looking string is refused — which
+     is the point of the fence and would make every route here answer with a
+     complaint if the projects were invented. `realpathSync` on the temp root
+     because macOS puts it behind a symlink. */
+  dir = realpathSync(mkdtempSync(join(tmpdir(), 'learning-doors-')))
+  A = join(dir, 'one')
+  B = join(dir, 'two')
+  mkdirSync(A)
+  mkdirSync(B)
   delete process.env.LEARNING_PROJECT
   delete process.env.ROADMAP_PROJECT
 })
 
 afterEach(() => {
-  delete process.env.LEARNING_DATA
   rmSync(dir, { recursive: true, force: true })
 })
 
-const A = '/Users/somebody/Projects/one'
-const B = '/Users/somebody/Projects/two'
 const nothing = new URLSearchParams()
 
 /** One JSON-RPC tool call, and the text it answered with. */
@@ -40,7 +49,9 @@ function tool(name: string, args: Record<string, unknown> = {}): { text: string;
   return { text: body.result?.content?.[0]?.text ?? '', isError: body.result?.isError === true }
 }
 
-const GOOD = {
+/* A function rather than a constant, because `A` is a different directory in
+   every test now. */
+const good = (): Record<string, unknown> => ({
   project: A,
   epic: 'modes-are-modules',
   question: 'What does a manifest settle?',
@@ -52,11 +63,11 @@ const GOOD = {
   end: 240,
   quote: 'the manifest is the smallest half of this program',
   agent: 'claude',
-}
+})
 
 /** Add one question and hand back its id, read off what the tool printed. */
 function added(over: Record<string, unknown> = {}): string {
-  const { text, isError } = tool('add_quiz', { ...GOOD, ...over })
+  const { text, isError } = tool('add_quiz', { ...good(), ...over })
   expect(isError).toBe(false)
   const id = /Question ([0-9a-f]{8}) written/.exec(text)?.[1]
   expect(id).toBeTruthy()
@@ -124,26 +135,23 @@ describe('the MCP door', () => {
  * ------------------------------------------------------------------ */
 
 describe('the project argument', () => {
-  test('quizzes with no project lists the projects rather than complaining', () => {
-    /* Answering "which projects hold questions" with a complaint about a missing
-       project would be refusing the very question that tells the caller what to
-       pass. */
+  test('quizzes with no project now refuses too, and says where to look instead', () => {
+    /* It used to LIST the projects this app held questions for, which was the
+       most useful thing that could be said to a caller with no path. There is no
+       central store to list any more: the questions are inside the projects. So
+       the refusal says where they are rather than enumerating them, and the
+       question behind the old one — "where did mine go?" — is answered better by
+       `ls` than by this tool. */
     const { text, isError } = tool('quizzes')
-    expect(isError).toBe(false)
-    expect(text).toContain('holds no questions yet')
+    expect(isError).toBe(true)
+    expect(text).toContain('needs a project')
+    expect(text).toContain('.kehikot/learning/questions.json')
+    expect(text).toContain('no central store')
   })
 
-  test('quizzes with no project lists them once there are some', () => {
-    added()
-    added({ project: B })
-    const { text } = tool('quizzes')
-    expect(text).toContain(A)
-    expect(text).toContain(B)
-  })
-
-  test('every other tool refuses without one, and says what to pass', () => {
-    for (const name of ['add_quiz', 'reword_quiz', 'drop_quiz']) {
-      const { text, isError } = tool(name, { ...GOOD, project: undefined, id: 'deadbeef' })
+  test('every tool refuses without one, and says what to pass', () => {
+    for (const name of ['quizzes', 'add_quiz', 'reword_quiz', 'drop_quiz']) {
+      const { text, isError } = tool(name, { ...good(), project: undefined, id: 'deadbeef' })
       expect(isError).toBe(true)
       expect(text).toContain('needs a project')
       expect(text).toContain('Nothing was written')
@@ -151,14 +159,27 @@ describe('the project argument', () => {
   })
 
   test('a project that is not a usable path is refused', () => {
-    const { text, isError } = tool('add_quiz', { ...GOOD, project: '   ' })
+    const { text, isError } = tool('add_quiz', { ...good(), project: '   ' })
     expect(isError).toBe(true)
     expect(text).toContain('needs a project')
   })
 
+  test('a project that is not on this machine is refused with a sentence, and nothing is guessed', () => {
+    const { text, isError } = tool('add_quiz', { ...good(), project: join(dir, 'no-such-folder') })
+    expect(isError).toBe(true)
+    expect(text).toContain('there is no folder at')
+    expect(existsSync(join(A, KEHIKOT_DIR))).toBe(false)
+  })
+
+  test('a question written for one project is in that project’s folder and no other', () => {
+    added()
+    expect(existsSync(join(A, KEHIKOT_DIR, 'learning', 'questions.json'))).toBe(true)
+    expect(existsSync(join(B, KEHIKOT_DIR))).toBe(false)
+  })
+
   test('LEARNING_PROJECT is a default a person set, not a guess', () => {
     process.env.LEARNING_PROJECT = A
-    const { isError } = tool('add_quiz', { ...GOOD, project: undefined })
+    const { isError } = tool('add_quiz', { ...good(), project: undefined })
     expect(isError).toBe(false)
     expect(tool('quizzes', { epic: 'modes-are-modules' }).text).toContain('What does a manifest settle?')
     delete process.env.LEARNING_PROJECT
@@ -167,7 +188,7 @@ describe('the project argument', () => {
 
 describe('add_quiz', () => {
   test('writes a question and prints the epic back without the key', () => {
-    const { text, isError } = tool('add_quiz', GOOD)
+    const { text, isError } = tool('add_quiz', good())
     expect(isError).toBe(false)
     expect(text).toContain('written about modes-are-modules')
     expect(text).toContain('answer: withheld — nobody has answered this one yet')
@@ -175,13 +196,13 @@ describe('add_quiz', () => {
   })
 
   test('needs an epic', () => {
-    const { text, isError } = tool('add_quiz', { ...GOOD, epic: undefined })
+    const { text, isError } = tool('add_quiz', { ...good(), epic: undefined })
     expect(isError).toBe(true)
     expect(text).toContain('add_quiz needs an epic')
   })
 
   test('needs a question', () => {
-    const { text, isError } = tool('add_quiz', { ...GOOD, question: '' })
+    const { text, isError } = tool('add_quiz', { ...good(), question: '' })
     expect(isError).toBe(true)
     expect(text).toContain('needs a question')
   })
@@ -190,28 +211,28 @@ describe('add_quiz', () => {
     /* `options: "a, b, c"` is a caller that meant three options; splitting on
        commas would guess where, and an option containing a comma would become
        two. */
-    const { text, isError } = tool('add_quiz', { ...GOOD, options: 'a, b, c' })
+    const { text, isError } = tool('add_quiz', { ...good(), options: 'a, b, c' })
     expect(isError).toBe(true)
     expect(text).toContain('an ARRAY')
     expect(text).toContain('however it is punctuated')
   })
 
   test('needs an answer index, and says it is an index and not a string', () => {
-    const { text, isError } = tool('add_quiz', { ...GOOD, answer: 'Which tab the page gets' })
+    const { text, isError } = tool('add_quiz', { ...good(), answer: 'Which tab the page gets' })
     expect(isError).toBe(true)
     expect(text).toContain('as a whole number counting from 0')
     expect(text).toContain('not the text of one')
   })
 
   test('an answer index past the end is refused by the store', () => {
-    const { text, isError } = tool('add_quiz', { ...GOOD, answer: 9 })
+    const { text, isError } = tool('add_quiz', { ...good(), answer: 9 })
     expect(isError).toBe(true)
     expect(text).toContain('between 0 and 2')
   })
 
   test('needs the whole passage, and names all four parts', () => {
     for (const missing of [{ path: '' }, { quote: '' }, { start: 'x' }, { end: null }]) {
-      const { text, isError } = tool('add_quiz', { ...GOOD, ...missing })
+      const { text, isError } = tool('add_quiz', { ...good(), ...missing })
       expect(isError).toBe(true)
       expect(text).toContain('path, start, end and quote')
       expect(text).toContain('Nothing was written')
@@ -219,7 +240,7 @@ describe('add_quiz', () => {
   })
 
   test('refuses a byte range that does not go forwards', () => {
-    const { text, isError } = tool('add_quiz', { ...GOOD, start: 500, end: 100 })
+    const { text, isError } = tool('add_quiz', { ...good(), start: 500, end: 100 })
     expect(isError).toBe(true)
     expect(text).toContain('end greater than start')
   })
@@ -231,7 +252,7 @@ describe('add_quiz', () => {
   })
 
   test('an epic that is not a slug is refused', () => {
-    const { text, isError } = tool('add_quiz', { ...GOOD, epic: 'Modes Are Modules' })
+    const { text, isError } = tool('add_quiz', { ...good(), epic: 'Modes Are Modules' })
     expect(isError).toBe(true)
     expect(text).toContain('is not an epic slug')
   })
@@ -343,7 +364,8 @@ describe('/api/questions', () => {
   test('needs a project, and says why', () => {
     const reply = answer('GET', '/api/questions', new URLSearchParams({ epic: 'x' }), null, null)
     expect(reply?.status).toBe(400)
-    expect((reply?.body as { error: string }).error).toContain('partitioned by project')
+    expect((reply?.body as { error: string }).error).toContain('kept inside the project')
+    expect((reply?.body as { error: string }).error).toContain('will not guess')
   })
 
   test('DOES NOT CARRY THE KEY for a question nobody has answered', () => {
@@ -459,20 +481,21 @@ describe('/api/retake', () => {
 })
 
 describe('the other doors', () => {
-  test('/healthz counts what is held', () => {
+  test('/healthz says this process is answering, and deliberately counts nothing', () => {
+    /* It used to count the projects held and the questions in them, because
+       there was one store beside this program. There is not: every question is
+       inside the project it is about, and a health check has no project. A check
+       that needed an argument would not be one. */
     added()
-    added({ project: B })
-    const body = answer('GET', '/healthz', nothing, null, null)?.body as { ok: boolean; projects: number; questions: number }
+    const body = answer('GET', '/healthz', nothing, null, null)?.body as Record<string, unknown>
     expect(body.ok).toBe(true)
-    expect(body.projects).toBe(2)
-    expect(body.questions).toBe(2)
+    expect(body.id).toBe('roadmap.learning')
+    expect(body.projects).toBeUndefined()
+    expect(body.questions).toBeUndefined()
   })
 
-  test('/api/projects lists what is held for whom', () => {
-    added()
-    const body = answer('GET', '/api/projects', nothing, null, null)?.body as { projects: { project: string; epics: string[] }[] }
-    expect(body.projects[0]?.project).toBe(A)
-    expect(body.projects[0]?.epics).toEqual(['modes-are-modules'])
+  test('/api/projects is gone, because there is no register of projects to list', () => {
+    expect(answer('GET', '/api/projects', nothing, null, null)?.status).toBe(404)
   })
 
   test('an unknown /api path is ours to refuse, not Vite’s to serve as source', () => {

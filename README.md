@@ -87,43 +87,63 @@ distinct class string between them — so there is no styling channel either.
   passage behind a disclosure, and who wrote it.
 - **Answering, and the record.** One press, a verdict, the key, the explanation.
   Answers survive a reload because they are on disk and not in the page.
-- **Its own store.** `data/questions.json`, partitioned by project. Copy the
-  directory to another machine, run it, and it is your questions.
+- **A store inside the project.** `<project>/.kehikot/learning/questions.json` — plain
+  JSON, beside the work, readable by anybody who has the repository open.
 - **Two screens that are not errors.** A canvas standing on no epic, and a host
   that gave no project path. See below.
 
-## Partitioning by project — the `workspaceState` idea
+## The path is the partition
 
-The host sends `projectPath` in the context (protocol 0.8). It is the **first**
-key in the store, above the epic, because a question is the project's before it
-is the epic's: an epic slug means nothing without saying whose epic it is.
+The host sends `projectPath` in the context (protocol 0.8), and the questions
+are kept **inside that folder**, at `<project>/.kehikot/learning/questions.json`. The
+user asked for exactly that:
 
-The failure this prevents is not hypothetical. Slugs are short, lower-case and
-hand-picked; `bridge`, `wire` and `agents` are all real epic slugs in one project
-here and all of them are words a second project would plausibly use. Without the
-partition, a question written about one paper appears while somebody is reading
-another repository's.
+> "Each of the modules should hold their data inside the project itself, mostly
+> as text files inside a kehikko-folder (or json) … That way everything is
+> transparent etc and easily usable by others in the project."
+
+The folder name, the join and the `.gitignore` text are
+`roadmap-module-protocol`'s (0.10), not this module's, because four modules
+answering "where does my data live" separately is four answers and the
+disagreement has no symptom: every module starts, every module saves, and a
+person finds half their work in one folder and half in another.
+
+**This replaced a partition rather than adding to one.** `questions.json` used
+to sit beside this program with a `projects` record at the top of it, keyed by
+path. The failure that prevented is real and not hypothetical — slugs are short,
+lower-case and hand-picked, and `bridge`, `wire` and `agents` are all real epic
+slugs in one project here and all words a second project would plausibly use.
+Two projects are now two files in two folders, so there is no shape left in
+which they could collide, which is strictly stronger than a record key.
+
+`.kehikot/` is added to the project's `.gitignore` once, when the folder is
+first created, with a comment saying what it is and that removing the rule is
+how you share it. A project that is not a git repository gets nothing.
 
 - **The page** is told. `projectPath` is nullable — a host with no filesystem of
   its own knows the project's name and has no folder to point at — and the page
-  **does not guess**. It says so and lists which projects hold questions, as a
-  receipt rather than a picker: choosing one there would be the page deciding
-  where it is standing, which is the thing it has just said it cannot know.
+  **does not guess**. Guessing is not a display mistake here: it would write
+  somebody's questions into a folder they will never open, under a pane that
+  said they were saved.
 - **An agent** says which, in `project`, and is refused without it. Every
   available default is wrong: `process.cwd()` is this module's own directory,
-  "the only project that exists" is correct until the day there are two, and an
-  unpartitioned bucket is a place questions go to be invisible.
-  `LEARNING_PROJECT` sets one for somebody running this for exactly one project,
-  which is a decision a person makes in an environment.
+  "the only project that exists" is not even expressible now, and there is no
+  unpartitioned bucket left to fall back to. `LEARNING_PROJECT` sets one for
+  somebody running this for exactly one project, which is a decision a person
+  makes in an environment rather than one this program makes for them.
 
-**Where this is honest about being wrong**: a path is normalised by stripping
-trailing slashes and nothing else. Symlinks are not resolved and `..` is not
-collapsed, because this process may have no access to the path it is being told
-about — resolving would mean `realpath` on an arbitrary string off the network.
-So a host saying `/x/roadmap` and an agent working in a worktree at
-`/x/roadmap/.claude/worktrees/thing` are two projects here. Arguably correct —
-they are two checkouts — but it will surprise somebody, which is why `quizzes`
-with no project lists every bucket.
+**The fence.** This app writes files into a path it was handed over the wire, so
+the path is resolved with `realpathSync` and the folder it lands in is checked
+to be under the project it claims to be under — after resolution, because a
+`.kehikot` that is a symlink elsewhere is exactly the case a string comparison
+misses. The file NAME is a constant and never arrives in a request.
+
+**What was lost, and it is worth naming.** `quizzes` with no project used to
+list every project this app held questions for, which was how a person found the
+bucket theirs had gone into. It cannot: this process is handed one project at a
+time and forgets it. The question it answered is answered better now — the file
+is `.kehikot/learning/questions.json` in the folder you were working in, and `ls` finds
+it.
 
 ## The screens that are not errors
 
@@ -134,7 +154,10 @@ screen rather than an error:
   about, so with no epic there is nothing to ask. What the pane can still do is
   say which papers in this project have questions waiting — a signpost instead of
   a dead end.
-- **No project.** As above: a receipt, not a picker.
+- **No project.** Nothing to read and nowhere to write, said plainly, with the
+  path a project's questions would be at so a person knows where to look. Not a
+  picker: choosing one there would be the page deciding where it is standing,
+  which is the thing it has just said it cannot know.
 
 ## Spaced repetition, which is deliberately not here
 
@@ -234,14 +257,15 @@ tool's argument validation without a browser.
 ```
 manifest.ts        what a host reads, and the essay on every non-declaration
 doors.ts           /mcp, /healthz and /api, as one function with no socket
-store.ts           where data/ is, and why the fallback is not import.meta.dir
+store.ts           <project>/.kehikot/, the fence around it, and the .gitignore
 quiz/types.ts      the shapes both sides name — NO imports, deliberately
 quiz/questions.ts  the store, the rules, asked() and score()
-quiz/projects.ts   the partition key, and where it is honest about being wrong
+quiz/projects.ts   what is left of "which project" now the path is the partition
+dev/migrate.ts     the one-off move out of data/questions.json, run by hand
 page/document.ts   the document, generated per request so the ticket can reach it
 vite.config.ts     the doors as middleware, and the missing server.cors
 src/               the page: wire/, view/, store/ask.ts, components/ui/
-test/              139 tests, no browser
+test/              182 tests, no browser
 ```
 
 Two traps worth naming, because both have cost this workspace time:

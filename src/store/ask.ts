@@ -1,4 +1,4 @@
-import type { Asked, Attempt, ProjectStanding, Standing } from '../../quiz/types.ts'
+import type { Asked, Attempt, Standing } from '../../quiz/types.ts'
 
 /**
  * This app's own store, over this app's own origin.
@@ -57,17 +57,21 @@ async function post(path: string, body: unknown): Promise<unknown> {
   return response.json()
 }
 
-export type { Asked, Attempt, ProjectStanding, Standing }
+export type { Asked, Attempt, Standing }
 
-/** Which projects hold questions. What the pane shows when the host gave it no path. */
-export async function everyProject(): Promise<{ projects: ProjectStanding[]; trouble: string | null }> {
-  const response = await fetch('/api/projects')
-  const body = (await response.json()) as { projects?: unknown; trouble?: unknown }
-  return {
-    projects: Array.isArray(body.projects) ? (body.projects as ProjectStanding[]) : [],
-    trouble: typeof body.trouble === 'string' ? body.trouble : null,
-  }
-}
+/*
+ * There is no `everyProject()` here any more, and its absence is the change.
+ *
+ * It fetched `/api/projects`, which enumerated the projects one central store
+ * held questions for, and the pane drew that list when the host had given it no
+ * path. There is no central store now: every question is inside the project it
+ * is about, at `.kehikot/learning/questions.json`, and this app is handed one project at
+ * a time and forgets it. So the list cannot be built, and — more to the point —
+ * it is not needed: the questions are in the folder, in plain sight.
+ *
+ * The screen for a null `projectPath` therefore says where to look rather than
+ * showing a receipt. See `NoProject` in `view/nowhere.tsx`.
+ */
 
 export interface Opened {
   project: string

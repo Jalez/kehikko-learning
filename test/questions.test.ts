@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+import { KEHIKOT_DIR } from 'roadmap-module-protocol'
 
 import {
   MAX_ATTEMPTS,
@@ -17,28 +19,46 @@ import {
 } from '../quiz/questions.ts'
 
 /**
- * The store, with a real file, in a real directory.
+ * The store, with real files, in real project directories.
  *
- * Not a mock. Half of what this file asserts is about what is ON DISK — that a
- * broken file is not written over, that the attempts array is bounded there and
- * not merely in memory, that a question written under one project is not under
- * another — and a fake filesystem would let every one of those pass while the
+ * Not a mock, and now doubly not: the store resolves the project path with
+ * `realpathSync` before it writes anything under it, so a project that is merely
+ * a plausible-looking string is refused. `A` and `B` are therefore two actual
+ * directories, made and removed per test, and every assertion below about "one
+ * project's questions are not in another's" is an assertion about two files in
+ * two folders rather than two keys in one object.
+ *
+ * Half of what this file asserts is about what is ON DISK — that a broken file
+ * is not written over, that the attempts array is bounded there and not merely
+ * in memory — and a fake filesystem would let every one of those pass while the
  * program did the opposite.
  */
 let dir = ''
+let A = ''
+let B = ''
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'learning-test-'))
-  process.env.LEARNING_DATA = dir
+  /* `realpathSync` because macOS puts the temp directory behind a symlink —
+     `/var` is `/private/var` — and the store resolves before it writes. Taking
+     the resolved form here is the honest thing: it is what the program will
+     use, so it is what the assertions should be about. */
+  dir = realpathSync(mkdtempSync(join(tmpdir(), 'learning-test-')))
+  A = join(dir, 'one')
+  B = join(dir, 'two')
+  mkdirSync(A)
+  mkdirSync(B)
 })
 
 afterEach(() => {
-  delete process.env.LEARNING_DATA
   rmSync(dir, { recursive: true, force: true })
 })
 
-const A = '/Users/somebody/Projects/one'
-const B = '/Users/somebody/Projects/two'
+/** Where one project's questions actually are, for the tests that read the file. */
+function fileFor(project: string): string {
+  const { path } = questionsFile(project)
+  expect(path).not.toBeNull()
+  return path!
+}
 
 function add(over: Partial<Parameters<typeof change>[0] & Record<string, unknown>> = {}) {
   return change({
@@ -168,7 +188,7 @@ describe('the partition by project', () => {
     if (!out.ok) return
     const wrong = change({ op: 'drop', project: B, id: out.id })
     expect(wrong.ok).toBe(false)
-    if (!wrong.ok) expect(wrong.error).toContain('written about another project is not addressable')
+    if (!wrong.ok) expect(wrong.error).toContain('it is not addressable from this one')
     /* And it is still there. */
     expect(forEpic(A, 'modes-are-modules').questions).toHaveLength(1)
   })
@@ -186,27 +206,48 @@ describe('the partition by project', () => {
        an integer-like object key, which JavaScript enumerates FIRST — which is
        why this is an array and not a record. */
     for (const n of ['first', 'second', 'third']) add({ question: `The ${n} question` })
-    const raw = JSON.parse(readFileSync(questionsFile(), 'utf8')) as {
-      projects: Record<string, { questions: { question: string }[] }>
-    }
-    expect(raw.projects[A]?.questions.map((q) => q.question)).toEqual([
+    const raw = JSON.parse(readFileSync(fileFor(A), 'utf8')) as { questions: { question: string }[] }
+    expect(raw.questions.map((q) => q.question)).toEqual([
       'The first question',
       'The second question',
       'The third question',
     ])
   })
 
-  test('the partition is the shape of the file, not a filter', () => {
+  test('the partition is the PATH, and there is no project key left in the file', () => {
+    /* The shape used to carry the partition: a `projects` record keyed by path.
+       It is the folder now, which is strictly stronger — the file a reader
+       opened cannot name the wrong project because it does not name one at
+       all. */
     add({ project: A })
     add({ project: B })
-    const raw = JSON.parse(readFileSync(questionsFile(), 'utf8')) as { projects: Record<string, unknown> }
-    expect(Object.keys(raw.projects).sort()).toEqual([A, B].sort())
+    expect(fileFor(A)).toBe(join(A, KEHIKOT_DIR, 'learning', 'questions.json'))
+    expect(fileFor(B)).toBe(join(B, KEHIKOT_DIR, 'learning', 'questions.json'))
+    const raw = JSON.parse(readFileSync(fileFor(A), 'utf8')) as Record<string, unknown>
+    expect(Object.keys(raw)).toEqual(['questions'])
+    expect(raw.projects).toBeUndefined()
   })
 
-  test('a write with no project is refused', () => {
-    const out = add({ project: '   ' })
+  test('a write with no project is refused, and nothing is created anywhere', () => {
+    const out = add({ project: null })
     expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.error).toContain('did not say which project')
+    if (!out.ok) expect(out.error).toContain('no project is open')
+    if (!out.ok) expect(out.error).toContain('Nothing was recorded')
+    /* Not "somewhere sensible". Nowhere. */
+    expect(existsSync(join(A, KEHIKOT_DIR))).toBe(false)
+    expect(existsSync(join(B, KEHIKOT_DIR))).toBe(false)
+  })
+
+  test('a project that is not on this machine is refused with a sentence, not a guess', () => {
+    const out = add({ project: join(dir, 'no-such-project') })
+    expect(out.ok).toBe(false)
+    if (!out.ok) expect(out.error).toContain('there is no folder at')
+  })
+
+  test('a relative path is refused, because it would resolve against this app’s cwd', () => {
+    const out = add({ project: 'some/relative/path' })
+    expect(out.ok).toBe(false)
+    if (!out.ok) expect(out.error).toContain('is not an absolute path')
   })
 })
 
@@ -298,8 +339,8 @@ describe('the standings', () => {
 describe('a file that will not parse', () => {
   test('is not treated as an empty store, and is not written over', () => {
     add()
-    const before = readFileSync(questionsFile(), 'utf8')
-    writeFileSync(questionsFile(), '{ this is not json')
+    const before = readFileSync(fileFor(A), 'utf8')
+    writeFileSync(fileFor(A), '{ this is not json')
 
     const read = forEpic(A, 'modes-are-modules')
     expect(read.questions).toHaveLength(0)
@@ -310,7 +351,7 @@ describe('a file that will not parse', () => {
     expect(out.ok).toBe(false)
 
     /* The broken file is still exactly as it was — not repaired, not replaced. */
-    expect(readFileSync(questionsFile(), 'utf8')).toBe('{ this is not json')
+    expect(readFileSync(fileFor(A), 'utf8')).toBe('{ this is not json')
     expect(before).toContain('What does the manifest settle?')
   })
 })
@@ -320,10 +361,10 @@ describe('attempts are bounded on disk', () => {
     const made = add()
     if (!made.ok) return
     for (let i = 0; i < MAX_ATTEMPTS + 5; i += 1) score(A, made.id, i % 3)
-    const raw = JSON.parse(readFileSync(questionsFile(), 'utf8')) as {
-      projects: Record<string, { questions: { id: string; attempts: unknown[] }[] }>
+    const raw = JSON.parse(readFileSync(fileFor(A), 'utf8')) as {
+      questions: { id: string; attempts: unknown[] }[]
     }
-    expect(raw.projects[A]?.questions.find((q) => q.id === made.id)?.attempts).toHaveLength(MAX_ATTEMPTS)
+    expect(raw.questions.find((q) => q.id === made.id)?.attempts).toHaveLength(MAX_ATTEMPTS)
     /* The most recent, not the first: the last write was `(MAX_ATTEMPTS+4) % 3`. */
     const kept = forEpic(A, 'modes-are-modules').questions[0]?.attempts.at(-1)
     expect(kept?.chose).toBe((MAX_ATTEMPTS + 4) % 3)

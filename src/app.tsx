@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ID } from '../manifest.ts'
 
-import { answer, everyProject, openEpic, retake, type Asked, type ProjectStanding, type Standing } from '@/store/ask.ts'
+import { answer, openEpic, retake, type Asked, type Standing } from '@/store/ask.ts'
 import { useRoadmap, type GotoHandler } from '@/wire/use-roadmap.ts'
 import { QuizView } from '@/view/quiz.tsx'
 import { NoEpic, NoProject } from '@/view/nowhere.tsx'
@@ -38,7 +38,6 @@ const EVERY_MS = 3000
 export function App() {
   const [questions, setQuestions] = useState<Asked[]>([])
   const [standings, setStandings] = useState<Standing[]>([])
-  const [projects, setProjects] = useState<ProjectStanding[]>([])
   const [trouble, setTrouble] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -72,10 +71,13 @@ export function App() {
 
   const refresh = useCallback(async () => {
     const { project: where_, epic: which } = standing.current
+    /* No project, nothing to fetch. There is no longer anything this app could
+       ask for without one: the questions are inside the project, so a request
+       with no path has no file behind it. The screen for it says so. */
     if (!where_) {
-      const { projects: rows, trouble: bad } = await everyProject()
-      setProjects(rows)
-      setTrouble(bad)
+      setStandings([])
+      setQuestions([])
+      setTrouble(null)
       return
     }
     const opened = await openEpic(where_, which)
@@ -177,7 +179,7 @@ export function App() {
         Waiting to hear whether anything is framing this page, and therefore which project it is standing in.
       </p>
     ) : !projectPath ? (
-      <NoProject projects={projects} unhosted={where === 'unhosted'} />
+      <NoProject unhosted={where === 'unhosted'} />
     ) : !epic ? (
       <NoEpic project={project} standings={standings} />
     ) : (

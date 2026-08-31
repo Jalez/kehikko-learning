@@ -1,84 +1,98 @@
 /**
- * Which project a question belongs to, and why this app partitions by one at all.
+ * Which project a caller means, and what is left of that question now that the
+ * path is the partition.
  *
- * ## The failure this prevents
+ * ## What this file used to be, and what happened to it
  *
- * One process, one port, one store — and two projects open on two canvases. The
- * user asked for exactly this and named it:
+ * It used to hold the partition. `questions.json` was one file beside this
+ * program with a `projects` record at the top of it, `projectKey()` produced the
+ * key, and the essay here argued at length that a question is the project's
+ * before it is the epic's — because `bridge`, `wire` and `agents` are all real
+ * epic slugs in one project in this workspace and all of them are words a second
+ * project would plausibly use.
  *
- * > the `workspaceState` idea
+ * The argument was right and the mechanism is gone, because the user moved the
+ * store into the project itself:
  *
- * Without a partition, a question written about a chapter of one paper appears
- * in the pane while somebody is reading a different repository's paper that
- * happens to share an epic slug. Slugs are short, lower-case and hand-picked;
- * `bridge`, `wire` and `agents` are all real epic slugs in one project in this
- * workspace and all of them are words a second project would plausibly use. So
- * this is not a hypothetical collision, it is the expected one.
+ * > "Each of the modules should hold their data inside the project itself,
+ * > mostly as text files inside a kehikko-folder (or json)"
  *
- * The partition is the FIRST key in the store, above the epic, because a
- * question is the project's before it is the epic's: an epic slug means nothing
- * without saying whose epic it is.
+ * `<projectPath>/.kehikot/learning/questions.json`. **The path IS the partition now.**
+ * Two projects with an epic called `bridge` do not collide because they are two
+ * files in two folders, and there is no longer a shape in which they could — a
+ * store that has never heard of a project cannot key by the wrong one. That is
+ * strictly stronger than a record key, which is why this file got smaller rather
+ * than bigger.
  *
- * ## Where the project comes from, on each of the two doors
+ * ## What survives, and why
  *
- * - **The page** is told, by the host, in `roadmap.context.projectPath` — added
- *   by protocol 0.8. It is nullable: a host with no filesystem of its own knows
- *   the project's name and has no folder to point at. A page holding null asks
- *   for nothing and says so, rather than guessing, because guessing means
- *   showing one project's questions inside another.
- * - **An agent over MCP** says which, in the `project` argument, and is refused
- *   if it does not. This is the part worth defending, because a default was
- *   available and every default on offer is wrong:
- *   - `process.cwd()` is this MODULE's directory, not the caller's. It would
- *     file every question under `/Users/…/kehikko-learning` and no page would
- *     ever show one.
- *   - "The only project that exists, if there is exactly one" is correct until
- *     the day there are two, at which point questions silently start landing in
- *     whichever one was created first.
- *   - Nothing at all — an unpartitioned bucket — is a place questions go to be
- *     invisible.
+ * A path still arrives from outside — from a host in `roadmap.context`, from an
+ * agent in a tool argument — and something still has to look at it before
+ * `store.ts` takes it to the filesystem. That is all this file is now.
  *
- *   So it is refused, with a sentence saying what to pass. `LEARNING_PROJECT`
- *   sets a default for somebody running this app for exactly one project, which
- *   is a decision a person makes in an environment rather than one this file
- *   makes on their behalf.
+ * What does NOT survive is the listing. `quizzes` with no project used to answer
+ * "which projects hold questions", and it was a genuinely useful answer: it was
+ * how a person found the bucket their questions had gone into. This app cannot
+ * answer it any more, because it no longer holds anybody's questions — they are
+ * in the projects. The answer is also no longer needed, which is the good half
+ * of the trade: the file is `.kehikot/learning/questions.json` inside the folder you were
+ * working in, in plain sight, and `ls` finds it. A module that kept a register of
+ * every project it had ever been shown, purely to answer that question, would be
+ * reintroducing the central store this change removed.
  *
- * ## What "the same project" means, and where this is honest about being wrong
- *
- * A path, normalised: trailing slashes removed, nothing else. Symlinks are NOT
- * resolved and `..` is NOT collapsed against the filesystem, because this
- * process may have no access to the path it is being told about — it is a path
- * on the machine, named by a caller, not a file this app opens. Resolving would
- * mean `realpath` on an arbitrary string from the network, which is both a
- * filesystem call this app otherwise never makes and a way for two callers to
- * disagree depending on what happens to be mounted.
- *
- * The cost is real and worth naming rather than hiding: a host that says
- * `/Users/x/Projects/roadmap` and an agent working in a git worktree at
- * `/Users/x/Projects/roadmap/.claude/worktrees/thing` are, to this file, two
- * projects. That is arguably even correct — they are two checkouts — but it will
- * surprise somebody, so `quizzes` with no project lists every project that holds
- * questions, which is how a person finds the bucket their questions went into.
+ * `projectName()` went with it. Nothing called it: the page is told what the
+ * project is CALLED by the host, in `context.project`, which is a name a person
+ * chose rather than the last segment of a path they chose for their disk.
  */
 
-/** As long as a path may be, matching the protocol's own `LIMITS.PATH`. */
+/**
+ * As long as a path may be, matching the protocol's own `LIMITS.PATH`.
+ *
+ * 4096 is Linux's `PATH_MAX` and the larger of the two numbers this could stand
+ * on — macOS imposes 1024 — so the bound never refuses a path the operating
+ * system was willing to hand out. It is restated here rather than imported
+ * because the MCP tool descriptions interpolate it into a sentence a caller
+ * reads, and a number that has to be remembered in two places is a number that
+ * will be wrong in one of them.
+ */
 export const MAX_PROJECT = 4096
 
 /**
- * A project path as this app keys by one, or null.
+ * A project path, tidied — or null if it is not one at all.
+ *
+ * ## A gate, not a key
+ *
+ * This used to be called `projectKey` and used to produce the string a store was
+ * keyed by. It keys nothing now. What it does is answer, WITHOUT TOUCHING THE
+ * FILESYSTEM, whether a caller said something that could be a path — so that
+ * `store.ts` is not asked to `realpath` a control character, an empty string, or
+ * four kilobytes of somebody's paragraph.
+ *
+ * Cheap and syntactic on purpose, and it deliberately does not overlap with what
+ * `store.ts` does. Whether the folder EXISTS, whether it is a directory, whether
+ * `.kehikot` inside it is a symlink pointing somewhere else — those are questions
+ * only the filesystem can answer, they are answered there, once, and the refusal
+ * comes back as a sentence. Two files both deciding whether a path is usable is
+ * two files that will eventually disagree.
  *
  * Null for anything that is not a usable path: not a string, empty once trimmed,
  * longer than the bound, or containing a control character. A control character
- * in an object key is the kind of thing that reads back out of JSON fine and
- * then does something surprising in a terminal, and no real path has one.
+ * in a path is the kind of thing that reads back out of JSON fine and then does
+ * something surprising in a terminal, and no real path has one.
  *
- * Relative paths are accepted rather than refused. This app cannot tell a
- * relative path from an absolute one on a machine it is not resolving against,
- * and a caller that consistently says `.` gets a consistent bucket — which is
- * wrong in the sense that it will not match the host's, and right in the sense
- * that it is at least a bucket they can find with `quizzes`.
+ * Relative paths pass here and are refused in `store.ts`, with a sentence saying
+ * why. That is deliberate: "you did not say which project" and "that is not
+ * somewhere on this machine" are two different mistakes, and a caller can only
+ * act on the one they actually made.
+ *
+ * Two spellings of the same directory — `/a/b` and `/a/b/../b` — are no longer
+ * this file's problem either, and that is the one behaviour that got BETTER
+ * rather than merely moving. The old note here admitted the two were different
+ * projects and could not be unified, because resolving would have meant
+ * `realpath` on an arbitrary string. `store.ts` now runs exactly that `realpath`,
+ * because it has to anyway: it is about to write a file there.
  */
-export function projectKey(value: unknown): string | null {
+export function usablePath(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const raw = value.trim()
   if (!raw || raw.length > MAX_PROJECT) return null
@@ -87,9 +101,9 @@ export function projectKey(value: unknown): string | null {
     if (code < 0x20 || code === 0x7f) return null
   }
   /* Trailing slashes only. `/a/b/` and `/a/b` are the same directory said two
-     ways, and a caller that appends one — as a shell completion does — must not
-     get a second store. The root is left alone: `/` normalised to `` would be a
-     project with an empty key. */
+     ways, and a caller that appends one — as a shell completion does — should
+     not get a different sentence back. The root is left alone: `/` stripped of
+     its trailing slash is the empty string, which is not a path. */
   const trimmed = raw.replace(/\/+$/, '')
   return trimmed || raw
 }
@@ -97,25 +111,32 @@ export function projectKey(value: unknown): string | null {
 /**
  * The default project, for whoever set one.
  *
- * `LEARNING_PROJECT` first, then `ROADMAP_PROJECT` — the second because a person
- * running a host and this module together in one project has already said so
- * once, and making them say it twice is how the two end up disagreeing. Neither
- * is a fallback in the sense of a guess: if neither is set this returns null and
- * the door refuses, which is the whole argument above.
+ * ## Why a default exists at all, when every automatic one is wrong
+ *
+ * The MCP door refuses a tool call that does not say which project it means, and
+ * that refusal is the same decision it always was. Every default AVAILABLE TO
+ * THE PROGRAM is wrong, and the list is worth keeping because somebody will
+ * propose one of them again:
+ *
+ * - `process.cwd()` is this MODULE's directory, not the caller's. It would write
+ *   `.kehikot/learning/questions.json` inside this module's own repository, and
+ *   no canvas would ever show one of those questions.
+ * - "the only project that exists, if there is exactly one" is not even
+ *   expressible now. This app holds no register of projects; it is handed one
+ *   path at a time and forgets it.
+ * - Nothing at all is not an option either. There is no unpartitioned bucket to
+ *   fall back to — the file lives in a project or it does not exist.
+ *
+ * `LEARNING_PROJECT` is different in kind from all three, because it is not the
+ * program guessing. It is a person who runs this app for exactly one project
+ * saying so, once, in an environment they control. `ROADMAP_PROJECT` is honoured
+ * after it because somebody running a host and this module together in one
+ * project has already said it once, and making them say it twice is how the two
+ * end up disagreeing.
+ *
+ * Neither is a fallback in the sense of a guess: with neither set this returns
+ * null, the door refuses, and the refusal names what to pass.
  */
 export function defaultProject(): string | null {
-  return projectKey(process.env.LEARNING_PROJECT) ?? projectKey(process.env.ROADMAP_PROJECT)
-}
-
-/**
- * The short name for a path, for a heading in a 220px pane.
- *
- * The last segment, which is what a person calls their project. The full path is
- * never dropped from the store and never dropped from what the MCP door prints —
- * this is a label, and a label that could be two different projects is fine on a
- * screen that is only ever showing one of them.
- */
-export function projectName(project: string): string {
-  const cut = project.lastIndexOf('/')
-  return cut === -1 ? project : project.slice(cut + 1) || project
+  return usablePath(process.env.LEARNING_PROJECT) ?? usablePath(process.env.ROADMAP_PROJECT)
 }
