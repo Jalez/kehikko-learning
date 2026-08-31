@@ -60,6 +60,23 @@
   --wrong: oklch(0.6 0.2 25);
   --unasked: oklch(0.68 0.04 260);
   --quote: oklch(0.62 0.02 260);
+
+  /**
+   * Where the canvas is pointed.
+   *
+   * A fifth colour, and it is not a fifth STATE of a question: right, wrong and
+   * unasked are facts about the answer, and this is a fact about where every
+   * other container on the canvas is standing. A question can be pointed at and
+   * unanswered, or pointed at and wrong, so it had to be a channel of its own
+   * rather than a fourth value of the existing one — which is also why it is
+   * drawn as a border and a ring rather than as the card's own colour.
+   *
+   * And as the note above says: colour alone is a claim a person with any kind
+   * of colour blindness cannot read. The pointed card also carries
+   * `aria-current` and draws its source control in the foreground colour at a
+   * heavier weight, so the state is said in two channels that are not hue.
+   */
+  --pointed: oklch(0.55 0.15 265);
 }
 
 /*
@@ -90,6 +107,7 @@
     --wrong: oklch(0.7 0.19 25);
     --unasked: oklch(0.62 0.03 260);
     --quote: oklch(0.7 0.02 260);
+    --pointed: oklch(0.72 0.15 265);
   }
 }
 
@@ -111,6 +129,7 @@
   --wrong: oklch(0.7 0.19 25);
   --unasked: oklch(0.62 0.03 260);
   --quote: oklch(0.7 0.02 260);
+  --pointed: oklch(0.72 0.15 265);
 }
 
 @theme inline {
@@ -131,6 +150,7 @@
   --color-wrong: var(--wrong);
   --color-unasked: var(--unasked);
   --color-quote: var(--quote);
+  --color-pointed: var(--pointed);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);

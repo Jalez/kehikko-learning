@@ -55,11 +55,60 @@ describe('the manifest', () => {
     expect(MANIFEST.declares?.storage).toBe(true)
   })
 
-  test('asks for no capability at all', () => {
-    /* Every one of them was considered and rejected in the essay in
-       manifest.ts. A capability asked for and never used is the fastest way to
-       teach somebody to press yes without reading. */
-    expect(MANIFEST.declares?.uses).toEqual([])
+  test('asks for exactly one capability: to point the canvas at a passage', () => {
+    /* This test used to assert `[]`, and the essay in manifest.ts used to argue
+       for it. The exception it had not met is that every question here is
+       ANCHORED — a document, a byte range and the source those bytes held — so a
+       question IS a passage, and a container that could name one and not show it
+       would be withholding the fact it exists to hold.
+
+       Nothing else. A capability asked for and never used is the fastest way to
+       teach somebody to press yes without reading, and this one is used in
+       exactly one place: a person pressing the source of a question. That bound
+       is checked by `dev/pointing.mjs`, from where a host sits, because it is a
+       claim about runtime behaviour and nothing static can settle one. */
+    expect(MANIFEST.declares?.uses).toEqual(['passage:set'])
+  })
+
+  test('the essay is honest about the capability it now declares', () => {
+    /* The house rule: a file that argues for what it deliberately does NOT do
+       must be rewritten when it starts doing it, rather than left describing a
+       module that no longer exists. This catches the declaration being changed
+       without the argument. */
+    const source = readFileSync(join(here, 'manifest.ts'), 'utf8')
+    expect(source).toContain("uses: ['passage:set']")
+    expect(source).not.toContain('nothing is asked for, and that is not an oversight')
+    /* And the bound, which is the whole of what the capability was granted
+       under, has to still be written down beside it. */
+    expect(source).toContain('points when a person presses the source of a question')
+  })
+
+  test('nothing in this module names the module it expects to react', () => {
+    /*
+     * The mechanism is the general one: `passage.set` puts a passage in the
+     * canvas's context and the host broadcasts it to every framed module.
+     * Whatever is showing that document reacts. A module named here — or a port,
+     * or an endpoint of somebody else's — would be a second system doing what
+     * the context already does, and it would break the day a question is placed
+     * beside a different reader.
+     *
+     * Asserted over the source rather than over behaviour, because the failure
+     * is a line somebody adds in a hurry and the symptom is a feature that works
+     * on this machine.
+     */
+    const files = [
+      ...[...new Bun.Glob('**/*.{ts,tsx}').scanSync({ cwd: join(here, 'src') })].map((file) => join('src', file)),
+      'manifest.ts',
+    ]
+    for (const file of files) {
+      const source = readFileSync(join(here, file), 'utf8')
+      /* Comments may discuss sibling modules by name and should. What must not
+         appear is a module ID or an origin this app could address. */
+      expect(`${file} names a module id: ${source.includes('roadmap.paper')}`).toBe(`${file} names a module id: false`)
+      expect(`${file} names a sibling origin: ${/https?:\/\/[^\s'"]*:79\d\d/.test(source)}`).toBe(
+        `${file} names a sibling origin: false`,
+      )
+    }
   })
 
   test('declares no extensions', () => {

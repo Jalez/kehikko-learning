@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import type { ModuleContext } from 'roadmap-module-protocol'
+
 import { connect, type Connection, type HostEvents } from 'roadmap-module-protocol/client'
 
 /**
@@ -42,6 +44,9 @@ const GREETING_GRACE_MS = 700
 /** Whether anything is out there, and whether we have stopped waiting to find out. */
 export type Where = 'listening' | 'unhosted' | 'hosted'
 
+/** A passage, as the context carries one and as `passage.set` takes one. */
+export type Passage = NonNullable<ModuleContext['passage']>
+
 export interface Roadmap {
   where: Where
   /** Which epic is open, or null. Null is a real screen here, not an error. */
@@ -59,8 +64,68 @@ export interface Roadmap {
   projectPath: string | null
   /** The project's name, when the host gave one. A label; `projectPath` is the key. */
   project: string | null
+  /**
+   * Where the canvas is pointed, or null.
+   *
+   * ## What this is for here, which is one thing only
+   *
+   * Marking the question whose passage the canvas is standing on. Nothing else
+   * in this app reads it: the questions shown are still decided by the project
+   * and the epic, no fetch is keyed on it, and no screen changes when it
+   * changes. A quiz that re-scoped itself to whatever somebody was pointing at
+   * would be a container that emptied when a reader scrolled past the paragraph
+   * the questions were written about.
+   *
+   * ## It is the host's answer, and never a memory of what this page asked for
+   *
+   * Pressing a question's source asks the host to point the canvas here; this
+   * field is what the host then says about the canvas. They are two variables
+   * deliberately. A host may refuse `passage.set`, may not know the method, or
+   * may never have greeted this page — and then the canvas did not move, so a
+   * card drawn as "where the canvas is pointed" would be a picture of something
+   * that did not happen. Driving the mark off the context makes the refusal
+   * visible for free: nothing moves, and nothing claims to have.
+   *
+   * ## Applied on every context, including a null one
+   *
+   * Never remembered. The protocol makes the field nullable precisely so that
+   * "nothing is pointing at anything" is a state a module can move into, and a
+   * page holding the last passage would go on marking a card about a chapter
+   * the reader closed ten minutes ago — indistinguishable, on screen, from it
+   * still being open.
+   */
+  passage: Passage | null
   /** Ask the host to make this container a given height. */
   resize: (height: number) => void
+  /**
+   * Point every container on the canvas at a passage.
+   *
+   * ## The bound, which is the whole of what `passage:set` was declared under
+   *
+   * This is called when a person presses the source of a question, and at no
+   * other time. Not on a load, not on a context, not when the poll brings back
+   * a question an agent has just written, not when somebody answers one, and
+   * not on any conclusion this app reached by itself. `manifest.ts` carries the
+   * argument for why a module that is otherwise a consumer of passages is
+   * allowed to produce one at all; this is the line of code that argument
+   * constrains, and `dev/pointing.mjs` is the probe that counts whether it is
+   * still true.
+   *
+   * ## It goes through the canvas, and there is no other route
+   *
+   * `passage.set` puts a passage in the context and the host broadcasts that to
+   * every framed module. This app therefore does not know, and must not know,
+   * what will react — a paper, a source browser, notes, a diff, or nothing at
+   * all today and something next month. Naming a module here would be a second
+   * system doing what the context already does, and it would break the day
+   * somebody put a question beside a different reader.
+   *
+   * Fire and forget, and every refusal is swallowed. A host that never learned
+   * the method, or has not greeted this page yet, is not a fault in the question
+   * somebody just pressed and not something they can do anything about; what it
+   * must not do is throw a rejection out of a click handler.
+   */
+  point: (passage: Passage | null) => void
 }
 
 export type GotoHandler = NonNullable<HostEvents['onGoto']>
@@ -70,6 +135,7 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
   const [epic, setEpic] = useState<string | null>(null)
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [project, setProject] = useState<string | null>(null)
+  const [passage, setPassage] = useState<Passage | null>(null)
   const host = useRef<Connection | null>(null)
 
   /* The handler is read through a ref so that a caller re-creating it does not
@@ -79,12 +145,12 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
   goto.current = onGoto
 
   useEffect(() => {
-    const arrived = (context: {
-      epic: string | null
-      theme: 'light' | 'dark'
-      project?: string | null
-      projectPath?: string | null
-    }) => {
+    /* Typed as the protocol's own context rather than as the four fields this
+       page happens to read. It reads five now, and a hand-written shape that has
+       to be widened every time is a shape that will one day be widened wrongly —
+       `passage` is nullable and optional in different senses, and the package
+       says which. */
+    const arrived = (context: ModuleContext) => {
       /*
        * The theme comes from the host, and `prefers-color-scheme` is only the
        * unframed fallback. Both classes are set explicitly rather than one being
@@ -115,6 +181,18 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
       setEpic(context.epic)
       setProjectPath(context.projectPath ?? null)
       setProject(context.project ?? null)
+      /*
+       * Compared field by field before it is written, because it is an OBJECT.
+       *
+       * A context arrives after every change anywhere on the canvas, and the
+       * host builds a fresh `{path, page, from, to, quoted}` each time whatever
+       * happened. Writing it unconditionally would give every render downstream
+       * a new identity for a value that did not change — here that is the whole
+       * question list re-deciding which card is marked, several times a second,
+       * on top of a poll that is already running. The references cannot be
+       * compared for the same reason, so the fields are.
+       */
+      setPassage((was) => (same(was, context.passage ?? null) ? was : (context.passage ?? null)))
     }
 
     /*
@@ -153,8 +231,31 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
 
   const resize = useCallback((height: number) => host.current?.resize(height), [])
 
+  const point = useCallback((pointed: Passage | null) => {
+    const conversation = host.current
+    /* Unframed, or greeted by nothing. The page still works — that is the whole
+       design — and a press that cannot leave the frame simply does not. */
+    if (!conversation) return
+    void conversation.request('passage.set', { passage: pointed }).catch(() => {})
+  }, [])
+
   return useMemo(
-    () => ({ where, epic, projectPath, project, resize }),
-    [where, epic, projectPath, project, resize],
+    () => ({ where, epic, projectPath, project, passage, resize, point }),
+    [where, epic, projectPath, project, passage, resize, point],
   )
+}
+
+/**
+ * Whether two passages say the same thing.
+ *
+ * Field by field, including `quoted`, because this is asking whether the object
+ * CHANGED rather than whether it names the same place. The second question is
+ * `keyOf` in `wire/pointed.ts`, which deliberately leaves the quote out — a
+ * quote may be re-read from the file on the way back, and comparing it there
+ * would break a match. Here a changed quote is a changed context and worth a
+ * render.
+ */
+function same(a: Passage | null, b: Passage | null): boolean {
+  if (a === null || b === null) return a === b
+  return a.path === b.path && a.page === b.page && a.from === b.from && a.to === b.to && a.quoted === b.quoted
 }

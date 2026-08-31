@@ -60,6 +60,21 @@ describe('what fits', () => {
     expect(room(SIZES.large).others).toBe('shown')
   })
 
+  test('the source is a whole path only where a whole path is one line', () => {
+    /* A real one in this workspace is 48 characters, which is about 290 pixels
+       at the size this control is drawn in. Two lines in a letterbox and four in
+       the narrow column, and it is grey chrome above the question either way. */
+    expect(room(SIZES.narrow).source).toBe('file')
+    expect(room(SIZES.letterbox).source).toBe('file')
+    expect(room(SIZES.container).source).toBe('path')
+    expect(room(SIZES.large).source).toBe('path')
+  })
+
+  test('the source label is decided by width alone — a short box is no reason to abbreviate a row it is drawing anyway', () => {
+    expect(room({ width: 900, height: 200 }).source).toBe('path')
+    expect(room({ width: 240, height: 1200 }).source).toBe('file')
+  })
+
   test('the retake note stops being a paragraph when it would be three lines', () => {
     expect(room(SIZES.narrow).retakeNote).toBe('title')
     expect(room(SIZES.container).retakeNote).toBe('paragraph')
@@ -82,6 +97,7 @@ describe('an unmeasured frame', () => {
       passage: 'inline',
       others: 'shown',
       retakeNote: 'paragraph',
+      source: 'path',
     })
   })
 

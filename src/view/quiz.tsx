@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { Asked } from '@/store/ask.ts'
 import type { Room } from '@/view/room.ts'
+import { sourceLabel } from '@/wire/pointed.ts'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button.tsx'
 
@@ -105,15 +106,53 @@ function PassagePanel({ question, onClose }: { question: Asked; onClose: () => v
  * press. Nothing folds on a card nobody has answered — the options ARE the
  * question, and a question you have to unfold to read is not a shorter card, it
  * is a broken one.
+ *
+ * ## Which press points the canvas, and why it is not the card
+ *
+ * The notes module makes the whole row pressable, and then has to exclude the
+ * controls inside it — `closest('button, a, textarea, input, form')` — because a
+ * row that publishes a passage when anything in it is clicked publishes one when
+ * somebody presses a button.
+ *
+ * That shape cannot be borrowed here. This card is almost entirely controls:
+ * between two and eight answer buttons, an unfold, a passage disclosure. A
+ * pressable card would mean a person choosing an option was one mis-aimed pixel
+ * away from moving every other container on the canvas, and the mis-aim would be
+ * silent — the option would simply not register and the paper would jump. So the
+ * press is a small, explicit, single-purpose control, and choosing an answer
+ * cannot be mistaken for asking to be shown the source because they are
+ * different elements with different labels.
+ *
+ * That control is the passage affordance that was already on the card, relabelled
+ * with the source it leads to. It was a summary reading "the passage this is
+ * about", which is a description of a mechanism rather than a fact about this
+ * question — every card said the same words. It now says the document, so the
+ * card tells a reader where it came from, and pressing it does the two things
+ * that phrase always meant: show the passage here, and point the canvas at it so
+ * whatever is reading that document shows it there.
+ *
+ * A separate "show it in the paper" button was the alternative and was not
+ * taken. It would be a second row of chrome about the passage, in a module whose
+ * normal container is 220 pixels wide, for a distinction — "show me here" versus
+ * "show me there" — that a reader pressing the name of a document is not making.
+ * What it costs is that a person who wants to point again at an already-open
+ * passage has to close it first. That is a real cost and a small one, and it is
+ * paid to keep one control where two would fit badly.
  */
 export function QuestionCard({
   question,
   onAnswer,
+  onPoint,
+  pointed,
   busy,
   room,
 }: {
   question: Asked
   onAnswer: (chose: number) => void
+  /** Ask the canvas to stand on this question's passage. Only ever a person's press. */
+  onPoint: () => void
+  /** Whether the canvas is standing on it now, as the host says. */
+  pointed: boolean
   busy: boolean
   room: Room
 }) {
@@ -129,6 +168,16 @@ export function QuestionCard({
 
   const wrote = `written by ${question.by}${question.viaMcp ? ', over MCP' : ''}`
 
+  /* The document this question came from, at the length the box has room for —
+     decided in `view/room.ts`, spelled in `wire/pointed.ts`. The full path is in
+     the control's title at every size, so the short form defers it rather than
+     hiding it. */
+  const source = sourceLabel(question.passage.path, room.source)
+  const about = pointed
+    ? `the canvas is pointed at this passage of ${question.passage.path}`
+    : `${question.passage.path}, bytes ${question.passage.start}–${question.passage.end} — show it, here and wherever `
+      + 'this document is open on the canvas'
+
   /* Only ever true on an answered card, and only for options that are neither
      the key nor the one that was pressed. */
   const folding = room.others === 'folded' && answered && !others
@@ -137,11 +186,30 @@ export function QuestionCard({
     : 0
 
   return (
+    /*
+      The mark, which is what makes the press legible.
+
+      Without it the only evidence that pressing a source did anything is in
+      another container — and if that container is not on the canvas, or is
+      showing another document, or the host refused, there is no evidence
+      anywhere and the press reads as broken. `aria-current` carries the same
+      fact to a reader who is not looking at colour, and the source control
+      below stops being muted and grey, so the state is said in weight as well
+      as in hue. Every other state on this card is said in words for the same
+      reason; this one has no word to spare in a 220-pixel column, so it is said
+      in two channels that are not colour instead.
+    */
     <li
       data-question={question.id}
       data-answered={answered ? 'yes' : 'no'}
+      data-pointed={pointed ? 'yes' : 'no'}
+      aria-current={pointed ? 'location' : undefined}
       title={room.byline === 'title' ? wrote : undefined}
-      className="min-w-0 snap-start rounded border bg-card p-2 @sm/container:p-2.5"
+      className={
+        pointed
+          ? 'min-w-0 snap-start rounded border border-pointed bg-pointed/5 p-2 ring-1 ring-pointed/50 @sm/container:p-2.5'
+          : 'min-w-0 snap-start rounded border bg-card p-2 @sm/container:p-2.5'
+      }
     >
       <p className="text-[0.78rem] leading-5 font-medium @sm/container:text-[0.85rem] @sm/container:leading-6">
         {question.question}
@@ -228,16 +296,40 @@ export function QuestionCard({
         In a box too short to hold one card, a disclosure that grows in place
         costs the reader their scroll position twice. There it becomes a press
         that fills the frame instead. See `PassagePanel`.
+
+        Both spellings now also POINT, and the two do it at slightly different
+        moments for one reason. The overlay is a button that only ever opens —
+        `Close` is a separate control inside the panel — so its press is
+        unambiguously "show me this". The disclosure toggles, and closing it is
+        not a request to be shown anything, so the publish hangs off the
+        summary's own click and only in the direction that opens.
+
+        Deliberately NOT `onToggle`: a `<details>` can be opened by something
+        other than a press. Chrome expands a closed one when find-in-page
+        matches text inside it, and a browser searching a page is not a person
+        asking every container on the canvas to move. `passage:set` was declared
+        under a bound that says a person presses; a handler that fires on a
+        find would be that bound quietly broken, and broken in a way nothing on
+        screen would show.
       */}
       {room.passage === 'overlay' ? (
         <>
           <button
             type="button"
             data-passage="button"
-            onClick={() => setOpen(true)}
-            className="mt-1.5 block text-[0.65rem] text-muted-foreground underline-offset-2 hover:underline"
+            data-source={question.passage.path}
+            title={about}
+            onClick={() => {
+              setOpen(true)
+              onPoint()
+            }}
+            className={
+              pointed
+                ? 'mt-1.5 block min-w-0 text-[0.65rem] font-medium text-foreground underline underline-offset-2 [overflow-wrap:anywhere]'
+                : 'mt-1.5 block min-w-0 text-[0.65rem] text-muted-foreground underline-offset-2 [overflow-wrap:anywhere] hover:underline'
+            }
           >
-            the passage this is about
+            {source}
           </button>
           {open ? <PassagePanel question={question} onClose={() => setOpen(false)} /> : null}
         </>
@@ -247,12 +339,39 @@ export function QuestionCard({
           onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
           className="mt-1.5 min-w-0"
         >
-          <summary className="cursor-pointer text-[0.65rem] text-muted-foreground">
-            the passage this is about
+          <summary
+            data-passage="summary"
+            data-source={question.passage.path}
+            title={about}
+            onClick={() => {
+              /* The state before the browser toggles it, so this is "about to
+                 open". Closing publishes nothing. */
+              if (!open) onPoint()
+            }}
+            className={
+              pointed
+                ? 'min-w-0 cursor-pointer text-[0.65rem] font-medium text-foreground [overflow-wrap:anywhere]'
+                : 'min-w-0 cursor-pointer text-[0.65rem] text-muted-foreground [overflow-wrap:anywhere]'
+            }
+          >
+            {source}
           </summary>
+          {/*
+            The path is only repeated here where the summary above did not say
+            it. At the widths that get the whole path, printing it twice inside
+            one card is 48 characters of grey said again for no reader's
+            benefit; at the widths that get only the file name, this is where
+            the rest of it lives, which is what makes the short label a deferral
+            rather than a loss.
+          */}
           <p className="mt-1 text-[0.65rem] leading-4 text-muted-foreground">
-            <code className="[overflow-wrap:anywhere]">{question.passage.path}</code>
-            {' · bytes '}
+            {room.source === 'path' ? null : (
+              <>
+                <code className="[overflow-wrap:anywhere]">{question.passage.path}</code>
+                {' · '}
+              </>
+            )}
+            {'bytes '}
             {question.passage.start}–{question.passage.end}
           </p>
           <blockquote className="mt-1 border-l-2 border-quote/50 pl-2 text-[0.7rem] leading-4 text-quote [overflow-wrap:anywhere]">
@@ -280,6 +399,8 @@ export function QuizView({
   epic,
   questions,
   onAnswer,
+  onPoint,
+  pointed,
   onRetake,
   trouble,
   busy,
@@ -288,6 +409,18 @@ export function QuizView({
   epic: string
   questions: Asked[]
   onAnswer: (id: string, chose: number) => void
+  /** A person pressed a question's source. Nothing else may call this. */
+  onPoint: (id: string) => void
+  /**
+   * The question the canvas is standing on, or null.
+   *
+   * One id rather than a set, and it is worked out in `wire/pointed.ts` from the
+   * context rather than from a memory of what this page asked for. Two questions
+   * written about the same passage would both be true answers; the pure function
+   * takes the first, and its essay says why that is a caller's problem rather
+   * than a fudge.
+   */
+  pointed: string | null
   onRetake: () => void
   trouble: string | null
   busy: boolean
@@ -350,7 +483,9 @@ export function QuizView({
             question={question}
             busy={busy}
             room={room}
+            pointed={pointed === question.id}
             onAnswer={(chose) => onAnswer(question.id, chose)}
+            onPoint={() => onPoint(question.id)}
           />
         ))}
       </ul>

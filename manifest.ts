@@ -40,7 +40,7 @@ export const PREFERRED_PORT = 7950
  *
  * ## What it declares, and the much longer list of what it does not
  *
- * - **`storage: true` — declared, and it is the only capability here.** A host
+ * - **`storage: true` — declared.** A host
  *   frames a module WITHOUT `allow-same-origin` unless its manifest declares
  *   storage, which puts the page on an opaque origin. This module owns data and
  *   takes writes: the questions, the passages they are anchored to, and every
@@ -65,10 +65,52 @@ export const PREFERRED_PORT = 7950
  *   read this origin's `/api` and ask it for the whole store, so the CORS
  *   argument above is not hygiene here, it is the second half of the mechanism.
  *
- * - **`uses: []` — nothing is asked for, and that is not an oversight.** This
- *   app needs the context and nothing else, and the context is not a capability:
- *   it arrives in the greeting and on every switch whether anything was declared
- *   or not. Each of the things it might have asked for and does not:
+ * - **`uses: ['passage:set']` — one capability, and this paragraph used to say
+ *   there were none.** What stood here was "nothing is asked for, and that is
+ *   not an oversight", on the argument that this app needs the context and
+ *   nothing else. That was right about the default and had not met its
+ *   exception, and the user supplied it in one sentence: "the question should
+ *   point to the specific location from which it was derived from, highlighting
+ *   that section of the paper, much like the notes do."
+ *
+ *   It is a sentence this module cannot answer no to, because the fact it asks
+ *   for is one this module already holds and nothing else does. Every question
+ *   here is ANCHORED — a document, a byte range, and the source those bytes
+ *   held — and `add_quiz` refuses one that is not. That anchor IS a passage.
+ *   Refusing the capability would leave a container that can tell you a question
+ *   was written about `chapters/agents.tex` at bytes 8140–8402, and cannot show
+ *   you the sentence.
+ *
+ *   The sibling notes module reached the same conclusion from the same place,
+ *   and its manifest carries the longer version of the argument. What both keep
+ *   is the BOUND, and the bound is narrow: nothing here points on a context, on
+ *   a load, on a poll bringing back a question an agent has just written, on an
+ *   answer being given, or on any conclusion this app reached by itself. It
+ *   points when a person presses the source of a question, and never otherwise.
+ *   That is a claim about runtime behaviour, so it is checked the only honest
+ *   way a claim about runtime behaviour can be — `dev/pointing.mjs` sits where a
+ *   host sits and counts what arrives. See also the note on `point` in
+ *   `wire/use-roadmap.ts`, which is the one line of code the bound constrains.
+ *
+ *   What the capability does NOT buy is a route to any particular module. A
+ *   passage goes into `roadmap.context` and the host broadcasts it to every
+ *   framed module; whatever is showing that document reacts. This app has no
+ *   idea what that is, names no module anywhere, and would go on working if the
+ *   reader on the canvas were replaced by a different one. That is the general
+ *   pipeline doing its job, and the reason there is no second one here.
+ *
+ *   It also has a consequence beyond permissions, which is worth saying because
+ *   it is half the reason the declaration matters: a registry showing what each
+ *   module consumes and provides reads this field. Declaring `passage:set` is
+ *   how a person browsing the modules discovers that Learning and a reader work
+ *   together at all.
+ *
+ * - **Everything else — still not asked for, and each for its own reason.**
+ *   The context itself is not a capability: it arrives in the greeting and on
+ *   every switch whether anything was declared or not, so consuming a passage
+ *   needs no permission and should need none — a list of who may READ a thing
+ *   the host is already sending to everybody would be a permission over
+ *   nothing. Each of the rest:
  *
  *   - **`live:read` — no.** Nothing here is derived from a tracker. Every
  *     question is a line somebody typed against a passage somebody quoted, and
@@ -79,13 +121,24 @@ export const PREFERRED_PORT = 7950
  *     this store holds. A prettier heading is not worth a permission, and a
  *     permission asked for and used once for a heading is the fastest way to
  *     teach somebody to press yes without reading.
- *   - **`selection:set` — no.** This container reacts to what is open; it does not
- *     change what every other container on the canvas is looking at. A quiz that
- *     re-pointed the canvas when you answered a question would be answering for
- *     you.
- *   - **`view:navigate` — no.** Being walked TO is `roadmap.goto` arriving and
- *     needs no declaration. This container answers that it has nothing to walk to,
- *     because a question is not a place.
+ *   - **`selection:set` — no, and it is the near neighbour of the one that IS
+ *     declared, so the line between them is the thing to state.** A passage says
+ *     where in a document somebody is pointing; a selection says which epic or
+ *     step the canvas is working on. This app holds the first as a recorded fact
+ *     about every question and holds no opinion at all about the second — the
+ *     epic is something it is TOLD, in the context, and a quiz that changed it
+ *     would be moving the canvas to a piece of work rather than showing a
+ *     reader a sentence. And the bound is the same either way: nothing here
+ *     moves anything when you ANSWER a question. A quiz that re-pointed the
+ *     canvas when you chose an option would be answering for you.
+ *   - **`view:navigate` — no, and this is settled rather than deferred.** Being
+ *     walked TO is `roadmap.goto` arriving and needs no declaration; this
+ *     container answers that it has nothing to walk to, because a question is
+ *     not a place. Walking a READER to a question's passage is what somebody
+ *     wants from this module, and `view.goto` cannot carry it: it names an epic,
+ *     a step or a tracker ref, and a question is anchored to a byte range in a
+ *     document. The capability that could not carry the ask is not declared for
+ *     the feature it could not have delivered. `passage:set` is what carried it.
  *   - **`stage:report` — no.** Saying where work stands belongs to whoever is
  *     doing it. Getting a question wrong is not a stage.
  *   - **`state:keep` — no, and this is the one worth arguing.** Checklist
@@ -198,7 +251,7 @@ export const MANIFEST: Manifest = manifestSchema.parse({
   extensions: { emits: [], consumes: [] },
   declares: {
     protocol: `>=${PROTOCOL} <${PROTOCOL + 1}`,
-    uses: [],
+    uses: ['passage:set'],
     storage: true,
     prompt: false,
   },

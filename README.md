@@ -83,8 +83,15 @@ distinct class string between them — so there is no styling channel either.
 
 ## What it does with nothing else running
 
-- **The questions for whatever paper is open**, each with its options, its
-  passage behind a disclosure, and who wrote it.
+- **The questions for whatever paper is open**, each with its options, the
+  document it was written about, and who wrote it.
+- **Every question says where it came from, and pressing it points the canvas
+  there.** The control that opens a question's passage is labelled with the
+  document — `agents.tex` in a narrow column, the whole project-relative path
+  where there is width for it — and pressing it also publishes that passage to
+  the canvas, so whatever is showing that document highlights the passage the
+  question was derived from. The card the canvas is standing on is marked. That
+  half needs a host; the disclosure works with nothing else running.
 - **Answering, and the record.** One press, a verdict, the key, the explanation.
   Answers survive a reload because they are on disk and not in the page.
 - **A store inside the project.** `<project>/.kehikot/learning/questions.json` — plain
@@ -172,7 +179,8 @@ whole box, and everything below follows from that.
 - **Height cannot be.** `container-type: inline-size` measures one axis on
   purpose and there is no `@height-sm:`. So the frame is measured
   (`src/view/use-frame.ts`) and `src/view/room.ts` turns width and height into
-  five decisions — snap, byline, passage, options, retake note. It is one pure
+  six decisions — snap, byline, passage, options, retake note, and how much of
+  the source path the pointing control spells. It is one pure
   function with its own test file because "what shows at 220×300" should be a
   table somebody can read, not six ternaries spread across two components.
 - **Scrolling snaps below 520px of height, on `proximity`.** Never `mandatory`:
@@ -200,7 +208,8 @@ governed by what they are reading and not by a schedule. A `dueAt` computed here
 would be a field nothing reads: the container would still show every question for the
 open paper, because showing three of twelve and hiding the rest until Thursday is
 a worse container, not a smarter one. The protocol has no timer a module can ask a
-host to set, and this module declares no capabilities at all.
+host to set, and the one capability this module does declare points at a
+passage rather than at a clock.
 
 **A grade, not a verdict.** Every scheduling algorithm worth the name takes a
 graded recall — Anki's again/hard/good/easy, SM-2's 0–5 — because the interval is
@@ -263,11 +272,27 @@ tool's argument validation without a browser.
   # prints nothing
   ```
 
-- `declares.uses: []`. Nothing is asked for. `live:read`, `epics:read`,
-  `steps:read`, `selection:set`, `view:navigate`, `stage:report` and `state:keep`
-  were each considered and each rejected, in the essay in `manifest.ts`. A
-  capability asked for and never used is the fastest way to teach somebody to
-  press yes without reading.
+- `declares.uses: ['passage:set']`. One capability, and this line used to say
+  `[]`. A question here is *anchored* — a document, a byte range and the source
+  those bytes held — so a question IS a passage, and a container that could name
+  one and not show it would be withholding the fact it exists to hold. Pressing
+  the source of a question puts that passage in the canvas's context, and every
+  framed module that understands one reacts: a reader turns to it, a notes
+  container narrows to it. Nothing here names the module that reacts, and the
+  feature works unchanged if it is replaced by a different one — the context is
+  the pipeline, and a second one would be this module solving a problem the
+  protocol already solved.
+
+  The bound is narrow and it is what the capability was granted under: it points
+  when a **person presses a question's source**, and never on a load, a
+  greeting, a context, a poll, or an answer. `dev/pointing.mjs` sits where a
+  host sits and counts, because a claim about runtime behaviour cannot be
+  settled by reading a file.
+
+  `live:read`, `epics:read`, `steps:read`, `selection:set`, `view:navigate`,
+  `stage:report` and `state:keep` were each considered and each rejected, in the
+  essay in `manifest.ts`. A capability asked for and never used is the fastest
+  way to teach somebody to press yes without reading.
 - `extensions: { emits: [], consumes: [] }`. Checklist announces MCP calls onto a
   notifications panel and is right to. Here, what an agent writes lands in the
   container in front of the reader within three seconds, as a question they can

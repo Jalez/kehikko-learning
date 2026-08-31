@@ -8,6 +8,7 @@ import { QuizView } from '@/view/quiz.tsx'
 import { NoEpic, NoProject } from '@/view/nowhere.tsx'
 import { room } from '@/view/room.ts'
 import { useFrame } from '@/view/use-frame.ts'
+import { pointedQuestion, pointingAt } from '@/wire/pointed.ts'
 
 /** Whether this page is in a frame. Unframed, it prints its own heading. */
 const framed = typeof window !== 'undefined' && window.parent !== window
@@ -59,7 +60,7 @@ export function App() {
     )
   }, [])
 
-  const { where, epic, projectPath, project, resize } = useRoadmap(ID, onGoto)
+  const { where, epic, projectPath, project, passage, resize, point } = useRoadmap(ID, onGoto)
 
   /* How big the box actually is, and what therefore fits in it. Two lines here
      because the deciding is in `view/room.ts`, where it can be read as a table
@@ -149,6 +150,52 @@ export function App() {
     [projectPath, refresh],
   )
 
+  /**
+   * A person pressed the source of a question.
+   *
+   * The only place in this app that publishes anything, and the only thing it
+   * publishes is a passage. It goes onto the canvas through the general
+   * pipeline — `passage.set`, into `roadmap.context`, broadcast to every framed
+   * module — and this app therefore does not know and must not know what
+   * answers it. A reader of that document reacts; so would a diff, a source
+   * browser, or notes. Nothing here names one, and the feature keeps working if
+   * the module that reacts today is replaced by a different one tomorrow.
+   *
+   * Silent when there is no project path, because `pointingAt` cannot spell a
+   * document identity without a root and a relative path published as an
+   * absolute one is a claim every consumer would resolve against its own. That
+   * is unreachable from the screen — a page with no project path shows
+   * `NoProject` and has no questions to press — and it is checked here anyway,
+   * because "unreachable" is a property of a layout somebody may change.
+   */
+  const onPoint = useCallback(
+    (id: string) => {
+      const question = questions.find((held) => held.id === id)
+      if (!question) return
+      const where_ = pointingAt(projectPath, question.passage)
+      if (!where_) return
+      point(where_)
+    },
+    [questions, projectPath, point],
+  )
+
+  /*
+   * Which card is marked, decided from the host's answer about the canvas.
+   *
+   * Not from a memory of what was just pressed, and the difference shows the
+   * moment a host refuses `passage.set` or nothing is framing this page at all:
+   * then the canvas did not move, and no card claims it did. It is also what
+   * marks a question when somebody ELSE points at its passage — a reader
+   * highlighting the paragraph a question was written about gets the question
+   * marked, which is the same feature read backwards and came free.
+   *
+   * No echo guard, and `wire/pointed.ts` carries the argument: the sibling
+   * modules that needed one react to an arriving passage DESTRUCTIVELY, and
+   * what this does is mark a card. On this module's own echo that is not merely
+   * harmless, it is the confirmation the press was made to produce.
+   */
+  const pointed = pointedQuestion(projectPath, questions, passage)
+
   const onRetake = useCallback(async () => {
     if (!projectPath || !epic) return
     setBusy(true)
@@ -220,6 +267,8 @@ export function App() {
         epic={epic}
         questions={questions}
         onAnswer={(id, chose) => void onAnswer(id, chose)}
+        onPoint={onPoint}
+        pointed={pointed}
         onRetake={() => void onRetake()}
         trouble={trouble}
         busy={busy}

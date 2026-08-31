@@ -70,7 +70,7 @@ const answered: Asked = {
 
 describe('the answer is not in the page before it is asked for', () => {
   test('nothing in the rendered document names the correct option as correct', () => {
-    const { container } = render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />)
+    const { container } = render(<QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />)
 
     /* Every option is drawn — the reader can read all three. */
     for (const option of unanswered.options) expect(screen.getByText(option)).toBeTruthy()
@@ -97,7 +97,7 @@ describe('the answer is not in the page before it is asked for', () => {
        key smuggled into a `key=`, a `value=`, an `aria-` attribute or a comment.
        The whole document, as a string, and the index 2 must not appear as an
        answer anywhere. */
-    const { container } = render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />)
+    const { container } = render(<QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />)
     /* `data-answered="no"` is the one place the word appears, and it says the
        opposite of a leak — it is how the card reports that nothing has been
        earned. Removed before the search so that the search can be absolute. */
@@ -108,7 +108,7 @@ describe('the answer is not in the page before it is asked for', () => {
   })
 
   test('once answered, the key is shown — being coy afterwards would be useless', () => {
-    const { container } = render(<QuestionCard question={answered} onAnswer={() => {}} busy={false} room={ROOMY} />)
+    const { container } = render(<QuestionCard question={answered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />)
     const correct = container.querySelectorAll('[data-correct="true"]')
     expect(correct).toHaveLength(1)
     expect(correct[0]?.textContent).toBe(answered.options[KEY])
@@ -118,7 +118,7 @@ describe('the answer is not in the page before it is asked for', () => {
   })
 
   test('an answered question cannot be answered again without a retake', () => {
-    render(<QuestionCard question={answered} onAnswer={() => {}} busy={false} room={ROOMY} />)
+    render(<QuestionCard question={answered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />)
     for (const button of screen.getAllByRole('button')) {
       if (button.textContent && answered.options.includes(button.textContent)) {
         expect((button as HTMLButtonElement).disabled).toBe(true)
@@ -129,22 +129,131 @@ describe('the answer is not in the page before it is asked for', () => {
 
 describe('the passage', () => {
   test('is shown, since it is the module’s whole claim', () => {
-    render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />)
+    render(<QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />)
     expect(screen.getByText(unanswered.passage.path)).toBeTruthy()
     expect(screen.getByText(unanswered.passage.quote)).toBeTruthy()
     expect(screen.getByText(/bytes/)).toBeTruthy()
   })
 
   test('says who wrote the question and that it came through the door', () => {
-    render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />)
+    render(<QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />)
     expect(screen.getByText(/written by claude, over MCP/)).toBeTruthy()
+  })
+})
+
+/**
+ * The press that points the canvas, and everything that must not be it.
+ *
+ * `dev/pointing.mjs` counts what actually leaves the frame, from where a host
+ * sits, and it is the only thing that can settle the bound `passage:set` was
+ * declared under. These are the assertions that can be made without a browser:
+ * which ELEMENT is wired to it, and that the other controls on a card — of which
+ * there are between three and ten — are not.
+ */
+describe('what points the canvas at a passage', () => {
+  test('the card names the document it came from, so there is a reason to press it', () => {
+    /* It used to read "the passage this is about" on every card, which is a
+       description of a mechanism rather than a fact about this question. */
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={TIGHT} />,
+    )
+    const control = container.querySelector('[data-passage]')
+    expect(control?.textContent).toBe('bridge.tex')
+    expect(control?.getAttribute('data-source')).toBe(unanswered.passage.path)
+    /* And the whole path is one hover away at the size that shortened it. */
+    expect(control?.getAttribute('title')).toContain(unanswered.passage.path)
+  })
+
+  test('the whole path where there is width for it', () => {
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />,
+    )
+    expect(container.querySelector('[data-passage]')?.textContent).toBe(unanswered.passage.path)
+  })
+
+  test('pressing the source points, once', () => {
+    let pointed = 0
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => (pointed += 1)} pointed={false} busy={false} room={TIGHT} />,
+    )
+    fireEvent.click(container.querySelector('[data-passage="button"]')!)
+    expect(pointed).toBe(1)
+  })
+
+  test('choosing an answer points at nothing, which is the failure this design is against', () => {
+    /*
+     * The notes module makes a whole row pressable and excludes the controls
+     * inside it. That shape cannot be borrowed here: this card is almost
+     * entirely controls, so a pressable card would put "move every container on
+     * the canvas" one mis-aimed pixel from "choose this option". They are
+     * different elements here, and this is the assertion that says so.
+     */
+    let pointed = 0
+    let chose = -1
+    const { container } = render(
+      <QuestionCard
+        question={unanswered}
+        onAnswer={(index) => (chose = index)}
+        onPoint={() => (pointed += 1)}
+        pointed={false}
+        busy={false}
+        room={TIGHT}
+      />,
+    )
+    for (const option of container.querySelectorAll('button[data-slot="button"]')) fireEvent.click(option)
+    expect(chose).toBeGreaterThanOrEqual(0)
+    expect(pointed).toBe(0)
+  })
+
+  test('closing the disclosure points at nothing — only the press that asks to be shown does', () => {
+    /* A `<details>` toggles in both directions and closing one is not a request
+       to be shown anything. This is also why the handler is on the summary's
+       click rather than on `onToggle`: a browser expanding a details to show a
+       find-in-page match is not a person pressing it. */
+    let pointed = 0
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => (pointed += 1)} pointed={false} busy={false} room={ROOMY} />,
+    )
+    const details = container.querySelector('details')!
+    const summary = container.querySelector('[data-passage="summary"]')!
+    fireEvent.click(summary)
+    expect(pointed).toBe(1)
+    /* happy-dom does not toggle a details from a synthetic summary click, so the
+       open state is driven the way a browser would drive it before the second
+       press is made. */
+    details.setAttribute('open', '')
+    fireEvent(details, new Event('toggle'))
+    fireEvent.click(summary)
+    expect(pointed).toBe(1)
+  })
+
+  test('the card the canvas is pointed at is marked, and says so without relying on colour', () => {
+    /* Without a mark the only evidence a press did anything is in another
+       container — and if that container is not on the canvas there is no evidence
+       anywhere, and the press reads as broken. */
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed busy={false} room={ROOMY} />,
+    )
+    const card = container.querySelector('[data-question]')
+    expect(card?.getAttribute('data-pointed')).toBe('yes')
+    expect(card?.getAttribute('aria-current')).toBe('location')
+    expect(container.querySelector('[data-passage]')?.className).toContain('font-medium')
+  })
+
+  test('an unpointed card claims nothing', () => {
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />,
+    )
+    const card = container.querySelector('[data-question]')
+    expect(card?.getAttribute('data-pointed')).toBe('no')
+    expect(card?.getAttribute('aria-current')).toBeNull()
   })
 })
 
 describe('the quiz', () => {
   test('an epic with nothing in it says so rather than showing an empty list', () => {
     render(
-      <QuizView epic="modes-are-modules" questions={[]} onAnswer={() => {}} onRetake={() => {}} trouble={null} busy={false} room={ROOMY} />,
+      <QuizView epic="modes-are-modules" questions={[]} onAnswer={() => {}} onPoint={() => {}} pointed={null} onRetake={() => {}} trouble={null} busy={false} room={ROOMY} />,
     )
     expect(screen.getByText(/Nothing has been asked about this paper yet/)).toBeTruthy()
   })
@@ -155,6 +264,8 @@ describe('the quiz', () => {
         epic="modes-are-modules"
         questions={[answered, unanswered]}
         onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={null}
         onRetake={() => {}}
         trouble={null}
         busy={false}
@@ -166,11 +277,11 @@ describe('the quiz', () => {
 
   test('the way to ask them again appears only once something has been answered', () => {
     const { rerender } = render(
-      <QuizView epic="e" questions={[unanswered]} onAnswer={() => {}} onRetake={() => {}} trouble={null} busy={false} room={ROOMY} />,
+      <QuizView epic="e" questions={[unanswered]} onAnswer={() => {}} onPoint={() => {}} pointed={null} onRetake={() => {}} trouble={null} busy={false} room={ROOMY} />,
     )
     expect(screen.queryByText('Ask these again')).toBeNull()
     rerender(
-      <QuizView epic="e" questions={[answered]} onAnswer={() => {}} onRetake={() => {}} trouble={null} busy={false} room={ROOMY} />,
+      <QuizView epic="e" questions={[answered]} onAnswer={() => {}} onPoint={() => {}} pointed={null} onRetake={() => {}} trouble={null} busy={false} room={ROOMY} />,
     )
     expect(screen.getByText('Ask these again')).toBeTruthy()
   })
@@ -235,6 +346,8 @@ describe('the layout at 220 pixels', () => {
         epic="modes-are-modules"
         questions={[answered, unanswered]}
         onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={null}
         onRetake={() => {}}
         trouble={null}
         busy={false}
@@ -258,7 +371,7 @@ describe('the layout at 220 pixels', () => {
   })
 
   test('the short verdict marks DO opt back in, since they are one word', () => {
-    const { container } = render(<QuestionCard question={answered} onAnswer={() => {}} busy={false} room={ROOMY} />)
+    const { container } = render(<QuestionCard question={answered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />)
     const mark = [...container.querySelectorAll('[data-slot="badge"]')].find((b) => b.textContent === 'wrong')
     expect(mark?.className).toContain('whitespace-nowrap')
     expect(mark?.className).toContain('shrink-0')
@@ -275,13 +388,13 @@ describe('what folds away when the box is short', () => {
 
   test('the byline stops being a row and becomes the card’s title', () => {
     const { container: roomy } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />,
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />,
     )
     expect(roomy.textContent).toContain('written by claude, over MCP')
     cleanup()
 
     const { container: tight } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={TIGHT} />,
     )
     expect(tight.textContent).not.toContain('written by claude')
     expect(tight.querySelector('[data-question]')?.getAttribute('title')).toBe('written by claude, over MCP')
@@ -289,14 +402,14 @@ describe('what folds away when the box is short', () => {
 
   test('the passage becomes a press that fills the frame, and the quote is still reachable', () => {
     const { container } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={TIGHT} />,
     )
     /* Closed, the quote is not in the document at all — which is the point: the
        card is genuinely shorter, not merely clipped. */
     expect(container.querySelector('details')).toBeNull()
     expect(container.textContent).not.toContain(unanswered.passage.quote)
 
-    fireEvent.click(screen.getByText('the passage this is about'))
+    fireEvent.click(screen.getByText('bridge.tex'))
     const panel = document.querySelector('[data-passage-panel="open"]')
     expect(panel).toBeTruthy()
     expect(panel?.getAttribute('role')).toBe('dialog')
@@ -309,7 +422,7 @@ describe('what folds away when the box is short', () => {
 
   test('where there is height, the passage is still a real details element', () => {
     const { container } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />,
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />,
     )
     expect(container.querySelector('details')).toBeTruthy()
     expect(container.querySelector('[data-passage-panel]')).toBeNull()
@@ -317,7 +430,7 @@ describe('what folds away when the box is short', () => {
 
   test('an UNanswered card never folds an option — the options ARE the question', () => {
     const { container } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={TIGHT} />,
     )
     expect(container.querySelectorAll('button[data-slot="button"]')).toHaveLength(3)
     expect(container.querySelector('[data-unfold="options"]')).toBeNull()
@@ -325,7 +438,7 @@ describe('what folds away when the box is short', () => {
 
   test('an answered card folds the option that was neither chosen nor the key, behind one press', () => {
     const { container } = render(
-      <QuestionCard question={answered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+      <QuestionCard question={answered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={TIGHT} />,
     )
     /* Three options, one chosen and one correct, so exactly one is spare. */
     expect(container.querySelectorAll('button[data-slot="button"]')).toHaveLength(2)
@@ -338,7 +451,7 @@ describe('what folds away when the box is short', () => {
 
   test('folding never hides the verdict or the key — those are what was earned', () => {
     const { container } = render(
-      <QuestionCard question={answered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+      <QuestionCard question={answered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={TIGHT} />,
     )
     expect(container.querySelectorAll('[data-correct="true"]')).toHaveLength(1)
     expect(container.querySelector('[data-chose="true"]')).toBeTruthy()
@@ -352,6 +465,8 @@ describe('what folds away when the box is short', () => {
         epic="e"
         questions={[answered]}
         onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={null}
         onRetake={() => {}}
         trouble={null}
         busy={false}
@@ -373,7 +488,7 @@ describe('what folds away when the box is short', () => {
      */
     for (const where of [ROOMY, TIGHT]) {
       const { container } = render(
-        <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={where} />,
+        <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={where} />,
       )
       expect(container.querySelector('[data-question]')?.className).toContain('snap-start')
       cleanup()
@@ -385,7 +500,7 @@ describe('what folds away when the box is short', () => {
        count of what was hidden. It does not: the leak assertion again, at
        220×300, where the component takes a different branch. */
     const { container } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={TIGHT} />,
     )
     const html = container.innerHTML.replace(/ data-answered="no"/g, '')
     expect(html).not.toMatch(/answer/i)

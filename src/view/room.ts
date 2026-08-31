@@ -87,6 +87,22 @@ export interface Room {
   others: 'shown' | 'folded'
   /** The sentence under "Ask these again", which is a note about a rare press. */
   retakeNote: 'paragraph' | 'title'
+  /**
+   * How much of the document a question came from is spelled out on the control
+   * that points the canvas at it.
+   *
+   * A question that says nothing about its source gives a reader no reason to
+   * press it, so this is never absent — the only choice is how long a name it
+   * gets. `path` is the whole project-relative path; `file` is the last segment
+   * of it, which is never wrong and is one line at every width this module is
+   * given. The full path is in the control's `title` and inside the passage
+   * either way, so `file` hides nothing — it defers it by one hover.
+   *
+   * Width and not height, unlike everything above it: this costs no row that was
+   * not already there. The control it labels used to read "the passage this is
+   * about" and occupied exactly the same line.
+   */
+  source: 'path' | 'file'
 }
 
 /**
@@ -110,11 +126,24 @@ const TIGHT_BELOW = 340
 /** Narrow enough that a row of prose is four lines rather than one. */
 const NARROW_BELOW = 260
 
+/**
+ * Below this, a project-relative document path is more than one line.
+ *
+ * Wider than `NARROW_BELOW` on purpose, and the reason is that a path is longer
+ * than the prose that thresholds measures. The real ones in this workspace run
+ * to `data/papers/modes-are-modules/chapters/agents.tex` — 48 characters, which
+ * at the 0.65rem this control is drawn in is roughly 290 pixels of text. It is
+ * two lines in a 320-wide letterbox and four in a 220-wide column, and it is
+ * grey chrome above a question either way. At 360 and up it is one line, so at
+ * 360 and up it is shown whole.
+ */
+const PATH_FROM = 360
+
 export function room({ width, height }: Frame): Room {
   /* Not measured yet. Show everything: a card briefly too tall is a smaller
      mistake than a page that folds itself and then unfolds. */
   if (height <= 0) {
-    return { snap: false, byline: 'row', passage: 'inline', others: 'shown', retakeNote: 'paragraph' }
+    return { snap: false, byline: 'row', passage: 'inline', others: 'shown', retakeNote: 'paragraph', source: 'path' }
   }
   const tight = height < TIGHT_BELOW
   return {
@@ -123,5 +152,8 @@ export function room({ width, height }: Frame): Room {
     passage: tight ? 'overlay' : 'inline',
     others: tight ? 'folded' : 'shown',
     retakeNote: tight || width < NARROW_BELOW ? 'title' : 'paragraph',
+    /* Width alone. A short box is a reason to fold a row away; it is not a
+       reason to abbreviate a label on a row that is being drawn regardless. */
+    source: width < PATH_FROM ? 'file' : 'path',
   }
 }
