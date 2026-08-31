@@ -4,9 +4,11 @@ import { resolve } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { WELL_KNOWN } from 'roadmap-module-protocol'
+import { serves } from 'roadmap-module-protocol/serve'
 import { defineConfig, type Plugin } from 'vite'
 
 import { MANIFEST, TICKET, answer } from './doors.ts'
+import { ID, PREFERRED_PORT } from './manifest.ts'
 import { page } from './page/document.ts'
 
 /**
@@ -195,6 +197,24 @@ async function body(request: IncomingMessage): Promise<Record<string, unknown> |
  * The `@` alias below is a different thing entirely — it points inside this
  * repository, at `src`, and is what shadcn's generated components import
  * through.
+ *
+ * ## And still no `server` block, now for a second reason
+ *
+ * There is a test that this config declares no `server: {` at all, written to
+ * keep `cors: true` from coming back. It now also covers the port, which used to
+ * be demanded on the `bunx vite` line in `run.sh` and defaulted a second time in
+ * `register.ts`: `--strictPort` meant a taken 7950 printed `Error: Port 7950 is
+ * already in use` and exited 1, so a program with nothing to do with questions
+ * could stop the questions from opening.
+ *
+ * `serves()` is what decides the port now, from `PREFERRED_PORT` in
+ * `manifest.ts`, and it is FIRST in the plugin list because it has to claim one
+ * before anything else in this config asks. A free 7950 is taken in silence;
+ * this module already answering there ends the start cleanly rather than making
+ * a second writer on one `questions.json`; anything else is a loud move to the
+ * next free port with the registration rewritten to the port the server ACTUALLY
+ * bound, read off `httpServer.address()` after `listening` rather than off what
+ * was asked for.
  */
 export default defineConfig({
   /**
@@ -205,6 +225,6 @@ export default defineConfig({
    * fetched.
    */
   base: './',
-  plugins: [doors(), react(), tailwindcss()],
+  plugins: [serves({ id: ID, prefer: PREFERRED_PORT }), doors(), react(), tailwindcss()],
   resolve: { alias: { '@': resolve(import.meta.dirname, 'src') } },
 })

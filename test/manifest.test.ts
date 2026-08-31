@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { LIMITS, PROTOCOL, manifestSchema } from 'roadmap-module-protocol'
 
-import { ID, MANIFEST, VERSION } from '../manifest.ts'
+import { ID, MANIFEST, PREFERRED_PORT, VERSION } from '../manifest.ts'
 
 const here = join(import.meta.dir, '..')
 
@@ -18,7 +18,7 @@ describe('the manifest', () => {
     expect(MANIFEST.declares?.protocol).toBe(`>=${PROTOCOL} <${PROTOCOL + 1}`)
   })
 
-  test('the installed protocol package is 0.12, which is what carries the shared client', () => {
+  test('the installed protocol package is 0.13, which is what carries /serve', () => {
     /* A stale copy STRIPS fields it has never heard of and `parse` does not
        complain, so a manifest field vanishes with no error at all. That has
        bitten four modules in this workspace. `bun pm cache rm` then `bun update`
@@ -27,17 +27,19 @@ describe('the manifest', () => {
        it is standing in; 0.11 carries `moduleDir` and `withKehikotIgnored`,
        which is where it learns what to call the folder and which folder inside
        it is this module's; 0.12 carries `roadmap-module-protocol/client`, which
-       is the wire this module no longer writes for itself. A copy without them
-       does not strip a field quietly — `store.ts` fails to import — but the pin
-       is here because the version is the thing that has to move, and a test
-       that names it is the note somebody reads when the import breaks. Moving
-       this line is part of moving the pin: `bun update` will NOT advance a
-       `#main` git dependency, so the resolved sha in `bun.lock` is edited by
-       hand and this number goes with it. */
+       is the wire this module no longer writes for itself; 0.13 carries
+       `/serve`, which is the port and the registration it no longer decides for
+       itself. A copy without them does not strip a field quietly — `store.ts`
+       fails to import, and a copy older than 0.13 has no `serves()` at all, so
+       the Vite config will not load — but the pin is here because the version is
+       the thing that has to move, and a test that names it is the note somebody
+       reads when the import breaks. Moving this line is part of moving the pin:
+       `bun update` ALONE will not advance a `#main` git dependency; it takes
+       `bun pm cache rm` first, and this number goes with it. */
     const packaged = JSON.parse(
       readFileSync(join(here, 'node_modules/roadmap-module-protocol/package.json'), 'utf8'),
     ) as { version: string }
-    expect(packaged.version.startsWith('0.12.')).toBe(true)
+    expect(packaged.version.startsWith('0.13.')).toBe(true)
   })
 
   test('says who it is, and the filename register.ts writes matches', () => {
@@ -131,17 +133,44 @@ describe('the shape of the repository', () => {
     expect(readFileSync(join(here, 'vite.config.ts'), 'utf8')).toContain('No `server.cors`')
   })
 
-  test('run.sh defaults to 7950, and so does register.ts', () => {
-    expect(readFileSync(join(here, 'run.sh'), 'utf8')).toContain('${PORT:-7950}')
-    expect(readFileSync(join(here, 'register.ts'), 'utf8')).toContain('process.env.PORT ?? 7950')
+  /**
+   * This used to assert that `run.sh` and `register.ts` both DEFAULTED to 7950,
+   * which was the best check available while the number was written in both.
+   * It is written in neither now, so what replaces it is that neither of them
+   * says a port at all — a second copy of the literal reappearing is exactly how
+   * this stops being true again.
+   */
+  test('the port is stated once, beside the id, and nowhere else', () => {
+    expect(PREFERRED_PORT).toBe(7950)
+    /* Both files ASK for it by name. Their prose still says 7950 — it is
+       discussing what used to be there — so the check is on the import rather
+       than on the digits. */
+    expect(readFileSync(join(here, 'register.ts'), 'utf8')).toContain("PREFERRED_PORT } from './manifest.ts'")
+    expect(readFileSync(join(here, 'vite.config.ts'), 'utf8')).toContain('prefer: PREFERRED_PORT')
+  })
+
+  /* And `--strictPort` went with it. It meant this app DIED on a taken port,
+     which was the only honest thing to do while nothing handled the collision;
+     the drift is decided deliberately now and written into the registry, so
+     Vite's own fallback is a second net rather than the absence of one. The
+     whole command is asserted rather than the absence of two flags, because the
+     comment above it discusses both by name. */
+  test('the start script demands no port it might not get', () => {
+    const lines = readFileSync(join(here, 'run.sh'), 'utf8')
+      .split('\n')
+      .filter((line) => line.startsWith('exec '))
+    expect(lines).toEqual(['exec bunx vite'])
   })
 
   test('register.ts writes both url and dir', () => {
     /* The url is where to talk to this app; the directory is where to start it,
-       and a host that offers a Start button needs the second. */
+       and a host that offers a Start button needs the second. Through
+       `registerAt` and `originFor` now instead of a hand-built `JSON.stringify`,
+       but the two fields are still the claim. */
     const register = readFileSync(join(here, 'register.ts'), 'utf8')
-    expect(register).toContain('{ url, dir }')
-    expect(register).toContain(`${ID}.json`)
+    expect(register).toContain('registerAt(')
+    expect(register).toContain('origin: originFor(port)')
+    expect(register).toContain('dir: dirname(fileURLToPath(import.meta.url))')
   })
 })
 
