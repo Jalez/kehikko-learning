@@ -159,6 +159,31 @@ screen rather than an error:
   picker: choosing one there would be the page deciding where it is standing,
   which is the thing it has just said it cannot know.
 
+## The box it is actually given
+
+A container on a canvas is 220–500 wide and often 150–300 tall. Measured with
+`dev/sizes.mjs`, in a real frame: a question card is 307px at 220 wide, 239 at
+320, 212 at 460, 182 at 900. So in the ordinary case one card is taller than the
+whole box, and everything below follows from that.
+
+- **Width is CSS.** The body is a container and the responsive classes are
+  `@sm/container:` variants. Never a viewport breakpoint: the frame is 220px on
+  a monitor two thousand across, so every breakpoint Tailwind ships fires.
+- **Height cannot be.** `container-type: inline-size` measures one axis on
+  purpose and there is no `@height-sm:`. So the frame is measured
+  (`src/view/use-frame.ts`) and `src/view/room.ts` turns width and height into
+  five decisions — snap, byline, passage, options, retake note. It is one pure
+  function with its own test file because "what shows at 220×300" should be a
+  table somebody can read, not six ternaries spread across two components.
+- **Scrolling snaps below 520px of height, on `proximity`.** Never `mandatory`:
+  a card is taller than a short box, and a scroller that must come to rest on a
+  snap point cannot hold the bottom of one. The heading is a snap point too, or
+  the page loads already scrolled past the paper's name.
+- **Nothing folded is unreachable.** The byline becomes the card's `title`, the
+  retake note the button's, the passage an overlay filling the frame, and on an
+  *answered* card the options that were neither chosen nor correct go behind one
+  press. Nothing folds on an unanswered card: the options are the question.
+
 ## Spaced repetition, which is deliberately not here
 
 There is no scheduler, no interval, no "due" state and no ease factor, and this
@@ -262,11 +287,19 @@ quiz/types.ts      the shapes both sides name — NO imports, deliberately
 quiz/questions.ts  the store, the rules, asked() and score()
 quiz/projects.ts   what is left of "which project" now the path is the partition
 dev/migrate.ts     the one-off move out of data/questions.json, run by hand
+dev/probe.mjs      a real browser: the key's absence, partitioning, no overflow
+dev/sizes.mjs      a real frame at four container sizes: what fits, and snapping
+dev/theme.mjs      the host's light/dark switch, both ways, on both machines
 page/document.ts   the document, generated per request so the ticket can reach it
 vite.config.ts     the doors as middleware, and the missing server.cors
-src/               the page: wire/, view/, store/ask.ts, components/ui/
-test/              182 tests, no browser
+src/               the page: wire/, view/, view/room.ts, store/ask.ts, ui/
+test/              199 tests, no browser
 ```
+
+The three files under `dev/` need a running server and a chromium on disk, so
+they are not part of `bun test` — a suite that cannot run on a fresh checkout is
+one people learn to skip. They measure the half `bun test` cannot: real layout
+at real sizes, and a DOM a browser actually built.
 
 Two traps worth naming, because both have cost this workspace time:
 

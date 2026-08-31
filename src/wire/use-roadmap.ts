@@ -94,6 +94,22 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
       const root = document.documentElement
       root.classList.toggle('dark', context.theme === 'dark')
       root.classList.toggle('light', context.theme === 'light')
+      /*
+       * And the half of the page this module does not paint.
+       *
+       * The scrollbar, the focus ring, the caret and every form control are the
+       * browser's, and what they follow is `color-scheme`, which defaults to the
+       * MACHINE's setting and hears nothing about a class. In a container 220
+       * pixels wide with a permanent scrollbar down the side of it, a host
+       * switched to light on a machine set to dark leaves a dark gutter beside a
+       * white page — which is not a subtle discrepancy, it is the part of the
+       * module a person's eye lands on when they look at whether it changed.
+       *
+       * Set from the host's choice for the same reason the classes are: the
+       * theme a person picked in the host is a decision, and their OS setting is
+       * not that decision.
+       */
+      root.style.colorScheme = context.theme
 
       setWhere('hosted')
       setEpic(context.epic)

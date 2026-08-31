@@ -1,11 +1,24 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import type { Asked } from '../quiz/types.ts'
 import { QuestionCard, QuizView } from '../src/view/quiz.tsx'
+import { room } from '../src/view/room.ts'
 import { NoEpic, NoProject } from '../src/view/nowhere.tsx'
 
 afterEach(cleanup)
+
+/*
+ * The two boxes every rendering assertion below is made in.
+ *
+ * `room` is passed explicitly rather than measured, because happy-dom does not
+ * lay out: an unmeasured frame is deliberately the roomy one, so a component
+ * that read its own size here would silently be tested at one size forever.
+ * ROOMY is a container on a large canvas; TIGHT is 220x300, which `dev/sizes.mjs`
+ * measures as a box shorter than a single question card.
+ */
+const ROOMY = room({ width: 900, height: 700 })
+const TIGHT = room({ width: 220, height: 300 })
 
 /**
  * The components, rendered for real, asserting on what is in the document.
@@ -57,7 +70,7 @@ const answered: Asked = {
 
 describe('the answer is not in the page before it is asked for', () => {
   test('nothing in the rendered document names the correct option as correct', () => {
-    const { container } = render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} />)
+    const { container } = render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />)
 
     /* Every option is drawn — the reader can read all three. */
     for (const option of unanswered.options) expect(screen.getByText(option)).toBeTruthy()
@@ -84,7 +97,7 @@ describe('the answer is not in the page before it is asked for', () => {
        key smuggled into a `key=`, a `value=`, an `aria-` attribute or a comment.
        The whole document, as a string, and the index 2 must not appear as an
        answer anywhere. */
-    const { container } = render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} />)
+    const { container } = render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />)
     /* `data-answered="no"` is the one place the word appears, and it says the
        opposite of a leak — it is how the card reports that nothing has been
        earned. Removed before the search so that the search can be absolute. */
@@ -95,7 +108,7 @@ describe('the answer is not in the page before it is asked for', () => {
   })
 
   test('once answered, the key is shown — being coy afterwards would be useless', () => {
-    const { container } = render(<QuestionCard question={answered} onAnswer={() => {}} busy={false} />)
+    const { container } = render(<QuestionCard question={answered} onAnswer={() => {}} busy={false} room={ROOMY} />)
     const correct = container.querySelectorAll('[data-correct="true"]')
     expect(correct).toHaveLength(1)
     expect(correct[0]?.textContent).toBe(answered.options[KEY])
@@ -105,7 +118,7 @@ describe('the answer is not in the page before it is asked for', () => {
   })
 
   test('an answered question cannot be answered again without a retake', () => {
-    render(<QuestionCard question={answered} onAnswer={() => {}} busy={false} />)
+    render(<QuestionCard question={answered} onAnswer={() => {}} busy={false} room={ROOMY} />)
     for (const button of screen.getAllByRole('button')) {
       if (button.textContent && answered.options.includes(button.textContent)) {
         expect((button as HTMLButtonElement).disabled).toBe(true)
@@ -116,14 +129,14 @@ describe('the answer is not in the page before it is asked for', () => {
 
 describe('the passage', () => {
   test('is shown, since it is the module’s whole claim', () => {
-    render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} />)
+    render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />)
     expect(screen.getByText(unanswered.passage.path)).toBeTruthy()
     expect(screen.getByText(unanswered.passage.quote)).toBeTruthy()
     expect(screen.getByText(/bytes/)).toBeTruthy()
   })
 
   test('says who wrote the question and that it came through the door', () => {
-    render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} />)
+    render(<QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />)
     expect(screen.getByText(/written by claude, over MCP/)).toBeTruthy()
   })
 })
@@ -131,7 +144,7 @@ describe('the passage', () => {
 describe('the quiz', () => {
   test('an epic with nothing in it says so rather than showing an empty list', () => {
     render(
-      <QuizView epic="modes-are-modules" questions={[]} onAnswer={() => {}} onRetake={() => {}} trouble={null} busy={false} />,
+      <QuizView epic="modes-are-modules" questions={[]} onAnswer={() => {}} onRetake={() => {}} trouble={null} busy={false} room={ROOMY} />,
     )
     expect(screen.getByText(/Nothing has been asked about this paper yet/)).toBeTruthy()
   })
@@ -145,6 +158,7 @@ describe('the quiz', () => {
         onRetake={() => {}}
         trouble={null}
         busy={false}
+        room={ROOMY}
       />,
     )
     expect(screen.getByText('2 asked · 1 answered · 0 right')).toBeTruthy()
@@ -152,11 +166,11 @@ describe('the quiz', () => {
 
   test('the way to ask them again appears only once something has been answered', () => {
     const { rerender } = render(
-      <QuizView epic="e" questions={[unanswered]} onAnswer={() => {}} onRetake={() => {}} trouble={null} busy={false} />,
+      <QuizView epic="e" questions={[unanswered]} onAnswer={() => {}} onRetake={() => {}} trouble={null} busy={false} room={ROOMY} />,
     )
     expect(screen.queryByText('Ask these again')).toBeNull()
     rerender(
-      <QuizView epic="e" questions={[answered]} onAnswer={() => {}} onRetake={() => {}} trouble={null} busy={false} />,
+      <QuizView epic="e" questions={[answered]} onAnswer={() => {}} onRetake={() => {}} trouble={null} busy={false} room={ROOMY} />,
     )
     expect(screen.getByText('Ask these again')).toBeTruthy()
   })
@@ -178,7 +192,7 @@ describe('the screens that are not errors', () => {
   test('no epic and no questions says both things', () => {
     render(<NoEpic project={null} standings={[]} />)
     expect(screen.getByText('No paper is open')).toBeTruthy()
-    expect(screen.getByText(/No questions have been written about anything in this project yet/)).toBeTruthy()
+    expect(screen.getByText(/No questions have been written in this project yet/)).toBeTruthy()
   })
 
   test('no project says where the questions live, and offers NOT a picker', () => {
@@ -224,6 +238,7 @@ describe('the layout at 220 pixels', () => {
         onRetake={() => {}}
         trouble={null}
         busy={false}
+        room={ROOMY}
       />,
     )
     const long = [
@@ -243,9 +258,138 @@ describe('the layout at 220 pixels', () => {
   })
 
   test('the short verdict marks DO opt back in, since they are one word', () => {
-    const { container } = render(<QuestionCard question={answered} onAnswer={() => {}} busy={false} />)
+    const { container } = render(<QuestionCard question={answered} onAnswer={() => {}} busy={false} room={ROOMY} />)
     const mark = [...container.querySelectorAll('[data-slot="badge"]')].find((b) => b.textContent === 'wrong')
     expect(mark?.className).toContain('whitespace-nowrap')
     expect(mark?.className).toContain('shrink-0')
+  })
+})
+
+describe('what folds away when the box is short', () => {
+  /*
+   * The decision itself is `room()` and is asserted in `room.test.ts`. What is
+   * asserted here is that the components OBEY it — and, more to the point, that
+   * everything folded is still reachable. A fold that loses a fact is not a
+   * smaller card, it is a card missing a fact.
+   */
+
+  test('the byline stops being a row and becomes the card’s title', () => {
+    const { container: roomy } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />,
+    )
+    expect(roomy.textContent).toContain('written by claude, over MCP')
+    cleanup()
+
+    const { container: tight } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+    )
+    expect(tight.textContent).not.toContain('written by claude')
+    expect(tight.querySelector('[data-question]')?.getAttribute('title')).toBe('written by claude, over MCP')
+  })
+
+  test('the passage becomes a press that fills the frame, and the quote is still reachable', () => {
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+    )
+    /* Closed, the quote is not in the document at all — which is the point: the
+       card is genuinely shorter, not merely clipped. */
+    expect(container.querySelector('details')).toBeNull()
+    expect(container.textContent).not.toContain(unanswered.passage.quote)
+
+    fireEvent.click(screen.getByText('the passage this is about'))
+    const panel = document.querySelector('[data-passage-panel="open"]')
+    expect(panel).toBeTruthy()
+    expect(panel?.getAttribute('role')).toBe('dialog')
+    expect(panel?.textContent).toContain(unanswered.passage.quote)
+    expect(panel?.textContent).toContain(unanswered.passage.path)
+
+    fireEvent.click(screen.getByText('Close'))
+    expect(document.querySelector('[data-passage-panel="open"]')).toBeNull()
+  })
+
+  test('where there is height, the passage is still a real details element', () => {
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={ROOMY} />,
+    )
+    expect(container.querySelector('details')).toBeTruthy()
+    expect(container.querySelector('[data-passage-panel]')).toBeNull()
+  })
+
+  test('an UNanswered card never folds an option — the options ARE the question', () => {
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+    )
+    expect(container.querySelectorAll('button[data-slot="button"]')).toHaveLength(3)
+    expect(container.querySelector('[data-unfold="options"]')).toBeNull()
+  })
+
+  test('an answered card folds the option that was neither chosen nor the key, behind one press', () => {
+    const { container } = render(
+      <QuestionCard question={answered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+    )
+    /* Three options, one chosen and one correct, so exactly one is spare. */
+    expect(container.querySelectorAll('button[data-slot="button"]')).toHaveLength(2)
+    expect(container.textContent).not.toContain(answered.options[1])
+
+    fireEvent.click(screen.getByText('the option you passed over'))
+    expect(container.querySelectorAll('button[data-slot="button"]')).toHaveLength(3)
+    expect(screen.getByText(answered.options[1] as string)).toBeTruthy()
+  })
+
+  test('folding never hides the verdict or the key — those are what was earned', () => {
+    const { container } = render(
+      <QuestionCard question={answered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+    )
+    expect(container.querySelectorAll('[data-correct="true"]')).toHaveLength(1)
+    expect(container.querySelector('[data-chose="true"]')).toBeTruthy()
+    expect(screen.getByText('wrong')).toBeTruthy()
+    expect(screen.getByText(WHY)).toBeTruthy()
+  })
+
+  test('the note under “Ask these again” becomes the button’s title rather than three lines', () => {
+    const { container } = render(
+      <QuizView
+        epic="e"
+        questions={[answered]}
+        onAnswer={() => {}}
+        onRetake={() => {}}
+        trouble={null}
+        busy={false}
+        room={TIGHT}
+      />,
+    )
+    expect(container.textContent).not.toContain('out of reach rather than merely out of sight')
+    expect(screen.getByText('Ask these again').getAttribute('title')).toContain(
+      'out of reach rather than merely out of sight',
+    )
+  })
+
+  test('a card is a snap point at every size — the scroller is what decides whether it snaps', () => {
+    /*
+     * `scroll-snap-align` on an element inside a scroller with no
+     * `scroll-snap-type` does nothing at all, so it costs nothing to leave on.
+     * Putting it here rather than switching it means one attribute changes when
+     * the box gets short — the one on `<html>` — instead of twelve.
+     */
+    for (const where of [ROOMY, TIGHT]) {
+      const { container } = render(
+        <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={where} />,
+      )
+      expect(container.querySelector('[data-question]')?.className).toContain('snap-start')
+      cleanup()
+    }
+  })
+
+  test('the key is still not in the DOM of an unanswered card in a tight box', () => {
+    /* Folding is exactly the kind of change that could smuggle the key in as a
+       count of what was hidden. It does not: the leak assertion again, at
+       220×300, where the component takes a different branch. */
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} busy={false} room={TIGHT} />,
+    )
+    const html = container.innerHTML.replace(/ data-answered="no"/g, '')
+    expect(html).not.toMatch(/answer/i)
+    expect(html).not.toMatch(/correct/i)
+    expect(html).not.toContain(WHY)
   })
 })

@@ -6,6 +6,8 @@ import { answer, openEpic, retake, type Asked, type Standing } from '@/store/ask
 import { useRoadmap, type GotoHandler } from '@/wire/use-roadmap.ts'
 import { QuizView } from '@/view/quiz.tsx'
 import { NoEpic, NoProject } from '@/view/nowhere.tsx'
+import { room } from '@/view/room.ts'
+import { useFrame } from '@/view/use-frame.ts'
 
 /** Whether this page is in a frame. Unframed, it prints its own heading. */
 const framed = typeof window !== 'undefined' && window.parent !== window
@@ -58,6 +60,12 @@ export function App() {
   }, [])
 
   const { where, epic, projectPath, project, resize } = useRoadmap(ID, onGoto)
+
+  /* How big the box actually is, and what therefore fits in it. Two lines here
+     because the deciding is in `view/room.ts`, where it can be read as a table
+     and asserted as one. */
+  const frame = useFrame()
+  const fits = room(frame)
 
   /* Held in a ref as well as in state so the poll can read the current pair
      without being re-created — and therefore re-scheduled — on every context
@@ -173,6 +181,31 @@ export function App() {
     return () => watch.disconnect()
   })
 
+  /*
+   * Snapping, switched on the document element rather than on a scroller of our
+   * own.
+   *
+   * The thing that scrolls in this page IS the document: the root below reports
+   * its full height to the host and the host clamps it, so what the reader
+   * scrolls is the frame's own viewport over a taller document. Wrapping the
+   * list in an `overflow-y: auto` box would give us a scroller to put
+   * `scroll-snap-type` on directly, and would also make the height this page
+   * reports equal to the height it was given — the container would never grow
+   * again, because it would always exactly fit itself.
+   *
+   * So the attribute goes on `<html>` and `index.css` answers it. The precedent
+   * is `wire/use-roadmap.ts`, which sets `.dark` on the same element for the
+   * same reason: it is the one node above this component that CSS can key on.
+   */
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const root = document.documentElement
+    root.dataset.snap = fits.snap ? 'on' : 'off'
+    return () => {
+      delete root.dataset.snap
+    }
+  }, [fits.snap])
+
   const screen =
     where === 'listening' ? (
       <p className="text-[0.7rem] leading-4 text-muted-foreground">
@@ -190,18 +223,30 @@ export function App() {
         onRetake={() => void onRetake()}
         trouble={trouble}
         busy={busy}
+        room={fits}
       />
     )
 
   return (
-    <div ref={shell} className="flex min-w-0 flex-col gap-2 p-2 text-foreground">
+    <div ref={shell} className="flex min-w-0 flex-col gap-2 p-2 text-foreground @sm/container:p-3">
+      {/*
+        The heading, which only exists when nothing is framing this page.
+
+        It was three sentences: what the module is, that the key is withheld, and
+        where the grading happens. All true, and the second and third are said
+        again — at length, and better — in `README.md` and at the top of
+        `view/quiz.tsx`. Three sentences above the first question is the shape of
+        prose nobody reads.
+
+        What is left is the one line a person who has just opened this file needs
+        before they scroll.
+      */}
       {framed ? null : (
         <header className="min-w-0">
           <h1 className="text-sm font-semibold">Learning</h1>
           <p className="text-[0.7rem] leading-4 text-muted-foreground">
-            Multiple-choice questions about passages of a paper — the document, the byte range and the source those
-            bytes held — and what you answered. An agent writes them; you answer them. The correct option is not in
-            this page until you have chosen: it is decided at the server, on the request that submits an answer.
+            Multiple-choice questions about passages of a paper. An agent writes them; you answer them. The correct
+            option reaches this page only in the reply to an answer.
           </p>
         </header>
       )}

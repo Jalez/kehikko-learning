@@ -159,6 +159,31 @@
   }
 
   /*
+   * Snapping, and the one axis a container query cannot see.
+   *
+   * `container-type: inline-size` measures width deliberately and permanently —
+   * a container that measured both axes would have to lay its children out to
+   * know its own size and then re-lay them out because it had changed. So there
+   * is no `@height-sm:` variant and this cannot be a class. `src/view/room.ts`
+   * decides it off a measured frame and `src/app.tsx` writes the attribute here,
+   * the same way `wire/use-roadmap.ts` writes `.dark` — the document element is
+   * the one node above the app that CSS can key on.
+   *
+   * `proximity`, never `mandatory`. In a container 220 wide a question card is
+   * taller than a box 300 tall, and `mandatory` means the scroller must always
+   * come to rest ON a snap point — which makes the bottom of an over-tall card
+   * somewhere the reader cannot stay. `proximity` catches a flick that ended
+   * near a card boundary and leaves a deliberate scroll where it was put.
+   *
+   * And it is only on when the box is short. Where four cards are in view at
+   * once there is nothing to align, and snapping would only make a free scroll
+   * feel like it was arguing back.
+   */
+  html[data-snap='on'] {
+    scroll-snap-type: y proximity;
+  }
+
+  /*
    * Long, unbroken strings are the one thing that widens a container past its frame:
    * a file path out of a passage, a LaTeX command, an identifier in an option.
    * Breaking them is the honest fix — the whole string stays on screen, wrapped,

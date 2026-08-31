@@ -29,8 +29,11 @@ const EXECUTABLE =
   ?? '/Users/jaakkorajala/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell'
 
 const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7950'
-const ROADMAP = '/Users/jaakkorajala/Projects/roadmap'
-const OTHER = '/Users/jaakkorajala/Projects/kehikko-checklist'
+/* The header above promises these can be set from the environment, and until
+   now only ORIGIN could be. The partitioning step needs a SECOND project with a
+   question of its own in it, and where that is, is this machine's business. */
+const ROADMAP = process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/roadmap'
+const OTHER = process.env.OTHER ?? '/Users/jaakkorajala/Projects/kehikko-checklist'
 
 /** Greet the page the way a host does: HELLO with a context, on the page itself. */
 const greet = (context) => `

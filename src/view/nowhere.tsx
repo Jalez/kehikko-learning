@@ -22,10 +22,9 @@ import { Badge } from '@/components/ui/badge.tsx'
 export function NoEpic({ project, standings }: { project: string | null; standings: Standing[] }) {
   return (
     <section className="flex min-w-0 flex-col gap-1.5">
-      <h2 className="text-[0.8rem] font-semibold">No paper is open</h2>
+      <h2 className="text-[0.8rem] font-semibold @sm/container:text-sm">No paper is open</h2>
       <p className="text-[0.7rem] leading-4 text-muted-foreground">
-        A question here belongs to the epic whose paper it was written about, so this container has nothing to ask until
-        one is open. Open an epic on this canvas and its questions appear.
+        Questions belong to the paper they were written about. Open one on this canvas and its questions appear.
       </p>
       {standings.length ? (
         <>
@@ -51,8 +50,8 @@ export function NoEpic({ project, standings }: { project: string | null; standin
         </>
       ) : (
         <p className="text-[0.65rem] leading-4 text-muted-foreground">
-          No questions have been written about anything in this project yet. Nothing here ships a question: an agent
-          that has just read a chapter writes them with <code>add_quiz</code>.
+          No questions have been written in this project yet. An agent that has just read a chapter writes them with{' '}
+          <code>add_quiz</code>.
         </p>
       )}
     </section>
@@ -86,22 +85,19 @@ export function NoEpic({ project, standings }: { project: string | null; standin
 export function NoProject({ unhosted }: { unhosted: boolean }) {
   return (
     <section className="flex min-w-0 flex-col gap-1.5">
-      <h2 className="text-[0.8rem] font-semibold">
+      <h2 className="text-[0.8rem] font-semibold @sm/container:text-sm">
         {unhosted ? 'Nothing is framing this page' : 'This canvas did not say where it is'}
       </h2>
       <p className="text-[0.7rem] leading-4 text-muted-foreground">
         {unhosted
-          ? 'Opened directly, this page has no canvas to tell it which project it is standing in — and the questions '
-            + 'are kept inside the project, so without one there is no file to open. Nothing is wrong and nothing is '
-            + 'lost: open this container on a canvas that has a project, and its questions appear.'
-          : 'A host may know a project’s name and have no folder to point at, and this container will not guess. Questions '
-            + 'live inside the project they are about, so a guessed path would write somebody’s questions into a '
-            + 'folder they will never open.'}
+          ? 'The questions are kept inside a project, and nothing told this page which one it is standing in. Nothing '
+            + 'is lost — open it on a canvas that has a project.'
+          : 'The questions are kept inside a project, and this canvas gave a name but no folder. It will not guess: a '
+            + 'guessed path writes somebody’s questions into a folder they will never open.'}
       </p>
       <p className="text-[0.65rem] leading-4 text-muted-foreground">
-        Wherever they are, they are in plain sight: each project keeps its own in{' '}
-        <code className="[overflow-wrap:anywhere]">.kehikot/learning/questions.json</code>, beside the work rather than inside
-        this app.
+        Each project keeps its own in{' '}
+        <code className="[overflow-wrap:anywhere]">.kehikot/learning/questions.json</code>.
       </p>
     </section>
   )
