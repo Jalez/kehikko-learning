@@ -21,7 +21,7 @@
  * change rather than a matter of taste.
  *
  * A migration on read happens inside a request, for ONE project — whichever
- * project the pane is standing in. The old file holds several. Reading it in the
+ * project the container is standing in. The old file holds several. Reading it in the
  * `/Users/…/roadmap` request would mean either writing other projects' questions
  * into folders nobody asked about, or migrating a third of the file and leaving
  * the rest for a request that may never come. Both leave the same material in

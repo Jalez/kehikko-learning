@@ -10,7 +10,7 @@
  * Vite follows the edge, pulls `node:fs` into the browser bundle, and the module
  * fails to evaluate. The symptom is the worst one this protocol has: the
  * document loads, the frame's `load` fires, the host greets it, and nothing
- * answers. The pane says the module did not answer the greeting, which is true
+ * answers. The container says the module did not answer the greeting, which is true
  * and gives no hint that a `node:` import is the reason. It is only visible in
  * the browser console, and only if somebody thinks to open one.
  *
@@ -128,7 +128,7 @@ export interface Question {
  *
  * Note what is absent: `answer` and `why`. They are `null` on a question nobody
  * has answered yet, and they are filled in for one that has been — because once
- * you have chosen, the answer is yours, and a pane that still hid it would be
+ * you have chosen, the answer is yours, and a container that still hid it would be
  * useless as well as coy.
  *
  * The distinction is enforced by this being a separate type rather than a
@@ -152,7 +152,7 @@ export interface Asked {
   why: string | null
 }
 
-/** What one epic's questions add up to, for a pane that has not opened them. */
+/** What one epic's questions add up to, for a container that has not opened them. */
 export interface Standing {
   epic: string
   questions: number

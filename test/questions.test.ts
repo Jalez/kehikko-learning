@@ -66,7 +66,7 @@ function add(over: Partial<Parameters<typeof change>[0] & Record<string, unknown
     project: A,
     epic: 'modes-are-modules',
     question: 'What does the manifest settle?',
-    options: ['Which tab the page gets', 'What colour the pane is', 'Who owns the repository'],
+    options: ['Which tab the page gets', 'What colour the container is', 'Who owns the repository'],
     answer: 0,
     why: 'The manifest is the only half a host reads.',
     passage: { path: 'chapters/bridge.tex', start: 100, end: 240, quote: 'the manifest is the smallest half' },

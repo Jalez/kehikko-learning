@@ -117,7 +117,7 @@ export function QuestionCard({
         The passage, behind a disclosure.
 
         Open by default it would be the largest thing on the card and would push
-        the options off the first screen of a 220px pane; absent it would be the
+        the options off the first screen of a 220px container; absent it would be the
         module's whole claim left unshown. `<details>` is the honest middle, and
         it is a `<details>` rather than a piece of state so that it is one
         element in the accessibility tree and works with no JavaScript at all.
@@ -178,7 +178,7 @@ export function QuizView({
       <section className="flex min-w-0 flex-col gap-1.5">
         <h2 className="text-[0.8rem] font-semibold [overflow-wrap:anywhere]">{epic}</h2>
         <p className="text-[0.7rem] leading-4 text-muted-foreground">
-          Nothing has been asked about this paper yet. Nothing here ships a question, so an empty pane means nobody has
+          Nothing has been asked about this paper yet. Nothing here ships a question, so an empty container means nobody has
           written one — an agent that has just read a chapter writes them with <code>add_quiz</code>, anchored to the
           passage they are about.
         </p>
@@ -214,7 +214,7 @@ export function QuizView({
 
       {answered ? (
         <div className="min-w-0">
-          <Button type="button" size="pane" variant="ghost" className="whitespace-nowrap" disabled={busy} onClick={onRetake}>
+          <Button type="button" size="container" variant="ghost" className="whitespace-nowrap" disabled={busy} onClick={onRetake}>
             Ask these again
           </Button>
           <p className="mt-0.5 text-[0.6rem] leading-3 text-muted-foreground">

@@ -27,7 +27,7 @@ const unanswered: Asked = {
   epic: 'modes-are-modules',
   question: 'What does a module’s manifest settle?',
   options: [
-    'What colour the pane is painted',
+    'What colour the container is painted',
     'Who owns the repository the module lives in',
     'Which tab the page gets, and what the module would like to be allowed to ask',
   ],
@@ -208,8 +208,8 @@ describe('the layout at 220 pixels', () => {
      * Button, and `white-space: nowrap` makes an element's MIN-CONTENT WIDTH the
      * full width of its text. Everything in this module is a long string — a
      * question, an option, a quoted passage, a document path — and one of them
-     * inside a nowrap element sets a floor under the whole pane. Measured at
-     * 1187px in a 220px pane in another module here.
+     * inside a nowrap element sets a floor under the whole container. Measured at
+     * 1187px in a 220px container in another module here.
      *
      * happy-dom does not lay out, so the geometry cannot be measured; what CAN
      * be asserted is that no element carrying one of those strings also carries

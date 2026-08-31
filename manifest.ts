@@ -54,17 +54,17 @@ export const VERSION = '1.0.0'
  *     this store holds. A prettier heading is not worth a permission, and a
  *     permission asked for and used once for a heading is the fastest way to
  *     teach somebody to press yes without reading.
- *   - **`selection:set` — no.** This pane reacts to what is open; it does not
- *     change what every other pane on the canvas is looking at. A quiz that
+ *   - **`selection:set` — no.** This container reacts to what is open; it does not
+ *     change what every other container on the canvas is looking at. A quiz that
  *     re-pointed the canvas when you answered a question would be answering for
  *     you.
  *   - **`view:navigate` — no.** Being walked TO is `roadmap.goto` arriving and
- *     needs no declaration. This pane answers that it has nothing to walk to,
+ *     needs no declaration. This container answers that it has nothing to walk to,
  *     because a question is not a place.
  *   - **`stage:report` — no.** Saying where work stands belongs to whoever is
  *     doing it. Getting a question wrong is not a stage.
  *   - **`state:keep` — no, and this is the one worth arguing.** Checklist
- *     declares it because a person has to PICK which list a pane is showing and
+ *     declares it because a person has to PICK which list a container is showing and
  *     the pick has to stick per kehikko. Nothing here is picked: the epic
  *     decides which questions are shown, the project decides which store they
  *     came out of, and both arrive in the context. A kept string would have
@@ -78,15 +78,15 @@ export const VERSION = '1.0.0'
  *   same facts.** Checklist announces an agent coming through its MCP door, on
  *   the ground that a notification is for what you would otherwise miss. That is
  *   right there and wrong here, for one reason: what an agent writes through
- *   THIS door lands in the pane in front of the reader within three seconds, as
- *   a question they can answer. The pane IS the notification, and a second line
+ *   THIS door lands in the container in front of the reader within three seconds, as
+ *   a question they can answer. The container IS the notification, and a second line
  *   on a panel two inches away saying "an agent added a question" would be
  *   telling somebody about a thing they are looking at. `consumes` stays empty
  *   for the ordinary reason: this app shows questions, and a quiz that also
- *   showed other modules' announcements would be two panels in one pane.
+ *   showed other modules' announcements would be two panels in one container.
  *
  * - **`prompt: false`.** The protocol offers a module a prompt: a paragraph a
- *   person writes on the canvas, aimed at one pane, composed by the host and
+ *   person writes on the canvas, aimed at one container, composed by the host and
  *   delivered in every context. Declaring it makes a host OFFER one. The
  *   question is not "could we find a use" but "is there work here that has to be
  *   described before it can be done", and the answer is no. A question here is
@@ -111,7 +111,7 @@ export const VERSION = '1.0.0'
  * questions about this paper" answerable without anybody typing a slug.
  *
  * `context.epic` is nullable and that is a real screen rather than an error. A
- * canvas can be standing on no epic at all; the pane then says which epics in
+ * canvas can be standing on no epic at all; the container then says which epics in
  * this project hold questions, which is the most useful true thing it can say.
  */
 export const MANIFEST: Manifest = manifestSchema.parse({

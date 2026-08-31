@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge.tsx'
  * `context.epic` is nullable and this is the screen for it. A question belongs
  * to the epic whose paper it was written about — that is the key the store is
  * read by, not a display choice — so with no epic there is genuinely nothing to
- * ask. What the pane can still do is say WHICH papers in this project have
+ * ask. What the container can still do is say WHICH papers in this project have
  * questions waiting, which is the most useful true thing available and turns a
  * dead end into a signpost.
  */
@@ -24,7 +24,7 @@ export function NoEpic({ project, standings }: { project: string | null; standin
     <section className="flex min-w-0 flex-col gap-1.5">
       <h2 className="text-[0.8rem] font-semibold">No paper is open</h2>
       <p className="text-[0.7rem] leading-4 text-muted-foreground">
-        A question here belongs to the epic whose paper it was written about, so this pane has nothing to ask until
+        A question here belongs to the epic whose paper it was written about, so this container has nothing to ask until
         one is open. Open an epic on this canvas and its questions appear.
       </p>
       {standings.length ? (
@@ -67,7 +67,7 @@ export function NoEpic({ project, standings }: { project: string | null; standin
  * has no canvas at all — and this page must not guess. Guessing is not a display
  * mistake here: questions are kept INSIDE the project, at
  * `.kehikot/learning/questions.json`, so a guessed path is somebody's questions written
- * into a folder they will never open, under a pane that said they were saved.
+ * into a folder they will never open, under a container that said they were saved.
  *
  * ## Why there is no longer a list of projects on this screen
  *
@@ -93,8 +93,8 @@ export function NoProject({ unhosted }: { unhosted: boolean }) {
         {unhosted
           ? 'Opened directly, this page has no canvas to tell it which project it is standing in — and the questions '
             + 'are kept inside the project, so without one there is no file to open. Nothing is wrong and nothing is '
-            + 'lost: open this pane on a canvas that has a project, and its questions appear.'
-          : 'A host may know a project’s name and have no folder to point at, and this pane will not guess. Questions '
+            + 'lost: open this container on a canvas that has a project, and its questions appear.'
+          : 'A host may know a project’s name and have no folder to point at, and this container will not guess. Questions '
             + 'live inside the project they are about, so a guessed path would write somebody’s questions into a '
             + 'folder they will never open.'}
       </p>

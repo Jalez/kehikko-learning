@@ -57,8 +57,8 @@ describe('the manifest', () => {
   })
 
   test('declares no extensions', () => {
-    /* What an agent writes through this door lands in the pane in front of the
-       reader within three seconds. The pane IS the notification. */
+    /* What an agent writes through this door lands in the container in front of the
+       reader within three seconds. The container IS the notification. */
     expect(MANIFEST.extensions?.emits).toEqual([])
     expect(MANIFEST.extensions?.consumes).toEqual([])
   })
@@ -146,7 +146,7 @@ describe('the browser bundle', () => {
     /*
      * The failure this prevents: a value import from `quiz/questions.ts` drags
      * `node:fs` into the browser bundle, the module fails to evaluate, and the
-     * only symptom is a pane reporting a module that loaded its page and never
+     * only symptom is a container reporting a module that loaded its page and never
      * answered the host's greeting. That reads as a wire problem and is not one,
      * and it is visible only in a browser console.
      *

@@ -57,7 +57,7 @@ const question = (over: Record<string, unknown> = {}) =>
     project,
     epic: 'modes-are-modules',
     question: 'What does the manifest settle?',
-    options: ['Which tab the page gets', 'What colour the pane is'],
+    options: ['Which tab the page gets', 'What colour the container is'],
     answer: 0,
     why: 'The manifest is the only half a host reads.',
     passage: { path: 'chapters/bridge.tex', start: 100, end: 240, quote: 'the manifest is the smallest half' },
@@ -81,7 +81,7 @@ describe('where the file is', () => {
   })
 
   test('reading does not create the folder', () => {
-    /* Opening a pane against somebody's repository must leave no trace of having
+    /* Opening a container against somebody's repository must leave no trace of having
        done so. The folder appears on the first WRITE and not before. */
     expect(dataFile(project).path).not.toBeNull()
     expect(forEpic(project, 'modes-are-modules').questions).toHaveLength(0)

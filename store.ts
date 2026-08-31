@@ -109,7 +109,7 @@ export const FILE = 'questions'
  * write flattens a real file with.
  *
  * Reading does not create anything. `makeDir()` is what creates, and it is
- * called on the write path only, so opening a pane against a project never
+ * called on the write path only, so opening a container against a project never
  * leaves a folder in somebody's repository they did not ask for.
  */
 export function dataFile(projectPath: string | null | undefined): { path: string | null; trouble: string | null } {
@@ -142,7 +142,7 @@ export function dataFile(projectPath: string | null | undefined): { path: string
  * once.
  *
  * Called before a write and not before a read, so that looking at a project
- * never changes it. A reader who opens a pane against a repository and writes
+ * never changes it. A reader who opens a container against a repository and writes
  * nothing leaves no trace of having done so.
  */
 export function makeDir(projectPath: string | null | undefined): { dir: string | null; trouble: string | null } {

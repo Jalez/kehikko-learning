@@ -145,7 +145,7 @@ export interface Host {
  * effect, and effects run strictly after the frame's `load` event — which is
  * exactly when the host greets. Listening on the window here meant the greeting
  * had already come and gone, every time: the page rendered perfectly and the
- * pane beside it reported a module that would not speak. See the essay in
+ * container beside it reported a module that would not speak. See the essay in
  * `mailbox.ts`.
  *
  * The source stays injectable, because everything this function decides is
@@ -214,7 +214,7 @@ export function connect(id: string, events: HostEvents = {}, window_: MessageSou
        * A list that has to be kept complete is a list that will be incomplete
        * again at the next protocol release, and it was, three times: `prompt`
        * and `pinned` were both missing here within a day of being added, and
-       * `kehikko` — which says which canvas this pane is standing on — was
+       * `kehikko` — which says which canvas this container is standing on — was
        * missing the moment the protocol grew it. The failure has no symptom. A
        * field left out does not error; it quietly becomes this page's belief
        * that the host said nothing about it.

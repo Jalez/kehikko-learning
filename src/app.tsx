@@ -11,14 +11,14 @@ import { NoEpic, NoProject } from '@/view/nowhere.tsx'
 const framed = typeof window !== 'undefined' && window.parent !== window
 
 /**
- * How often the pane looks for questions that arrived through the MCP door.
+ * How often the container looks for questions that arrived through the MCP door.
  *
  * ## Why a poll, and not the notifications extension
  *
  * Checklist announces MCP calls onto a notifications panel and drives its own
  * refresh off the same queue. This module declares no extensions at all, and the
  * argument is in `manifest.ts`: what an agent writes through this door lands in
- * the pane in front of the reader, as a question they can answer, so the pane IS
+ * the container in front of the reader, as a question they can answer, so the container IS
  * the notification and a second line on a panel two inches away would be telling
  * somebody about a thing they are looking at.
  *
@@ -42,7 +42,7 @@ export function App() {
   const [busy, setBusy] = useState(false)
 
   /*
-   * This pane shows questions about whatever paper is open. There is nothing in
+   * This container shows questions about whatever paper is open. There is nothing in
    * it that a reference names, so `goto` is answered with a plain no rather than
    * a silence — the host's backstop would otherwise answer for us after half a
    * second, and "this app did not manage to say" reads as a fault where "there
@@ -52,8 +52,8 @@ export function App() {
     said(
       false,
       message.ref
-        ? 'This pane asks questions about a paper, so there is nothing here to walk to by reference.'
-        : 'This pane asks questions about whichever paper is open, so there is nothing here to walk to.',
+        ? 'This container asks questions about a paper, so there is nothing here to walk to by reference.'
+        : 'This container asks questions about whichever paper is open, so there is nothing here to walk to.',
     )
   }, [])
 

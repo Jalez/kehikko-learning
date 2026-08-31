@@ -41,7 +41,7 @@ export const MAX_QUESTIONS = 2000
  * question answered by a script in a loop cannot grow the file. The OLDEST go,
  * unlike the kept-state map elsewhere in this workspace, because the interesting
  * attempt is the most recent one and the first one — and when only one can be
- * kept it is the most recent, which is what the pane shows.
+ * kept it is the most recent, which is what the container shows.
  */
 export const MAX_ATTEMPTS = 12
 
@@ -116,7 +116,7 @@ const questionSchema = z.object({
  * them in the reader's order and re-sorting throws that away. With a record, the
  * order had to be reconstructed from the `at` timestamps — and three questions
  * written by one agent in one loop land in the same millisecond, at which point
- * the tiebreak was the id, which is random. The pane showed them shuffled, and
+ * the tiebreak was the id, which is random. The container showed them shuffled, and
  * only sometimes, which is the worst kind of wrong.
  *
  * The sharper reason is that JavaScript would eventually have reordered them
@@ -197,7 +197,7 @@ function read(projectPath: string | null | undefined): { store: Store; trouble: 
 /**
  * Write one project's questions, making the folder first.
  *
- * `makeDir` is called here and nowhere on the read path, so that opening a pane
+ * `makeDir` is called here and nowhere on the read path, so that opening a container
  * against a repository leaves no `.kehikot` in it until somebody actually writes
  * something. It is also where the project's `.gitignore` learns about the folder
  * — once, on the run that created it.
@@ -240,7 +240,7 @@ function now(): string {
  * once per question: in the reply to the request that submitted an answer.**
  *
  * That is the module's one genuine design constraint and it is worth spelling
- * out what the obvious alternative would have been. A quiz pane could perfectly
+ * out what the obvious alternative would have been. A quiz container could perfectly
  * well be handed the whole question — options, key and all — and simply not draw
  * the key until you press something. Every browser quiz on the internet works
  * that way. It is also worthless, for two reasons and the second is the one that
@@ -261,7 +261,7 @@ function now(): string {
  *
  * So `asked()` is a projection, not a filter. `answer` and `why` are `null`
  * until this question has an attempt against it, at which point they are filled
- * in — because once you have chosen, the key is yours, and a pane that still hid
+ * in — because once you have chosen, the key is yours, and a container that still hid
  * it would be coy rather than careful.
  *
  * `score()` below does the grading, server-side, and returns the key with the

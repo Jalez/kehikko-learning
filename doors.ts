@@ -173,7 +173,7 @@ function tools() {
             description:
               'Print the correct option and the explanation for questions nobody has answered yet. Defaults to false, '
               + 'and leave it false unless you are checking your own work: the answer is withheld from the reader’s '
-              + 'pane until they have chosen, and an assistant who has read the key is an assistant who will give it '
+              + 'container until they have chosen, and an assistant who has read the key is an assistant who will give it '
               + 'away. Questions that HAVE been answered always print their key — the reader has already seen it.',
           },
         },
@@ -401,7 +401,7 @@ function call(name: string, args: Record<string, unknown>, project: string): str
     if (!epic) {
       throw new Error(
         'add_quiz needs an epic: the one whose paper this question is about, as list_epics spells it. A question '
-        + 'belongs to an epic here, because that is how a reader finds it — the pane shows the questions for whatever '
+        + 'belongs to an epic here, because that is how a reader finds it — the container shows the questions for whatever '
         + 'is open on the canvas.',
       )
     }
@@ -530,7 +530,7 @@ function mcp(rpc: Rpc): Reply {
       instructions:
         'Multiple-choice questions about passages of a paper, and what a reader answered. You write them; a person '
         + 'answers them, and there is deliberately no tool here that answers one. Every question is anchored to a '
-        + 'document, a byte range and the quoted source. The correct option is withheld from the reader’s pane until '
+        + 'document, a byte range and the quoted source. The correct option is withheld from the reader’s container until '
         + 'they have chosen, and from you unless you ask for it — do not give it away.',
     })
   }

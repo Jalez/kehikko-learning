@@ -6,16 +6,16 @@
  *
  * ## Container queries, not viewport breakpoints
  *
- * This page's normal case is a pane 220 to 400 pixels wide inside somebody's
+ * This page's normal case is a container 220 to 400 pixels wide inside somebody's
  * canvas, on a monitor two thousand pixels across. Every viewport breakpoint
  * Tailwind ships would therefore fire — `lg:` is true, `xl:` is true — and the
  * page would lay itself out for a screen it has three per cent of. So the
  * `<body>` is a container, every responsive class in this app is a `@container`
- * class, and the only thing any of them ever measures is the pane.
+ * class, and the only thing any of them ever measures is the container.
  *
  * ## Nothing overflows sideways, ever, and this module is the hard case
  *
- * A pane that scrolls horizontally is a pane where half a sentence is behind an
+ * A container that scrolls horizontally is a container where half a sentence is behind an
  * edge nobody thinks to drag. `overflow-x: hidden` on the body would HIDE that
  * rather than fix it, so it is not here: what is here is `overflow-wrap` on the
  * prose and `min-width: 0` on the flex children, which are the two things that
@@ -24,7 +24,7 @@
  * Everything in this module is a long string. A question is a sentence, an
  * option is a phrase, and a quoted passage is a paragraph of somebody's LaTeX —
  * three of the exact shapes that set a 1187px min-content floor under a 220px
- * pane in another module in this workspace, because they were inside a component
+ * container in another module in this workspace, because they were inside a component
  * whose base class list contained `whitespace-nowrap`. See `components/ui/badge.tsx`.
  */
 
@@ -149,17 +149,17 @@
 
   /*
    * The container every responsive class in this app measures. Named, so a
-   * `@sm/pane:` class cannot accidentally attach itself to some nested container
+   * `@sm/container:` class cannot accidentally attach itself to some nested container
    * a component introduces later.
    */
   body {
-    container: pane / inline-size;
+    container: container / inline-size;
     font-synthesis-weight: none;
     text-rendering: optimizeLegibility;
   }
 
   /*
-   * Long, unbroken strings are the one thing that widens a pane past its frame:
+   * Long, unbroken strings are the one thing that widens a container past its frame:
    * a file path out of a passage, a LaTeX command, an identifier in an option.
    * Breaking them is the honest fix — the whole string stays on screen, wrapped,
    * rather than being clipped by an `overflow: hidden` that says nothing about

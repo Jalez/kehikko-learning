@@ -19,7 +19,7 @@ bun test && bun run typecheck
 A **question is anchored to a passage** — a document, a byte range inside it, and
 the exact source those bytes held. It is **multiple choice**: the options in the
 order they are shown, which one is right, and the explanation its author wrote.
-**Answering is recorded**, per question, so the pane can say what you got right
+**Answering is recorded**, per question, so the container can say what you got right
 and what you did not, and so the same question can be asked again later.
 
 A question belongs to **one epic** — the one whose paper it was written about —
@@ -32,7 +32,7 @@ labels on a screen.
 server, on disk, and it crosses the wire exactly once per question: in the reply
 to the request that submits an answer.
 
-That is not the obvious build. A quiz pane could perfectly well be handed the
+That is not the obvious build. A quiz container could perfectly well be handed the
 whole question — options, key and all — and simply not draw the key until you
 press something. Every browser quiz on the internet works that way. It is also
 worthless here, for two reasons, and the second is the one that decided it:
@@ -64,7 +64,7 @@ so the round trip on a press is not a formality that could be short-circuited
 for responsiveness: it is where the answer comes from.
 
 Once you have answered, the key and the explanation are yours and are shown. A
-pane that still hid them would be coy rather than careful. `Ask these again`
+container that still hid them would be coy rather than careful. `Ask these again`
 (`POST /api/retake`) clears the attempts, which puts the key back out of reach in
 the store and therefore on the wire — genuinely out of reach, not merely out of
 sight.
@@ -123,7 +123,7 @@ how you share it. A project that is not a git repository gets nothing.
 - **The page** is told. `projectPath` is nullable — a host with no filesystem of
   its own knows the project's name and has no folder to point at — and the page
   **does not guess**. Guessing is not a display mistake here: it would write
-  somebody's questions into a folder they will never open, under a pane that
+  somebody's questions into a folder they will never open, under a container that
   said they were saved.
 - **An agent** says which, in `project`, and is refused without it. Every
   available default is wrong: `process.cwd()` is this module's own directory,
@@ -151,7 +151,7 @@ it.
 screen rather than an error:
 
 - **No paper open.** A question belongs to the epic whose paper it was written
-  about, so with no epic there is nothing to ask. What the pane can still do is
+  about, so with no epic there is nothing to ask. What the container can still do is
   say which papers in this project have questions waiting — a signpost instead of
   a dead end.
 - **No project.** Nothing to read and nowhere to write, said plainly, with the
@@ -169,12 +169,12 @@ A spaced-repetition scheme needs two things this module does not have.
 
 **Something to fire on.** SM-2 and every descendant of it decide *when* a card
 comes back. That is only useful if something makes the card come back — a daily
-review session, a notification, a queue somebody opens. This is a pane on a
+review session, a notification, a queue somebody opens. This is a container on a
 canvas. It is looked at when a person opens the paper it is about, which is
 governed by what they are reading and not by a schedule. A `dueAt` computed here
-would be a field nothing reads: the pane would still show every question for the
+would be a field nothing reads: the container would still show every question for the
 open paper, because showing three of twelve and hiding the rest until Thursday is
-a worse pane, not a smarter one. The protocol has no timer a module can ask a
+a worse container, not a smarter one. The protocol has no timer a module can ask a
 host to set, and this module declares no capabilities at all.
 
 **A grade, not a verdict.** Every scheduling algorithm worth the name takes a
@@ -195,7 +195,7 @@ recorded; nothing is being pretended about scheduling on top of it.
 
 If this grows one, the honest shape is a `dueAt` per question computed from the
 attempts list, a `due: true` argument on `quizzes` so an agent can ask what a
-reader owes, and a sort in the pane — not a hidden queue. That is a day's work on
+reader owes, and a sort in the container — not a hidden queue. That is a day's work on
 a store that already holds the history, which is the position this leaves it in.
 
 ## The MCP door, which is the point
@@ -245,8 +245,8 @@ tool's argument validation without a browser.
   press yes without reading.
 - `extensions: { emits: [], consumes: [] }`. Checklist announces MCP calls onto a
   notifications panel and is right to. Here, what an agent writes lands in the
-  pane in front of the reader within three seconds, as a question they can
-  answer — the pane IS the notification, and a line on a panel two inches away
+  container in front of the reader within three seconds, as a question they can
+  answer — the container IS the notification, and a line on a panel two inches away
   would be telling somebody about a thing they are looking at.
 - `modes: [{ scope: 'epic' }]`, and `guidance` under the protocol's 1024
   characters, saying what this module's presence obliges rather than what it
@@ -274,7 +274,7 @@ Two traps worth naming, because both have cost this workspace time:
   there and not from `quiz/questions.ts`, which imports `node:fs`. A value import
   — or a plain `import` somebody later drops the `type` from — drags `node:fs`
   into the browser bundle, the module fails to evaluate, and the only symptom is
-  a pane reporting that the module loaded its page and never answered the host's
+  a container reporting that the module loaded its page and never answered the host's
   greeting. That reads as a wire problem and is not one, and it is visible only
   in a browser console. A types-only file cannot do it, and
   `test/manifest.test.ts` asserts the rule over every file under `src/`.
@@ -283,8 +283,8 @@ Two traps worth naming, because both have cost this workspace time:
   *min-content width* the full width of its text, which propagates up through
   every ancestor that is not `min-w-0`. Everything in this module is a long
   string — a question, an option, a quoted passage, a document path. One of them
-  in a nowrap element sets a floor under the whole pane; that floor was measured
-  at 1187px in a 220px pane in another module here. The short verdict marks opt
+  in a nowrap element sets a floor under the whole container; that floor was measured
+  at 1187px in a 220px container in another module here. The short verdict marks opt
   back in at their call site. Measured clean at 220/280/320/400/1200px in both
   themes.
 

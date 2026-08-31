@@ -63,7 +63,7 @@ export type { Asked, Attempt, Standing }
  * There is no `everyProject()` here any more, and its absence is the change.
  *
  * It fetched `/api/projects`, which enumerated the projects one central store
- * held questions for, and the pane drew that list when the host had given it no
+ * held questions for, and the container drew that list when the host had given it no
  * path. There is no central store now: every question is inside the project it
  * is about, at `.kehikot/learning/questions.json`, and this app is handed one project at
  * a time and forgets it. So the list cannot be built, and — more to the point —
@@ -85,7 +85,7 @@ export interface Opened {
  * One epic's questions in one project, or — with no epic — what each epic in the
  * project adds up to.
  *
- * Both in one call rather than two, because the pane needs both at once in the
+ * Both in one call rather than two, because the container needs both at once in the
  * no-epic case and needs the standings beside the questions in the other, and a
  * second round trip would mean a render where the questions had arrived and the
  * heading had not.

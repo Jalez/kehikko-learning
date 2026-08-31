@@ -17,9 +17,9 @@ import { cn } from '@/lib/utils.ts'
  * makes the element's MIN-CONTENT WIDTH the full width of its text, and
  * min-content propagates up through every ancestor that is not explicitly
  * `min-w-0`. So one badge with a long string in it sets a floor under the whole
- * pane, and the pane scrolls sideways at every width below that floor. In
+ * container, and the container scrolls sideways at every width below that floor. In
  * another module in this workspace that floor was measured at 1187 pixels, in a
- * pane 220 wide.
+ * container 220 wide.
  *
  * Everything this module puts in a badge is one of those long strings: the path
  * of a document, an epic slug, an option somebody wrote as a full clause, and

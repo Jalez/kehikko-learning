@@ -8,7 +8,7 @@ import { connect, type Host, type HostEvents } from './host.ts'
  * ## Why there is no `state.set` here, where Checklist has one
  *
  * Checklist keeps a per-kehikko choice through the protocol's kept state,
- * because a person has to PICK which list a pane shows and the pick has to
+ * because a person has to PICK which list a container shows and the pick has to
  * stick. Nothing here is picked. Which questions are shown is decided by two
  * facts that both arrive in the context — the project this canvas is standing
  * in, and the epic that is open — so a kept string would have nothing to hold,
@@ -44,7 +44,7 @@ export interface Roadmap {
   projectPath: string | null
   /** The project's name, when the host gave one. A label; `projectPath` is the key. */
   project: string | null
-  /** Ask the host to make this pane a given height. */
+  /** Ask the host to make this container a given height. */
   resize: (height: number) => void
 }
 

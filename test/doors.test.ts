@@ -55,7 +55,7 @@ const good = (): Record<string, unknown> => ({
   project: A,
   epic: 'modes-are-modules',
   question: 'What does a manifest settle?',
-  options: ['Which tab the page gets', 'What colour the pane is', 'Who owns the repository'],
+  options: ['Which tab the page gets', 'What colour the container is', 'Who owns the repository'],
   answer: 0,
   why: 'The manifest is the only half a host reads.',
   path: 'chapters/bridge.tex',
