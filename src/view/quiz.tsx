@@ -697,6 +697,16 @@ export function QuestionCard({
  * `view/room.ts` counts it with every chip and every control, at both paged
  * rungs, so that what the row happens to be showing can never change which rung
  * is being shown. The alternative is a loop with the reader inside it.
+ *
+ * ## And the row does not move
+ *
+ * The same instinct, one step further, and it is what the paged shape here is
+ * now: a column, of a card body exactly `ladder.available` tall that scrolls
+ * inside itself, and the row underneath it. The row used to be simply next in
+ * flow, so it rode up and down with the part — 532px on `options` and 160px on
+ * `passage` at 220×300, on the one control a reader presses over and over. A
+ * control that moves between the look and the press is a control that gets
+ * pressed wrong. The essay on the body below carries the rest.
  */
 export function QuizView({
   epic,
@@ -818,21 +828,89 @@ export function QuizView({
           </p>
         ) : null}
 
-        <ul className="flex min-w-0 flex-col">
-          <QuestionCard
-            key={question.id}
-            question={question}
-            busy={busy}
-            room={room}
-            rung={ladder.rung}
-            part={ladder.rung === 'part' ? showing : null}
-            header={ladder.header}
-            estimate={ladder.heights[at] ?? 0}
-            pointed={pointed === question.id}
-            onAnswer={(chose) => onAnswer(question.id, chose)}
-            onPoint={() => onPoint(question.id)}
-          />
-        </ul>
+        {/*
+          The card, in a box of exactly the height the ladder said there was.
+
+          ## The complaint
+
+          "Can we have the navigator component/button group stay put in a way
+          that it doesn't go up and down in the component depending on how much
+          space the question/options/passage/why takes."
+
+          It was in flow, directly after the card, so it rode up and down with
+          whatever the part happened to hold: measured before this, the row sat
+          at 532px on `options` and 160px on `passage` at 220×300 — 372 pixels
+          apart, on the one control whose entire job is to be pressed over and
+          over. A person who looks, then reaches for `passage`, presses `why`,
+          because the row moved between the look and the press.
+
+          ## Why a fixed height and not `position: sticky`
+
+          Sticky to the bottom of the viewport would hold the row still on
+          screen and would leave it in a different place in the DOCUMENT on
+          every part — so a reader who scrolls has the row slide over the
+          options underneath it, and the options behind it are unpressable in a
+          way nothing on screen explains. A column with a fixed body is the
+          honest shape: the part scrolls INSIDE its own box, the box is always
+          the same box, and what is below the box is never underneath anything.
+
+          ## And why THIS number
+
+          `ladder.available` is not a new measurement. It is the number that
+          decided the rung — the frame, less the page's padding, less the row of
+          controls reserved at its widest — so the box drawn here is exactly the
+          room the ladder promised the card. That is what keeps the two from
+          drifting: if this used any other number, "does the whole question fit"
+          and "how tall is the box it is drawn in" would be two answers to one
+          question. It does not depend on which part is showing, on which
+          question is shown, or on whether anything has been answered, and
+          `test/room.test.ts` asserts each of those — which is the whole of this
+          fix, stated where it can be checked without a browser.
+
+          Unpinned when it is not positive, which is the unmeasured frame: no
+          height, ordinary flow, the shape this had before. A box zero pixels
+          tall on the first render would be a card nobody can see.
+
+          ## What it costs, said out loud
+
+          The reservation is for the row at its widest, so a row that is not yet
+          full — nothing answered, so no score, no retake and no `why` chip —
+          leaves space under itself that the card does not get. Measured at
+          220×300: a question that used to just fit now scrolls some fifty
+          pixels inside its box, until the first answer fills the row it was
+          always going to fill. Lending that space to the card in the meantime
+          is exactly the thing being fixed, with an extra step: the card would
+          grow, the row would rise, and answering would drop it again under the
+          finger of somebody who had just pressed an option.
+
+          One thing genuinely paid for: where the browser draws a classic
+          scrollbar rather than an overlay one, this scroller is some fifteen
+          pixels narrower than `ladder()` measured the frame to be, so a card
+          that overflows may wrap a line more than the estimate expected.
+          `dev/ladder.mjs` measures the estimate against the truth on every run
+          and would say so.
+        */}
+        <div
+          data-body="pinned"
+          style={ladder.available > 0 ? { height: `${Math.round(ladder.available)}px` } : undefined}
+          className="min-w-0 overflow-y-auto"
+        >
+          <ul className="flex min-w-0 flex-col">
+            <QuestionCard
+              key={question.id}
+              question={question}
+              busy={busy}
+              room={room}
+              rung={ladder.rung}
+              part={ladder.rung === 'part' ? showing : null}
+              header={ladder.header}
+              estimate={ladder.heights[at] ?? 0}
+              pointed={pointed === question.id}
+              onAnswer={(chose) => onAnswer(question.id, chose)}
+              onPoint={() => onPoint(question.id)}
+            />
+          </ul>
+        </div>
 
         {/*
           The one row, and it is deliberately not three rows.

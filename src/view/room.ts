@@ -304,7 +304,28 @@ export interface Ladder {
    * reader asked for a different question.
    */
   rung: Rung
-  /** Height there is for cards, once the chrome that is always drawn is paid for. */
+  /**
+   * Height there is for cards, once the chrome that is always drawn is paid for.
+   *
+   * At the paged rungs this stopped being only a budget and became a BOX: the
+   * page draws the card in a scroller exactly this tall, so that the row of
+   * controls beneath it sits in the same place whatever the part happens to
+   * hold. The owner's complaint was that it did not — "can we have the
+   * navigator component/button group stay put in a way that it doesn't go up
+   * and down in the component depending on how much space the
+   * question/options/passage/why takes" — and the row was 372 pixels lower on
+   * `options` than on `passage` at 220×300, because it was simply next in flow.
+   *
+   * Which makes the two properties this number already had load-bearing rather
+   * than incidental, and they are asserted in `test/room.test.ts`:
+   *
+   * - it does not depend on WHICH question is shown, and
+   * - it does not depend on what the reader has answered,
+   *
+   * because `controlsHeight()` reserves that row at its widest and nothing else
+   * in the subtraction knows about a card. A number that moved with either would
+   * be a box that moved with either, which is the bug with an extra step.
+   */
   available: number
   /**
    * How many lines of the shown question are drawn above a part that is not the

@@ -402,16 +402,48 @@ export function App() {
     }
   }, [projectPath, epic, refresh])
 
-  /* Ask the host for the height this page actually is. The observer is
-     re-attached on every render deliberately: the alternative is a dependency
-     list that has to name everything that can change the page's height, which is
-     a list somebody will forget to add to. */
+  /*
+   * Ask the host for the height this page actually is. The observer is
+   * re-attached on every render deliberately: the alternative is a dependency
+   * list that has to name everything that can change the page's height, which is
+   * a list somebody will forget to add to.
+   *
+   * ## What the pinned card body would have done to this, and why it does not
+   *
+   * At the paged rungs the card is drawn in a box of exactly `ladder.available`
+   * pixels so that the row of controls under it cannot move — see the essay in
+   * `view/quiz.tsx`. That box is a function of the frame, and this message asks
+   * the host to CHANGE the frame: `modules-client.ts` answers it with
+   * `frame.style.height = height`, so measuring the pinned page and asking for
+   * sixteen more than it would be a request to grow by sixteen pixels, forever,
+   * once per animation frame.
+   *
+   * So the pinning is undone in the arithmetic. What is reported is the height
+   * this page would be if the body were not a scroller — its own box, less the
+   * box the card was given, plus the card's real height — which is the same
+   * number this line reported before the body was pinned, in every case. The
+   * host's side of the conversation is therefore untouched by this fix: pinning
+   * decides how the page draws INSIDE the box it has, and never what box it
+   * asks for.
+   *
+   * The inner element is observed as well, and it has to be: with the body
+   * pinned the shell's own box no longer changes when the reader switches
+   * parts, so an observer watching only the shell would go on reporting the
+   * height of a part they left.
+   */
   const shell = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const node = shell.current
     if (!node || typeof ResizeObserver === 'undefined') return
-    const watch = new ResizeObserver(() => resize(Math.ceil(node.getBoundingClientRect().height) + 16))
+    const inner = node.querySelector('[data-body="pinned"] > *')
+    const tell = () => {
+      const body = inner?.parentElement
+      const pinned = body && inner ? inner.getBoundingClientRect().height - body.getBoundingClientRect().height : 0
+      resize(Math.ceil(node.getBoundingClientRect().height + pinned) + 16)
+    }
+    const watch = new ResizeObserver(tell)
     watch.observe(node)
+    if (inner) watch.observe(inner)
     return () => watch.disconnect()
   })
 

@@ -231,6 +231,29 @@ part rather than after it, since eight options at 220 wide are 516 pixels of
 buttons and anything under them goes off the bottom. Switching parts and paging
 publish nothing, and `dev/pointing.mjs` counts that from the host's side.
 
+**And the row of controls does not move.** It used to be simply next in flow
+after the card, so it rode up and down with whatever the part happened to hold:
+532px on `options` and 160px on `passage` at 220×300, on the one control a reader
+presses over and over — a person who looks, then reaches for `passage`, presses
+`why`. The paged rungs are a column now: the card is drawn in a box of exactly
+`ladder.available` pixels and scrolls inside it, and the row sits under that box.
+The row's position is therefore that one number, which is the frame less the
+page's padding less the row reserved at its widest, and it depends on neither
+which part is showing, nor which question, nor what has been answered.
+`test/room.test.ts` asserts the last two of those without a browser and
+`dev/ladder.mjs` measures the row's real offset on every part at every size: it
+was moving by up to 372px and moves by none. The fourth chip, which arrives with
+the first answer, is a second line of chips at 220 wide — the row grows
+downwards, into space `controlsHeight()` had already reserved, and its top does
+not move.
+
+What it costs is that the space reserved for a row that is not yet full is not
+lent to the card in the meantime: at 220×300 a question that used to just fit now
+scrolls about fifty pixels inside its box, until answering fills the row it was
+always going to fill. That is the same trade `controlsHeight()` already made for
+the rung, and it is made here for the same reason — a layout that gives space
+back and then takes it away is a layout that moves under somebody's finger.
+
 **The explanation is a part of its own; the result is not.** Answering earns two
 things and they are drawn in two places. `right`/`wrong` and the marks on the
 options stay with the options, because knowing you were wrong belongs beside what

@@ -310,6 +310,66 @@ describe('what the reader has answered', () => {
 })
 
 /* ------------------------------------------------------------------------- *
+ * The box the card is drawn in, which is the row of controls holding still.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * "Can we have the navigator component/button group stay put in a way that it
+ * doesn't go up and down in the component depending on how much space the
+ * question/options/passage/why takes."
+ *
+ * The row was next in flow after the card, so it rode up and down with whatever
+ * the part held — measured at 532px on `options` and 160px on `passage` at
+ * 220×300, on the one control a reader presses over and over. The page now draws
+ * the card in a box of exactly `available` pixels and the row underneath it, so
+ * the row's position is that number and nothing else.
+ *
+ * Which turns `available` from a budget into a promise, and these are the two
+ * halves of it. `dev/ladder.mjs` measures the row's actual offset on every part
+ * at every size in a real browser; what can be said HERE, without one, is that
+ * the number the box is drawn from does not move — and if it did, no amount of
+ * CSS underneath would hold the row still.
+ */
+describe('the room the card is given', () => {
+  const worked = (one: Card) =>
+    card({
+      ...one,
+      answered: true,
+      why: 'Because the manifest is the only half a host reads, and it is read every single time.',
+    })
+
+  test('is the same box whichever question the reader has paged to', () => {
+    /*
+     * The rung may well differ — a short question shows whole where the monster
+     * three along from it splits, which is the honest answer to a list whose
+     * cards are not the same height. What must not differ is the room they are
+     * drawn in, because that is where the row of controls sits, and a row that
+     * moved as somebody paged would be the same complaint with an extra press
+     * in front of it.
+     */
+    const cards = [SHORT, MEDIUM, LONG]
+    for (const size of Object.values(SIZES)) {
+      const rooms = cards.map((_, at) => climb(size, cards, at).available)
+      expect(new Set(rooms).size).toBe(1)
+    }
+  })
+
+  test('and the same box before and after the reader answers', () => {
+    /*
+     * The moment the switcher's own contents change: `why` does not exist until
+     * a question has been answered, so answering adds a fourth chip and, at 220
+     * wide, a second line of them. The row may therefore be TALLER afterwards —
+     * `controlsHeight()` reserved for that all along — but it may not start
+     * anywhere else, which is what this asserts.
+     */
+    const cards = [SHORT, MEDIUM, LONG]
+    for (const size of Object.values(SIZES)) {
+      expect(climb(size, cards.map(worked)).available).toBe(climb(size, cards).available)
+    }
+  })
+})
+
+/* ------------------------------------------------------------------------- *
  * The header above a part, which is the one that used to be drawn in halves.
  * ------------------------------------------------------------------------- */
 

@@ -49,6 +49,19 @@
  * 4. **The press that points the canvas is still on screen.** It is the one
  *    capability this module asks for; a split that put it behind a navigation
  *    would be the feature made unreachable by a layout.
+ * 5. **The row of controls does not move.** The owner's words: "can we have the
+ *    navigator component/button group stay put in a way that it doesn't go up
+ *    and down in the component depending on how much space the
+ *    question/options/passage/why takes." It is one number — the row's offset
+ *    from the top of the document — and the whole feature is that it is the
+ *    SAME number on every part, before and after an answer, at every size. The
+ *    control whose entire job is to be pressed repeatedly is the one that must
+ *    hold still, because a person aiming at `passage` who gets `why` was aiming
+ *    at where the row was when they looked.
+ *
+ *    Measured rather than eyeballed, and measured with the document's own
+ *    scroll added back, so that a row which is in the same place but reached by
+ *    a different scroll is not counted as still.
  *
  * That is why it fails on the build BEFORE the ladder as well as passing on the
  * one after. Run it against `git stash` if you doubt it: at 220×300 the list is
@@ -181,6 +194,32 @@ const SEED = [
 
 const say = (...args) => console.log(...args)
 
+/**
+ * Whether one number stayed one number.
+ *
+ * Finding 5 is a single measurement — where the row of controls is — taken on
+ * every part and, once a question has been answered, again on all four. This
+ * says whether they are all the same number, and prints them either way,
+ * because "it moved 46px between `options` and `passage`" is the sentence
+ * somebody fixing it needs and "unstable" is not.
+ *
+ * One pixel of slack, for the sub-pixel line heights that put a row at 213.6
+ * on one part and 214.4 on the next. Nothing a finger can aim at is inside a
+ * pixel.
+ */
+function steady(at) {
+  const named = Object.entries(at).filter(([, top]) => typeof top === 'number')
+  if (!named.length) return null
+  const tops = named.map(([, top]) => top)
+  const drift = Math.max(...tops) - Math.min(...tops)
+  return {
+    still: drift <= 1,
+    line:
+      named.map(([name, top]) => `${name} ${top}px`).join(', ')
+      + (drift <= 1 ? ' — it stays put' : ` — it moves by ${drift}px`),
+  }
+}
+
 const mcp = (name, args) =>
   fetch(`${ORIGIN}/mcp`, {
     method: 'POST',
@@ -299,10 +338,31 @@ async function main() {
           options: options.length,
           passageOnScreen: passage !== null && passage !== undefined,
           passageInView: inside(rect(passage)),
+          /*
+           * What the reader cannot see without moving, counted in BOTH
+           * scrollers.
+           *
+           * The card body is its own scroller now — that is what pins the row
+           * below it — so a document that no longer scrolls is not on its own
+           * evidence that everything is on screen. Adding the body's hidden
+           * height back is what keeps finding 1 meaning what it meant before
+           * the row was pinned.
+           */
+          hidden: (() => {
+            const body = document.querySelector('[data-body="pinned"]')
+            return body ? Math.max(0, body.scrollHeight - body.clientHeight) : 0
+          })(),
+          /* The one number finding 5 is about: where the row of controls sits,
+             in the document rather than in the viewport, so a row reached by a
+             different scroll is not mistaken for a row that stayed put. */
+          controlsTop: (() => {
+            const row = document.querySelector('[data-controls]')
+            return row ? Math.round(row.getBoundingClientRect().top + scroller.scrollTop) : null
+          })(),
         }
       })
 
-      const overrun = Math.max(0, m.scrollHeight - m.box)
+      const overrun = Math.max(0, m.scrollHeight - m.box) + m.hidden
       say(`\n=== ${width}×${height} — ${note} ===`)
       say(`  rung ${m.rung}${m.part === '(none)' ? '' : ` · part ${m.part}`} · snap ${m.snapType}`)
       say(
@@ -386,6 +446,10 @@ async function main() {
        * gets a header; measuring every question is what makes sure it is seen.
        */
       const paged = await frame.$('[data-page="on"]')
+      /* The first question's row, kept for the before-and-after comparison
+         below: the answering step returns to question 1, so this is the same
+         card measured on both sides of the press that creates a fourth chip. */
+      let firstAt = {}
       for (let page = 0; paged && page < 12; page += 1) {
         const last = await frame.evaluate(() => {
           const scroller = document.scrollingElement
@@ -414,10 +478,14 @@ async function main() {
             options: options.length,
             passageInView: inside(card.querySelector('[data-passage]')),
             scrollHeight: scroller.scrollHeight,
+            hidden: (() => {
+              const body = document.querySelector('[data-body="pinned"]')
+              return body ? Math.max(0, body.scrollHeight - body.clientHeight) : 0
+            })(),
             box,
           }
         })
-        const over = Math.max(0, last.scrollHeight - last.box)
+        const over = Math.max(0, last.scrollHeight - last.box) + last.hidden
         const which = `question ${page + 1}`
         say(
           `  ${which}: rung ${last.rung} · part ${last.part} · chips [${last.chips.join(' ')}]`
@@ -456,12 +524,16 @@ async function main() {
          * nothing, and a `quote` chip that leaves the quote off screen is the
          * split done badly.
          */
+        const rowAt = {}
         for (const chip of last.chips) {
           await frame.click(`[data-part="${chip}"]`)
           await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
           const seen = await frame.evaluate(() => {
+            const scroller = document.scrollingElement
             const card = document.querySelector('[data-question]')
             const text = card.querySelector('[data-question-text]')
+            const row = document.querySelector('[data-controls]')
+            const body = document.querySelector('[data-body="pinned"]')
             return {
               options: card.querySelectorAll('button[data-slot="button"]').length,
               quote: !!card.querySelector('blockquote'),
@@ -470,12 +542,25 @@ async function main() {
                  above the options is the same sentence and is held to the same
                  rule, which is that it is never shown in halves. */
               clipped: !!text && text.scrollHeight > text.clientHeight + 1,
-              scroll: document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight,
+              scroll:
+                scroller.scrollHeight - scroller.clientHeight
+                + (body ? Math.max(0, body.scrollHeight - body.clientHeight) : 0),
+              /* Finding 5, one part at a time. */
+              controlsTop: row ? Math.round(row.getBoundingClientRect().top + scroller.scrollTop) : null,
+              /* How many lines the chips themselves are drawn on, by their
+                 distinct tops. Four chips at 220 wide is the case the `why`
+                 part introduced, and a row that gains a line is a row that
+                 moved. */
+              chipRows: new Set(
+                [...document.querySelectorAll('[data-part]')].map((b) => Math.round(b.getBoundingClientRect().top)),
+              ).size,
             }
           })
+          rowAt[chip] = seen.controlsTop
           say(
             `    part “${chip}”: ${seen.options} options, quote ${seen.quote ? 'shown' : 'not shown'},`
-              + ` question ${seen.drawn}${seen.clipped ? ' (CLIPPED)' : ''}, ${Math.max(0, seen.scroll)}px of scrolling`,
+              + ` question ${seen.drawn}${seen.clipped ? ' (CLIPPED)' : ''}, ${Math.max(0, seen.scroll)}px of scrolling,`
+              + ` controls at ${seen.controlsTop}px on ${seen.chipRows} line(s) of chips`,
           )
           if (chip === 'options' && seen.options === 0) {
             problems.push(`${width}×${height}: the "options" part showed no options`)
@@ -488,6 +573,29 @@ async function main() {
           }
           if (seen.clipped) {
             problems.push(`${width}×${height}: on ${which}'s "${chip}" part, the question was drawn clipped`)
+          }
+        }
+
+        /*
+         * Finding 5: the row is in the same place on every part.
+         *
+         * One number, asserted rather than described. `steady()` is used again
+         * after the answer below, because `why` appearing is the moment the
+         * row's own contents change.
+         */
+        if (page === 0) {
+          firstAt = Object.fromEntries(Object.entries(rowAt).map(([chip, top]) => [`${chip} (unanswered)`, top]))
+        }
+
+        const said = steady(rowAt)
+        if (said) {
+          say(`    the row of controls: ${said.line}`)
+          if (!said.still) {
+            problems.push(
+              `${width}×${height}: on ${which}, the row of controls moved between parts — ${said.line}.`
+                + ' The one control a reader presses over and over is the one that will not hold still, so a press'
+                + ' aimed at where it was lands on the chip beside the one they wanted',
+            )
           }
         }
 
@@ -615,10 +723,140 @@ async function main() {
               problems.push(`${width}×${height}: the "why" chip led to a screen with no explanation on it`)
             }
           }
+
+          /*
+           * Finding 5 again, across the press that changes what the row itself
+           * holds.
+           *
+           * `why` does not exist until a question has been answered, so this is
+           * the one moment the switcher's own contents change under a reader —
+           * a fourth chip, and at 220 wide possibly a fourth line of them. The
+           * row is measured on every part on both sides of that press and all
+           * of them have to be the same number. Comparing only the answered
+           * parts with each other would pass a build in which the whole row
+           * dropped forty pixels the instant somebody answered.
+           */
+          const answeredAt = {}
+          for (const chip of after.chips) {
+            await frame.click(`[data-part="${chip}"]`)
+            await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+            const now = await frame.evaluate(() => {
+              const row = document.querySelector('[data-controls]')
+              const chips = [...document.querySelectorAll('[data-part]')]
+              return {
+                top: row ? Math.round(row.getBoundingClientRect().top + document.scrollingElement.scrollTop) : null,
+                /* The row's own height, and how many lines the chips take, on
+                   the far side of the press that adds a fourth. Printed rather
+                   than asserted: with the row drawn UNDER a body of a fixed
+                   height, a fourth chip that wraps to a new line grows the row
+                   downwards and cannot move its top — which is the point, and
+                   is worth being able to see. */
+                height: row ? Math.round(row.getBoundingClientRect().height) : null,
+                chips: chips.length,
+                lines: new Set(chips.map((b) => Math.round(b.getBoundingClientRect().top))).size,
+              }
+            })
+            answeredAt[`${chip} (answered)`] = now.top
+            say(
+              `    with ${now.chips} chips: the row is ${now.height}px on ${now.lines} line(s) of chips,`
+                + ` its top at ${now.top}px`,
+            )
+          }
+          const both = steady({ ...firstAt, ...answeredAt })
+          if (both) {
+            say(`  the row of controls, either side of the answer: ${both.line}`)
+            if (!both.still) {
+              problems.push(
+                `${width}×${height}: the row of controls moved — ${both.line}. It is the one control a reader`
+                  + ' presses over and over, and it is the one that will not hold still',
+              )
+            }
+          }
         }
       } else {
         say('  answered where they stood: NO OPTION WAS REACHABLE')
       }
+
+      /*
+       * Four chips, which is the widest the switcher is ever drawn.
+       *
+       * The step above answers question 1, and question 1 is short enough to
+       * stand above its own parts at every size — so it earns a `why` chip and
+       * still has only three, and a run that stopped there would never once
+       * have measured the row at its full width. Four happens where a question
+       * is too long for a header AND has been answered, which is a question
+       * with a `question` chip, pressed.
+       *
+       * It matters at 220 wide, where three chips are already two lines: a
+       * fourth that wraps to a third line makes the row taller. What is asserted
+       * is not that it fits on one line — it does not, and demanding that would
+       * mean abbreviating the words a reader navigates by — but that a row
+       * growing DOWNWARDS from a fixed body cannot move its own top, which is
+       * the whole reason the body is pinned rather than the row being anchored
+       * to the bottom edge.
+       */
+      for (let step = 0; paged && step < 12; step += 1) {
+        const has = await frame.evaluate(() =>
+          [...document.querySelectorAll('[data-part]')].map((b) => b.getAttribute('data-part')),
+        )
+        if (has.includes('question')) break
+        const on = await frame.$('[data-page="on"]:not([disabled])')
+        if (!on) break
+        await on.click()
+        await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+      }
+      const four = await frame.evaluate(async () => {
+        const chips = [...document.querySelectorAll('[data-part]')].map((b) => b.getAttribute('data-part'))
+        if (!chips.includes('question')) return { reached: false }
+        const card = document.querySelector('[data-question]')
+        if (card.getAttribute('data-answered') === 'yes') return { reached: true, pressed: true }
+        const box = document.scrollingElement.clientHeight
+        const option = [...card.querySelectorAll('button[data-slot="button"]')].find((o) => {
+          const r = o.getBoundingClientRect()
+          return r.top >= -1 && r.bottom <= box + 1
+        })
+        if (!option) return { reached: true, pressed: false }
+        option.click()
+        return { reached: true, pressed: true }
+      })
+      if (four.reached && four.pressed) {
+        await frame.waitForSelector('[data-question][data-answered="yes"]', { timeout: 15000 })
+        await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+        const wideAt = {}
+        const chips = await frame.evaluate(() =>
+          [...document.querySelectorAll('[data-part]')].map((b) => b.getAttribute('data-part')),
+        )
+        for (const chip of chips) {
+          await frame.click(`[data-part="${chip}"]`)
+          await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+          const now = await frame.evaluate(() => {
+            const row = document.querySelector('[data-controls]')
+            const all = [...document.querySelectorAll('[data-part]')]
+            return {
+              top: row ? Math.round(row.getBoundingClientRect().top + document.scrollingElement.scrollTop) : null,
+              height: row ? Math.round(row.getBoundingClientRect().height) : null,
+              lines: new Set(all.map((b) => Math.round(b.getBoundingClientRect().top))).size,
+              bottom: row ? Math.round(row.getBoundingClientRect().bottom) : null,
+              box: document.scrollingElement.clientHeight,
+            }
+          })
+          wideAt[chip] = now.top
+          say(
+            `  the switcher at its widest, part “${chip}”: ${chips.length} chips on ${now.lines} line(s),`
+              + ` row ${now.height}px, top at ${now.top}px, bottom ${now.bottom} of a ${now.box}px box`,
+          )
+        }
+        const wide = steady(wideAt)
+        if (wide && !wide.still) {
+          problems.push(
+            `${width}×${height}: with all four chips drawn the row moved — ${wide.line}. The fourth chip is the`
+              + ' one that arrives while somebody is reading, so it is the one that must not move the other three',
+          )
+        }
+      } else {
+        say(`  the switcher at its widest: never reached here (${four.reached ? 'no option to press' : 'no question chip'})`)
+      }
+
       await page.close()
     }
   } finally {
