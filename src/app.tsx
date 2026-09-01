@@ -63,6 +63,34 @@ export function App() {
 
   const { where, epic, projectPath, project, passage, resize, point } = useRoadmap(ID, onGoto)
 
+  /*
+   * Nothing is offered to `roadmap.filters`, and the silence is the decision.
+   *
+   * The protocol lets a module hand the host a list of things it can be narrowed
+   * by, and the host draws one control in the container header for it. Six modules
+   * in this family have something to put there. This one does not, and it is
+   * worth writing down so that the next person to sweep the family does not go
+   * looking for the filter that was left behind.
+   *
+   * Everything this page holds is already narrowed by something nobody chooses:
+   * the questions are the questions about the paper that is open, in the project
+   * the host named, and both come off the context rather than off a press. What
+   * is left is a reader moving through them — `shown` and `part` — and that is a
+   * position, not a filter. It hides nothing: every question is still there, one
+   * press away, and the count on screen says how many.
+   *
+   * The temptation is `only unanswered`, and it is refused rather than
+   * postponed. A quiz whose list silently loses a card the moment it is answered
+   * takes away the one thing a reader comes back for, which is reading the
+   * explanation again. If somebody asks for it, it is an offer of one group with
+   * two options and it belongs here; inventing it to have something to send
+   * would be a control built for the header rather than for the reader.
+   *
+   * A module with nothing to offer sends nothing. An empty offer would be this
+   * page saying "the last thing I offered is withdrawn", which is a different
+   * sentence and one it has never had cause to say.
+   */
+
   /* How big the box actually is, and what therefore fits in it. Two lines here
      because the deciding is in `view/room.ts`, where it can be read as a table
      and asserted as one. */

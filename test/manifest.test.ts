@@ -18,7 +18,7 @@ describe('the manifest', () => {
     expect(MANIFEST.declares?.protocol).toBe(`>=${PROTOCOL} <${PROTOCOL + 1}`)
   })
 
-  test('the installed protocol package is 0.13, which is what carries /serve', () => {
+  test('the installed protocol package is 0.15, which is what carries the filter offer', () => {
     /* A stale copy STRIPS fields it has never heard of and `parse` does not
        complain, so a manifest field vanishes with no error at all. That has
        bitten four modules in this workspace. `bun pm cache rm` then `bun update`
@@ -29,7 +29,18 @@ describe('the manifest', () => {
        it is this module's; 0.12 carries `roadmap-module-protocol/client`, which
        is the wire this module no longer writes for itself; 0.13 carries
        `/serve`, which is the port and the registration it no longer decides for
-       itself. A copy without them does not strip a field quietly — `store.ts`
+       itself; 0.14 carries `reacts`, which is a module saying which fields of
+       the context it follows; 0.15 carries `roadmap.filters`, which is a module
+       offering what it can be narrowed by so the host can draw one control in
+       the container header instead of every module drawing its own.
+
+       This app offers nothing on that last one, and the pin moves anyway. A
+       module does not have to have a filter to need a current protocol — a
+       stale copy strips fields nobody notices, and the version this family
+       speaks is one version, not one per module. Why there is nothing to offer
+       is argued in `src/app.tsx`, beside the connection that would send it.
+
+       A copy without any of them does not strip a field quietly — `store.ts`
        fails to import, and a copy older than 0.13 has no `serves()` at all, so
        the Vite config will not load — but the pin is here because the version is
        the thing that has to move, and a test that names it is the note somebody
@@ -39,7 +50,7 @@ describe('the manifest', () => {
     const packaged = JSON.parse(
       readFileSync(join(here, 'node_modules/roadmap-module-protocol/package.json'), 'utf8'),
     ) as { version: string }
-    expect(packaged.version.startsWith('0.13.')).toBe(true)
+    expect(packaged.version.startsWith('0.15.')).toBe(true)
   })
 
   test('says who it is, and the filename register.ts writes matches', () => {
