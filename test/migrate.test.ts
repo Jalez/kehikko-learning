@@ -227,15 +227,18 @@ describe('the dry run', () => {
 })
 
 describe('the project’s .gitignore', () => {
-  test('learns about the folder when the migration creates it', () => {
+  /* This asked that the migration told the project's `.gitignore` about the
+     folder it made. It does not any more: whether that folder is committed is a
+     checkbox in the host, per project, with one writer — and a migration that
+     quietly added an ignore rule to every project it touched was the fourth
+     program writing that line. */
+  test('is left exactly as it was, even when the migration creates the folder', () => {
     mkdirSync(join(one, '.git'))
     writeFileSync(join(one, '.gitignore'), 'node_modules\n')
     writeSource({ [one]: { questions: [q('aaaa1111')] } })
 
     apply(source)
-    const after = readFileSync(join(one, '.gitignore'), 'utf8')
-    expect(after.startsWith('node_modules\n')).toBe(true)
-    expect(after.split(`${KEHIKOT_DIR}/`).length - 1).toBe(1)
+    expect(readFileSync(join(one, '.gitignore'), 'utf8')).toBe('node_modules\n')
   })
 
   test('a project that is not a repository gets no .gitignore', () => {

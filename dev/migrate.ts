@@ -49,9 +49,9 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 
-import { moduleDir, moduleFile, withKehikotIgnored } from 'roadmap-module-protocol'
+import { moduleDir, moduleFile } from 'roadmap-module-protocol'
 
 import { ID } from '../manifest.ts'
 import { FILE } from '../store.ts'
@@ -221,7 +221,13 @@ export function apply(source: string = SOURCE): Outcome {
     }
     const fresh = !existsSync(dir)
     mkdirSync(dir, { recursive: true })
-    if (fresh) ignore(row.project)
+    /* This used to append `.kehikot/` to the project's `.gitignore` here, and
+       no longer does. A migration that quietly added an ignore rule to every
+       project it touched was the fourth program writing that one line — with
+       notes, checklist and journeys — none of them able to take it back. It is
+       a checkbox in the host now, per project: `shareKehikot` in the host's
+       `server/projects.ts`. */
+    void fresh
 
     /* The outer `projects` key is dropped here, and this is the whole of the
        shape change: the folder the file is in says which project it is. */
@@ -255,41 +261,6 @@ export function apply(source: string = SOURCE): Outcome {
     renameSync(source, renamedTo)
   }
   return { written, left, renamedTo, refused: null }
-}
-
-/**
- * The project's `.gitignore` learns about the folder, once. Same rule as
- * `store.ts`, including the walk upwards.
- *
- * The `.git` is looked for above the project as well as in it, because a project
- * need not be a repository root — the thesis this migration is partly for sits
- * several directories inside one. The file is still written AT THE PROJECT,
- * because git honours a `.gitignore` in any directory over that directory's
- * subtree, and putting the rule at the repository root would edit a file shared
- * with everything else in it.
- */
-function ignore(root: string): void {
-  try {
-    let at = root
-    let repo = false
-    for (;;) {
-      if (existsSync(join(at, '.git'))) {
-        repo = true
-        break
-      }
-      const up = dirname(at)
-      if (up === at) break
-      at = up
-    }
-    if (!repo) return
-    const path = join(root, '.gitignore')
-    const before = existsSync(path) ? readFileSync(path, 'utf8') : ''
-    const after = withKehikotIgnored(before)
-    if (after !== before) writeFileSync(path, after)
-  } catch {
-    /* Not being able to write somebody's `.gitignore` is not a reason to fail a
-       migration that has already put their questions where they belong. */
-  }
 }
 
 /* ------------------------------------------------------------------------ *
