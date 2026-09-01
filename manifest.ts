@@ -143,10 +143,18 @@ export const PREFERRED_PORT = 7950
  *     doing it. Getting a question wrong is not a stage.
  *   - **`state:keep` — no, and this is the one worth arguing.** Checklist
  *     declares it because a person has to PICK which list a container is showing and
- *     the pick has to stick per kehikko. Nothing here is picked: the epic
- *     decides which questions are shown, the project decides which store they
- *     came out of, and both arrive in the context. A kept string would have
- *     nothing to hold.
+ *     the pick has to stick per kehikko.
+ *
+ *     There is a pick here now, and it is still not this: the scope offered over
+ *     `roadmap.filters` — `all`, `file`, `section`, how narrow the reader likes
+ *     this container — is remembered by the HOST per container and arrives back
+ *     in `context.filters`. Keeping a second copy under `state.set` would be two
+ *     records of one preference, and they would disagree the first time one was
+ *     written and the other was not. See `src/wire/scope.ts`.
+ *
+ *     Nothing else here is picked: the epic decides which questions are shown,
+ *     the project decides which store they came out of, and both arrive in the
+ *     context. A kept string would still have nothing to hold.
  *   - **Tracker access — no, and there is no capability for it.** This app never
  *     speaks to GitHub or GitLab, holds no token, and has no code path that
  *     could.

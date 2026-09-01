@@ -34,11 +34,14 @@ describe('the manifest', () => {
        offering what it can be narrowed by so the host can draw one control in
        the container header instead of every module drawing its own.
 
-       This app offers nothing on that last one, and the pin moves anyway. A
-       module does not have to have a filter to need a current protocol — a
-       stale copy strips fields nobody notices, and the version this family
-       speaks is one version, not one per module. Why there is nothing to offer
-       is argued in `src/app.tsx`, beside the connection that would send it.
+       This paragraph used to end "this app offers nothing on that last one, and
+       the pin moves anyway", and the sentence after it — that a module does not
+       have to have a filter to need a current protocol — is still true and is
+       still the reason a version is one version for the family rather than one
+       per module. The claim in front of it is not: this app offers a SCOPE, one
+       group of two or three rungs saying how narrow the reader likes this
+       container, and `wire/scope.ts` argues for it. So 0.15 is not merely a pin
+       kept current here, it is a version this module now uses.
 
        A copy without any of them does not strip a field quietly — `store.ts`
        fails to import, and a copy older than 0.13 has no `serves()` at all, so

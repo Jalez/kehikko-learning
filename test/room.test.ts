@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { ladder, partsOf, room, roughly, type Card, type Frame } from '../src/view/room.ts'
+import { ladder, partsOf, questionLines, room, roughly, type Card, type Frame } from '../src/view/room.ts'
 
 /**
  * What shows at what size, as a table.
@@ -309,27 +309,133 @@ describe('what the reader has answered', () => {
   })
 })
 
+/* ------------------------------------------------------------------------- *
+ * The header above a part, which is the one that used to be drawn in halves.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * "In Learning it's still showing the question partially when there's only
+ * space for the options."
+ *
+ * The header above a part was `line-clamp-2` and at the tightest sizes it drew
+ * two lines of a seven-line question with an ellipsis on the end — a fragment of
+ * a sentence, and forty-six pixels the options did not get. `headerOf()` is the
+ * answer and these are its two claims, stated so they can fail.
+ */
+describe('the header above a part', () => {
+  const every = Object.values(SIZES)
+  const all = [SHORT, MEDIUM, LONG]
+
+  test('whatever it draws, it draws whole — at every size, for every question', () => {
+    /*
+     * The claim the owner's complaint reduces to, and it is asserted by
+     * CONSTRUCTION rather than by sampling: the header is either zero lines or
+     * exactly the number of lines the sentence needs. There is no third value it
+     * can take, so there is no width at which a clamp could appear, and the class
+     * list has no `line-clamp` left in it for one to hide behind.
+     */
+    for (const frame of every) {
+      for (let index = 0; index < all.length; index += 1) {
+        const header = climb(frame, all, index).header
+        const needs = questionLines(all[index] as Card, frame.width, roughly)
+        expect(header === 0 || header === needs).toBe(true)
+      }
+    }
+  })
+
+  test('a question longer than two lines gets no header at all, however much room there is', () => {
+    /* Half a question is worse than none: the reader gets a fragment AND fewer
+       options. The whole of it is one press away, on the chip the next test
+       insists exists. */
+    expect(climb(SIZES.narrow, [SHORT, MEDIUM, LONG], 2).header).toBe(0)
+    expect(climb(SIZES.letterbox, [SHORT, MEDIUM, LONG], 2).header).toBe(0)
+  })
+
+  test('a one-line question keeps its header in a letterbox, because it fits and still leaves an option', () => {
+    /* 320×200 is the tightest box this module is measured in, and the point of
+       the floor is that it does not take the header away from a reader who had
+       room for it. */
+    expect(climb(SIZES.letterbox, [SHORT, MEDIUM, LONG], 0).header).toBe(1)
+  })
+
+  test('and loses it when what is left would not hold one whole option', () => {
+    /* The same box, one question further along: two lines of question fit, and
+       then the source control and the first of three long options do not. That
+       is "only space for the options" as a measurement, and the header is what
+       gives way. */
+    expect(questionLines(MEDIUM, SIZES.letterbox.width, roughly)).toBe(2)
+    expect(climb(SIZES.letterbox, [SHORT, MEDIUM, LONG], 1).header).toBe(0)
+  })
+
+  test('only the part rung has one, because only it shows something that is not the whole question', () => {
+    expect(climb(SIZES.large, [SHORT, MEDIUM, LONG]).header).toBe(0)
+    expect(climb(SIZES.narrow, [SHORT, MEDIUM, LONG], 0).rung).toBe('one')
+    expect(climb(SIZES.narrow, [SHORT, MEDIUM, LONG], 0).header).toBe(0)
+  })
+})
+
 describe('which parts a question splits into', () => {
-  test('a question that fits the header does not get a chip leading to itself', () => {
-    /* The header above every part clamps to two lines. Where the whole question
-       is inside that clamp, a `question` chip leads to a screen the reader is
-       already looking at — a chip they press once and distrust afterwards. */
-    expect(partsOf(SHORT, 900, roughly)).toEqual(['options', 'quote'])
+  test('a question standing whole above the options does not get a chip leading to itself', () => {
+    /* A chip that leads to a screen the reader is already looking at is a chip
+       they press once and distrust afterwards. */
+    expect(partsOf(SHORT, 1)).toEqual(['options', 'quote'])
+    expect(partsOf(MEDIUM, 2)).toEqual(['options', 'quote'])
   })
 
-  test('a question longer than the clamp gets one', () => {
-    expect(partsOf(LONG, 220, roughly)).toEqual(['question', 'options', 'quote'])
+  test('a question with no header gets one, which is what makes dropping the header honest', () => {
+    /*
+     * The two halves of one decision. `headerOf()` returning zero means "you
+     * cannot read the question here", and this is "here is where to read it" —
+     * from the same number, so they cannot drift apart. It holds for both reasons
+     * a header goes away: a question too long for it, and a box too short.
+     */
+    expect(partsOf(LONG, 0)).toEqual(['question', 'options', 'quote'])
+    expect(partsOf(SHORT, 0)).toEqual(['question', 'options', 'quote'])
   })
 
-  test('and so does an answered one, however short, because the verdict lives there', () => {
-    expect(partsOf(card({ answered: true }), 900, roughly)).toEqual(['question', 'options', 'quote'])
+  test('an answered question does NOT get one for the verdict, which is drawn with the options', () => {
+    /*
+     * It used to, and the owner's fourth part is why it no longer does. "Right"
+     * or "wrong" is about the button that was just pressed, so it belongs beside
+     * what was chosen; a chip leading to a judgement of a press the reader made
+     * on another screen is a chip that tells them what they already did.
+     */
+    expect(partsOf(card({ answered: true, why: null }), 2)).toEqual(['options', 'quote'])
   })
 
-  test('the same question splits differently in a narrower column', () => {
-    /* Two lines at 900 and five at 220 is not a different question; it is the
-       same one wrapped, and the chip appears exactly where the clamp begins
-       hiding something. */
-    expect(partsOf(MEDIUM, 900, roughly)).toEqual(['options', 'quote'])
-    expect(partsOf(MEDIUM, 220, roughly)).toEqual(['question', 'options', 'quote'])
+  test('an explanation gets a part of its own, and only once there is one to read', () => {
+    /*
+     * The owner's words: the explanation "should not be stuffed there with the
+     * question and result on the same page". It is prose, it is the longest thing
+     * a card holds, and it does not exist until it has been earned — `Asked.why`
+     * is null until the server answers a press.
+     *
+     * Offered only when there IS one, because a part that is offered and then
+     * empty is worse than a part that is not offered: an unanswered question has
+     * no explanation, and an answered one may still carry none, since nothing
+     * obliges an author to explain.
+     */
+    const why = 'Because the manifest is the only half a host ever reads, and it is read every time.'
+    expect(partsOf(card({ answered: true, why }), 2)).toEqual(['options', 'quote', 'why'])
+    expect(partsOf(card({ answered: false, why }), 2)).toEqual(['options', 'quote'])
+    expect(partsOf(card({ answered: true, why: null }), 2)).not.toContain('why')
+    expect(partsOf(card({ answered: true, why: '' }), 2)).not.toContain('why')
+  })
+
+  test('the new chip is last, so earning it does not shuffle the three already there', () => {
+    /* `why` is the only part that comes into existence mid-session. Appending it
+       means the press that earns it does not move three controls under the
+       reader's finger. */
+    const why = 'Because the wire is the manifest and the messages, and nothing else.'
+    expect(partsOf(card({ answered: true, why }), 0)).toEqual(['question', 'options', 'quote', 'why'])
+  })
+
+  test('the same question is a different number of lines in a narrower column', () => {
+    /* Which is the whole reason the header is decided per width rather than per
+       question: two lines at 320 and more than two at 220 is not a different
+       question, it is the same one wrapped, and the ceiling is met at one width
+       and not the other. */
+    expect(questionLines(MEDIUM, SIZES.letterbox.width, roughly)).toBe(2)
+    expect(questionLines(MEDIUM, SIZES.narrow.width, roughly)).toBeGreaterThan(2)
   })
 })

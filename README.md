@@ -207,20 +207,38 @@ measures the result in a real frame.
 |---|---|---|
 | `list` | two whole cards fit | the list, scrolling, snapping — as it has always been |
 | `one` | one whole question fits | that question entire: its text, every option, and the passage, with nothing to scroll and nothing to press open. A pager moves between questions |
-| `part` | not even one fits | one of `question`, `options`, `passage` at a time, with the question kept above as a two-line header |
+| `part` | not even one fits | one of `question`, `options`, `passage`, `why` at a time, with the question above it wherever the whole of it fits |
 
 `list` versus the other two is a fact about the whole list; `one` versus `part`
 is a fact about the question being SHOWN, so a short question shows whole and the
 long one three along from it splits.
 
-**A person can answer at every size, and that is what the probe asserts.** The
-question is never a part shown on its own — its text is clamped to two lines
-above whichever part is showing, because a multiple-choice question you cannot
-read is not answerable. Nor is the control that points the canvas: it is drawn
-above the part rather than after it, since eight options at 220 wide are 516
-pixels of buttons and anything under them goes off the bottom. Switching parts
-and paging publish nothing, and `dev/pointing.mjs` counts that from the host's
-side.
+**A person can answer at every size, and that is what the probe asserts.** A
+multiple-choice question you cannot read is not answerable, so the question
+stands above whichever part is showing. That used to be `line-clamp-2`, and the
+clamp was the bug: at the tightest sizes it drew two lines of a seven-line
+question with an ellipsis on the end and took forty-six pixels off the options —
+a fragment of a sentence AND less room to answer in. `headerOf()` in
+`src/view/room.ts` now draws the header only where the whole question fits in two
+lines *and* what is left under it still holds the source control and one whole
+option; otherwise it draws none, and the `question` chip — which appears from the
+same number — is the way to it. There is no `line-clamp` left in the class list,
+so a clipped header is not something the card can draw, and `dev/ladder.mjs`
+measures every question at every size for content overflowing its own box.
+
+Nor is the control that points the canvas ever off screen: it is drawn above the
+part rather than after it, since eight options at 220 wide are 516 pixels of
+buttons and anything under them goes off the bottom. Switching parts and paging
+publish nothing, and `dev/pointing.mjs` counts that from the host's side.
+
+**The explanation is a part of its own; the result is not.** Answering earns two
+things and they are drawn in two places. `right`/`wrong` and the marks on the
+options stay with the options, because knowing you were wrong belongs beside what
+you chose — so a press changes the screen the reader is standing on rather than
+moving them off it. The explanation goes to a `why` part, offered only once there
+is one to read: it is prose, it is the longest thing a card holds, and it is the
+one piece that does not exist until it is earned, so sharing a part with anything
+else made that part mean two things and pushed the other one off the bottom.
 
 **The paged rungs draw no card and no heading.** The host already puts a
 container round this module, so a bordered, padded card inside it is a card on a
@@ -241,9 +259,58 @@ metrics (`src/view/text.ts`, a canvas), and it is exact — `dev/ladder.mjs` wri
 every estimate into the DOM beside the measured height and fails the run on any
 that came in under. The one thing it cannot know is the explanation of a question
 nobody has answered, because the server withholds it: so answering can push a
-card past its box and drop `one` to `part`, which lands on the part holding the
-verdict and the explanation. The list rung is measured as if nobody had answered
-anything, so working through a paper can never move it.
+card past its box and drop `one` to `part`. It lands on the `options`, which is
+where the reader already was and where the verdict is drawn, and the explanation
+it could not reserve space for gets a part of its own. The list rung is measured
+as if nobody had answered anything, so working through a paper can never move it.
+
+## The scope, which is offered to the container's header
+
+A module tells the host what it can be narrowed by over `roadmap.filters`; the
+host draws one control in the container header, and the choice comes back in
+`context.filters`. This one offers a **scope**, in the owner's words: "show
+questions related to all files, current file, current page or highlighted
+section".
+
+| rung | what it keeps | offered when |
+|---|---|---|
+| `all` | every question about the open paper | always, and it is the fallback |
+| `file` | the questions written about the document the canvas is standing on | something on the canvas names a document |
+| `section` | the questions whose anchor the reader's selection touches | that something also names a range |
+
+**The rungs are grain, not places.** What the host remembers per container is
+`all`, `file` or `section` — *how narrow the reader likes it*, which is a
+preference and should survive a restart. *Which* file and *which* section are
+read off the passage in the context every time and are never stored, so the same
+stored `file` shows one chapter today and another tomorrow, and nothing rots when
+a file is renamed. A rung that cannot be honoured right now degrades to `all`
+rather than emptying the container, and the choice is still there when the reader
+highlights something again.
+
+**Only rungs that exist are offered.** With nothing pointed at, the offer is
+empty — the protocol's way of saying "nothing here can be narrowed now" — and the
+host takes the control away, because an option that cannot be honoured is a press
+that teaches a reader the header lies. The offer is re-sent whenever a rung
+appears or disappears, and *not* when the passage merely moves.
+
+**There is no `page` rung**, and that is a check rather than an omission.
+`kehikko-paper` really does publish a page number, so the context carries one; a
+question is anchored by a path and a byte range and this module has never opened
+the file, so it cannot say which sheet an offset lands on. The missing half is on
+this side.
+
+**The count stays in the page.** A host cannot count rows it does not render, in
+a document it cannot read, in a frame on another origin — so a narrowed container
+says what it is hiding in its own words: `3 more questions outside this passage`
+in a list heading, `+3 elsewhere` with the sentence on its `title` where the box
+is 220 wide. An empty scope says so, and says it differently from a paper nobody
+has written questions about yet. `src/wire/scope.ts` carries the argument;
+`dev/scope.mjs` drives a host and checks that the offer arrives, changes with the
+canvas, and narrows what is drawn.
+
+**`only unanswered` is refused, not postponed.** A quiz whose list silently loses
+a card the moment it is answered takes away the one thing a reader comes back
+for, which is reading the explanation again.
 
 ## Spaced repetition, which is deliberately not here
 
@@ -367,14 +434,18 @@ quiz/projects.ts   what is left of "which project" now the path is the partition
 dev/migrate.ts     the one-off move out of data/questions.json, run by hand
 dev/probe.mjs      a real browser: the key's absence, partitioning, no overflow
 dev/sizes.mjs      a real frame at four container sizes: what fits, and snapping
-dev/ladder.mjs     five sizes and three question lengths: how much you must
-                   scroll to read one question, and whether you can answer it
+dev/ladder.mjs     five sizes and four question shapes: how much you must scroll
+                   to read one question, whether the header is ever half-drawn,
+                   and whether you can answer where you are standing
 dev/pointing.mjs   the one capability, counted from where a host sits
+dev/scope.mjs      the filter offer, from where a host sits: which rungs are
+                   offered when, and what the page says about what it hid
 dev/theme.mjs      the host's light/dark switch, both ways, on both machines
 page/document.ts   the document, generated per request so the ticket can reach it
 vite.config.ts     the doors as middleware, and the missing server.cors
-src/               the page: wire/, view/ (room.ts, text.ts), store/ask.ts, ui/
-test/              243 tests, no browser
+src/               the page: wire/ (pointed.ts, scope.ts), view/ (room.ts,
+                   text.ts), store/ask.ts, ui/
+test/              281 tests, no browser
 ```
 
 The probes under `dev/` need a running server and a chromium on disk, so

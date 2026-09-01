@@ -253,8 +253,30 @@ export interface Card {
 /** Which rung of the ladder the page is standing on. */
 export type Rung = 'list' | 'one' | 'part'
 
-/** The three pieces one question is made of, when it has to be shown in pieces. */
-export type Part = 'question' | 'options' | 'quote'
+/**
+ * The pieces one question is made of, when it has to be shown in pieces.
+ *
+ * Four, and the fourth is the owner's: "the 'wrong' explanation should I think
+ * be a fourth item alongside question, options (and result), and passage — it
+ * should not be stuffed there with the question and result on the same page."
+ *
+ * The parenthesis in that sentence is half the decision. The RESULT — right or
+ * wrong, and which option was which — stays with the options, because knowing
+ * you were wrong belongs beside what you chose. What moves out is the
+ * EXPLANATION, which is prose, is the longest thing a card ever holds, and is
+ * the one piece of a question that does not exist until it has been answered.
+ *
+ * That last fact is why this is a real fix rather than tidying. `Asked.why`
+ * arrives only in the reply to a press, so it is a block whose height cannot be
+ * reserved — see wrongness 1 — and it used to land on the `question` part,
+ * making that part mean two unrelated things and pushing whichever of them the
+ * reader wanted off the bottom of a 300-pixel box. On its own part it is sized
+ * by nothing but itself.
+ *
+ * `why` and not `explanation`: it is what the store calls the field, it is what
+ * the reader is asking, and at 220 pixels the switcher is already three rows.
+ */
+export type Part = 'question' | 'options' | 'quote' | 'why'
 
 export interface Ladder {
   /**
@@ -284,6 +306,19 @@ export interface Ladder {
   rung: Rung
   /** Height there is for cards, once the chrome that is always drawn is paid for. */
   available: number
+  /**
+   * How many lines of the shown question are drawn above a part that is not the
+   * question, at the `part` rung. Zero everywhere else, and zero at `part`
+   * whenever the whole question will not fit in the header or the header would
+   * cost the reader their last whole option. `headerOf()` carries the argument.
+   *
+   * It is on the ladder rather than worked out in the page because it is decided
+   * from `available`, which is decided here, and because `partsOf()` reads it —
+   * whether there is a chip leading to the question is the same fact as whether
+   * the question is already on screen, and two places computing it separately is
+   * two places to get it differently.
+   */
+  header: number
   /**
    * What each card was estimated to need, in the layout its rung draws. The page
    * writes it onto the card as `data-estimate` so `dev/ladder.mjs` can measure
@@ -345,9 +380,11 @@ export interface Ladder {
  *    either, so the list rung cannot be moved by the reader working through it;
  *    `wholeHeight()` counts the real explanation as soon as there is one, so a
  *    press can push a card past its box and drop `one` to `part`. That is the
- *    one place in this file where the layout moves under a press, it is a
- *    content change rather than a flicker, and it lands on the part that holds
- *    the verdict and the explanation — which is where the reader was going.
+ *    one place in this file where the layout moves under a press, and it is a
+ *    content change rather than a flicker: the drop lands on the `options`,
+ *    which is the screen the reader was already standing on and the one the
+ *    verdict is drawn on, and the explanation that could not be reserved for
+ *    arrives as a fourth part with a chip of its own. Nothing moves them.
  * 2. **Kerning, ligatures and hyphenation.** `lines()` breaks on spaces and
  *    measures the run; a browser may fit a word this file thinks it cannot.
  *    Wrong in the safe direction: one line too many, one rung too conservative.
@@ -398,17 +435,38 @@ const VERDICT = 20
 /** One row of controls: `h-6`, and `gap-1` when it wraps to a second. */
 const ROW = 24
 const ROW_GAP = 4
-/** How many lines of the question stay above a part that is not the question. */
-const CLAMP = 2
+/**
+ * The most lines of the question that are ever drawn above another part.
+ *
+ * Two, and it is a CEILING rather than a clamp — the difference is the whole of
+ * `headerOf()` below and the whole of the owner's complaint. A clamp draws two
+ * lines of a seven-line question and ends the second one in an ellipsis; a
+ * ceiling means the header is drawn only where the whole question is inside it,
+ * and otherwise is not drawn at all.
+ */
+const HEADER_MOST = 2
 
 /** What each part is called on the control that switches to it. Said once. */
 export const PART_LABEL: Record<Part, string> = {
   question: 'question',
   options: 'options',
   quote: 'passage',
+  why: 'why',
 }
 
-const EVERY_PART: Part[] = ['question', 'options', 'quote']
+/**
+ * Every part there can be, in the order the switcher draws them.
+ *
+ * `why` is LAST, and the order is a decision rather than the order they were
+ * written in. The chips a reader already knows must not move when a new one
+ * appears: `why` is the only part that comes into existence mid-session — it
+ * arrives with the reply to an answer — so appending it means the press that
+ * earns it does not shuffle three controls under somebody's finger.
+ *
+ * This is also what `controlsHeight()` reserves, all four of them, whether or not
+ * a given card offers all four. See the essay there.
+ */
+const EVERY_PART: Part[] = ['question', 'options', 'quote', 'why']
 
 interface Metrics {
   pagePad: number
@@ -563,10 +621,13 @@ function listHeight(card: Card, width: number, fits: Room, measure: Measure): nu
  * drops from `one` to `part`.
  *
  * That drop is a content change in answer to the reader's own press, and it
- * lands exactly where the reader was going: `App` moves to the `question` part
- * on a successful answer, and the `question` part is the one holding the verdict
- * and the explanation. The layout moving under a press is a real cost and this
- * is the one place in this file that pays it, in the open.
+ * lands on the screen they were already standing on: the `options` part, which
+ * is where the verdict is drawn. `App` used to move them to the `question` part,
+ * because that is where the verdict and the explanation both used to be; the
+ * verdict has moved to the options and the explanation has a part of its own, so
+ * a press now changes the screen the reader is on rather than changing which
+ * screen they are on. The layout moving under a press is a real cost and this is
+ * the one place in this file that pays it, in the open.
  */
 function wholeHeight(card: Card, width: number, fits: Room, measure: Measure): number {
   const m = metrics(width, true)
@@ -641,12 +702,30 @@ function headingHeight(epic: string, questions: number, width: number, measure: 
  * row that is occasionally shorter than reserved is the cheap half of that
  * trade.
  */
-function controlsHeight(count: number, width: number, measure: Measure): number {
+function controlsHeight(count: number, width: number, measure: Measure, note: string | null): number {
   const m = metrics(width, true)
   const items: number[] = []
   if (count > 1) items.push(ROW, measure(`${count} / ${count}`, OPTION.px) + 16, ROW)
   for (const part of EVERY_PART) items.push(measure(PART_LABEL[part], SMALL.px) + 12)
   items.push(measure(`${count} right`, SMALL.px))
+  /*
+   * What a scope is hiding — `+3 elsewhere` — counted only when there is
+   * something to hide, which is the one item in this row that is not reserved at
+   * its widest.
+   *
+   * The rule that makes everything else unconditional is that what the row
+   * happens to be showing must not decide which rung is shown, because that is a
+   * loop with the reader inside it. This is outside that loop: whether anything
+   * is hidden is a fact about the store and the canvas — how many questions there
+   * are, and how narrow the reader set this container — and nothing the ladder
+   * decides can change it.
+   *
+   * Reserving it always was tried and measured: at 460 wide it took a whole extra
+   * row of the box off every reader, permanently, to hold a phrase most of them
+   * will never see. This is the same trade `wholeHeight()` makes about an
+   * explanation that has not been earned yet.
+   */
+  if (note) items.push(measure(note, SMALL.px))
   items.push(measure('Ask again', OPTION.px) + 16)
 
   let rows = 1
@@ -664,18 +743,136 @@ function controlsHeight(count: number, width: number, measure: Measure): number 
 }
 
 /**
+ * How many lines the question takes, in the paged layout at this width.
+ *
+ * Exported for one reason, and it is a reason rather than a convenience:
+ * `headerOf()` below promises that the header, where it is drawn at all, is
+ * drawn WHOLE, and the only way to state that promise as something a test can
+ * fail is to be able to ask both halves of it — how many lines the header was
+ * given, and how many lines the sentence actually needs. `test/room.test.ts`
+ * asserts they are equal or the header is zero, across every question and every
+ * width it has.
+ */
+export function questionLines(card: Card, width: number, measure: Measure): number {
+  const m = metrics(width, true)
+  return Math.max(1, lines(card.question, m.content, m.question.px, measure, { weight: 500 }))
+}
+
+/**
+ * How many lines of the question are drawn above a part that is not the
+ * question — and, in the tightest boxes, none at all.
+ *
+ * ## The complaint this exists to answer
+ *
+ * "In Learning it's still showing the question partially when there's only
+ * space for the options." The header above a part was `line-clamp-2`, so at the
+ * tightest sizes it drew two lines of a seven-line question, ended the second
+ * one in an ellipsis, and took forty-six pixels off the options while it did.
+ * That is a fragment of a sentence AND less room to answer in — the worst of
+ * both, and the shape this whole ladder exists to stop drawing.
+ *
+ * The argument the clamp was defending is still right and is not thrown away: a
+ * multiple-choice question you cannot read is not answerable. What was wrong is
+ * the conclusion, because half a question is not a question either. So the
+ * header now has two conditions and is drawn only when both hold.
+ *
+ * ## One: it fits whole, or it is not drawn
+ *
+ * Not "clamped more cleverly", and not one line instead of two. A sentence cut
+ * at an arbitrary character is a fragment at any length, and one line of a
+ * seven-line question is a worse fragment than two, not a better one. So the
+ * ceiling is `HEADER_MOST` lines and the header is only ever the question's OWN
+ * line count: one line for a one-line question, two for a two-line one, nothing
+ * for anything longer.
+ *
+ * There is no `line-clamp` left in the class list either, and that is what makes
+ * this true by construction rather than by arithmetic. If this file ever
+ * miscounts a line the header grows by a line — visibly, in a layout whose
+ * estimate is already checked against the truth by `dev/ladder.mjs` — instead of
+ * silently truncating a sentence, which is a failure nothing on screen can show.
+ *
+ * What a reader loses is nothing that is not one press away: a question too long
+ * for the header is exactly the question that gets a `question` chip, because
+ * `partsOf()` below reads this number. That was already true; it is now the SAME
+ * fact rather than two rules that happened to agree.
+ *
+ * ## Two: it does not cost the reader the ability to answer
+ *
+ * "Only space for the options", as a measurement. Below the header the `options`
+ * part draws the source control and then the options, so the header is
+ * affordable only if what is left after it still holds that control and one
+ * WHOLE option. One, rather than all of them: eight options at 220 wide are 516
+ * pixels and were never all going to be on screen, so demanding room for every
+ * one would drop the header at every size — a different dishonesty, and one that
+ * would take the question away from readers who had room for it. One whole
+ * option is the floor at which the screen is still answerable where the reader is
+ * standing, which is exactly what `dev/ladder.mjs` presses for.
+ *
+ * If the box will not hold that much, the header goes and the options get the
+ * pixels. If it will not hold the options either, that is a reader scrolling a
+ * column of buttons — which the probe measures and reports, rather than this
+ * file drawing a fragment of everything and calling the box full.
+ *
+ * ## Decided once for every part, not per part
+ *
+ * The floor is measured against the `options` part and the answer is used above
+ * the `quote` part as well. Measuring each part separately would mean a header
+ * that appeared and disappeared as the reader pressed the chips, which is the
+ * layout moving under somebody who asked only to look at something else.
+ *
+ * ## And it cannot feed back into the rung
+ *
+ * `available` is a function of the frame and `controlsHeight()`, and
+ * `controlsHeight()` reserves that row at its widest — every chip, whether or
+ * not it will be drawn. So the header depends on the room available and the room
+ * available depends on nothing the header decides. That is deliberate, and it is
+ * the same loop this entire file is arranged to avoid.
+ */
+export function headerOf(card: Card, width: number, available: number, measure: Measure): number {
+  const n = questionLines(card, width, measure)
+  /* Longer than the ceiling: nothing, rather than the first two lines of it. */
+  if (n > HEADER_MOST) return 0
+
+  const m = metrics(width, true)
+  /* The gap under the header, then `mt-1.5` on the source control and `mt-1.5`
+     on the list of options — the three things the paged card actually draws
+     between the top of the box and the first thing a reader can press. */
+  const header = n * m.question.line + GAP
+  const source = GAP + SMALL.line
+  const first = card.options.length ? optionsHeight(card.options.slice(0, 1), m, measure) : 0
+  return available - header >= source + GAP + first ? n : 0
+}
+
+/**
  * Which parts one question is shown in, when it has to be shown in parts.
  *
- * `options` and `quote` always. `question` only where it would otherwise be
- * hiding something: a question longer than the two lines the header clamps to,
- * or an answered one, because the verdict and the explanation are drawn there.
- * A chip that leads to a screen the reader is already looking at is a chip they
- * press once and distrust afterwards.
+ * The rule underneath all three clauses: **a part is offered when this card
+ * actually holds something the reader cannot already see.** A chip that leads to
+ * a screen somebody is already looking at, or to an empty one, is a chip they
+ * press once and distrust afterwards — and distrusting the switcher is worse
+ * than a missing control, because it is the only way around a split card.
+ *
+ * - `options` and `quote` always. Every question has both.
+ * - `question` exactly where `headerOf()` drew no header — because the question
+ *   is longer than the header's ceiling, or because there was no room for one
+ *   above the options. Taking the header rather than measuring the question again
+ *   is what stops the two drifting apart: a reader who cannot read the question
+ *   above the options is given the way to read it by the same expression that
+ *   decided they could not.
+ * - `why` when there IS one. `Asked.why` is null until the reader answers,
+ *   because the server withholds it, and a question that has been answered may
+ *   still carry nothing — the author is not obliged to explain. Both cases are
+ *   the same case here: no text, no part.
+ *
+ * The verdict is deliberately absent from this list. It is drawn with the
+ * options, where the reader pressed, and it is not a part.
  */
-export function partsOf(card: Card, width: number, measure: Measure): Part[] {
-  const m = metrics(width, true)
-  const long = lines(card.question, m.content, m.question.px, measure, { weight: 500 }) > CLAMP
-  return long || card.answered ? EVERY_PART : ['options', 'quote']
+export function partsOf(card: Card, header: number): Part[] {
+  const parts: Part[] = []
+  if (header === 0) parts.push('question')
+  parts.push('options', 'quote')
+  if (card.answered && card.why) parts.push('why')
+  return parts
 }
 
 /**
@@ -691,8 +888,18 @@ export function ladder(input: {
   fits: Room
   shown: number
   measure: Measure
+  /**
+   * The short form of what a scope is hiding — `+3 elsewhere` — or null when
+   * nothing is hidden. It is one more item in the row of controls at the paged
+   * rungs, and the row is what the available height is measured against.
+   *
+   * A string rather than a count because this file knows nothing about scopes and
+   * should not: what it needs is how WIDE the phrase is, which is a question for
+   * `measure`. `wire/scope.ts` writes the words.
+   */
+  note?: string | null
 }): Ladder {
-  const { frame, epic, cards, fits, shown, measure } = input
+  const { frame, epic, cards, fits, shown, measure, note = null } = input
 
   /*
    * Unmeasured, or nothing to show. The same answer `room()` gives and for the
@@ -701,7 +908,7 @@ export function ladder(input: {
    * of it, and a fold that undoes itself is a flicker every reader sees.
    */
   if (frame.height <= 0 || !cards.length) {
-    return { rung: 'list', available: frame.height, heights: [], snap: false }
+    return { rung: 'list', available: frame.height, heights: [], snap: false, header: 0 }
   }
 
   const m = metrics(frame.width, true)
@@ -716,16 +923,22 @@ export function ladder(input: {
      TALLEST, so that one long question among short ones cannot make the page
      promise a list it then cannot show whole. */
   if (cards.length >= 2 && forList >= (tall[0] ?? 0) + GAP + (tall[1] ?? 0)) {
-    return { rung: 'list', available: forList, heights: list, snap: fits.snap }
+    return { rung: 'list', available: forList, heights: list, snap: fits.snap, header: 0 }
   }
 
   const whole = cards.map((card) => wholeHeight(card, frame.width, fits, measure))
-  const available = frame.height - 2 * m.pagePad - controlsHeight(cards.length, frame.width, measure)
+  const available = frame.height - 2 * m.pagePad - controlsHeight(cards.length, frame.width, measure, note)
   const at = Math.min(Math.max(shown, 0), cards.length - 1)
+  const rung: Rung = (whole[at] ?? 0) <= available ? 'one' : 'part'
+  const card = cards[at]
   return {
-    rung: (whole[at] ?? 0) <= available ? 'one' : 'part',
+    rung,
     available,
     heights: whole,
     snap: false,
+    /* Only the `part` rung draws a header, because only the `part` rung draws
+       something that is not the whole question. At `one` the question is on
+       screen entire and a header above it would be the same sentence twice. */
+    header: rung === 'part' && card ? headerOf(card, frame.width, available, measure) : 0,
   }
 }

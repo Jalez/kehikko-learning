@@ -508,3 +508,234 @@ describe('what folds away when the box is short', () => {
     expect(html).not.toContain(WHY)
   })
 })
+
+/* ------------------------------------------------------------------------- *
+ * The question above a part: whole, or absent.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * The owner's complaint, as an assertion about the DOM.
+ *
+ * How many lines there is room for is `headerOf()` in `view/room.ts` and is
+ * asserted in `room.test.ts`. What is asserted here is that the component obeys
+ * it, and that there is no clamp left for a fragment to hide behind — happy-dom
+ * does not lay out, so a truncation would be invisible to every other test in
+ * this file.
+ */
+describe('the question standing above another part', () => {
+  test('is the whole sentence, with nothing clamping it', () => {
+    const { container } = render(
+      <QuestionCard
+        question={unanswered}
+        onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={false}
+        busy={false}
+        room={TIGHT}
+        rung="part"
+        part="options"
+        header={2}
+      />,
+    )
+    const text = container.querySelector('[data-question-text]')
+    expect(text?.getAttribute('data-question-text')).toBe('header')
+    expect(text?.textContent).toBe(unanswered.question)
+    /* The fix, stated as an absence. A clamp is how a fragment gets drawn, and
+       there is no longer one in the class list to be reached by any input. */
+    expect(container.innerHTML).not.toContain('line-clamp')
+  })
+
+  test('or is not drawn at all, which is what “no room” looks like', () => {
+    /* Half a question is worse than none: the reader would get a fragment AND
+       fewer options. The `question` chip is the way to it, and `partsOf()` puts
+       one there from the same number that produced this zero. */
+    const { container } = render(
+      <QuestionCard
+        question={unanswered}
+        onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={false}
+        busy={false}
+        room={TIGHT}
+        rung="part"
+        part="options"
+        header={0}
+      />,
+    )
+    expect(container.querySelector('[data-question-text]')).toBeNull()
+    expect(container.textContent).not.toContain(unanswered.question)
+    /* And the screen is still answerable where the reader is standing, which is
+       the whole reason the header gave way. */
+    expect(container.querySelectorAll('button[data-slot="button"]')).toHaveLength(3)
+    expect(container.querySelector('[data-passage]')).toBeTruthy()
+  })
+
+  test('the question’s own part shows it whole however little room there was', () => {
+    const { container } = render(
+      <QuestionCard
+        question={unanswered}
+        onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={false}
+        busy={false}
+        room={TIGHT}
+        rung="part"
+        part="question"
+        header={0}
+      />,
+    )
+    expect(container.querySelector('[data-question-text]')?.getAttribute('data-question-text')).toBe('whole')
+    expect(container.textContent).toContain(unanswered.question)
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * The verdict and the explanation, which are no longer the same part.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * "The 'wrong' explanation should I think be a fourth item alongside question,
+ * options (and result), and passage — it should not be stuffed there with the
+ * question and result on the same page."
+ *
+ * Which parts a card offers is `partsOf()` and is asserted in `room.test.ts`.
+ * What is asserted here is where the two halves are actually drawn, because the
+ * whole point of the change is that they are drawn in two different places.
+ */
+describe('what answering earns, and where it is drawn', () => {
+  const at = (part: 'options' | 'why' | 'question') => {
+    const { container } = render(
+      <QuestionCard
+        question={answered}
+        onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={false}
+        busy={false}
+        room={TIGHT}
+        rung="part"
+        part={part}
+        header={2}
+      />,
+    )
+    return container
+  }
+
+  test('the verdict is on the options, beside the button that was pressed', () => {
+    /* Knowing you were wrong belongs next to what you chose. A chip leading to a
+       judgement of a press made on another screen tells a reader what they
+       already did. */
+    const container = at('options')
+    expect(container.querySelector('[data-slot="badge"]')?.textContent).toBe('wrong')
+    expect(container.querySelector('[data-chose="true"]')).toBeTruthy()
+    expect(container.querySelectorAll('[data-correct="true"]')).toHaveLength(1)
+  })
+
+  test('and the explanation is not, because it is a part of its own now', () => {
+    expect(at('options').textContent).not.toContain(WHY)
+    cleanup()
+    expect(at('question').textContent).not.toContain(WHY)
+  })
+
+  test('the explanation’s own part holds it, and nothing else it is not about', () => {
+    const container = at('why')
+    expect(container.querySelector('[data-why="shown"]')?.textContent).toBe(WHY)
+    /* Not the options and not the verdict: this part exists so that prose is
+       sized by nothing but itself. */
+    expect(container.querySelectorAll('button[data-slot="button"]')).toHaveLength(0)
+    expect(container.querySelector('[data-slot="badge"]')).toBeNull()
+    /* And the question still stands above it, for the same reason it stands
+       above the options: an explanation of a question you cannot see is prose
+       about nothing. */
+    expect(container.querySelector('[data-question-text]')?.textContent).toBe(answered.question)
+  })
+
+  test('a whole card still reads verdict then explanation, top to bottom', () => {
+    /* There are no parts at `list` or `one`, so nothing here is split and nothing
+       is one press away. The change is about a box too small to hold the card. */
+    const { container } = render(
+      <QuestionCard question={answered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />,
+    )
+    expect(container.querySelector('[data-slot="badge"]')?.textContent).toBe('wrong')
+    expect(container.querySelector('[data-why="shown"]')?.textContent).toBe(WHY)
+  })
+})
+
+/* ------------------------------------------------------------------------- *
+ * What the scope is hiding, said in the page.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * The host draws the scope control in the container header and cannot count what
+ * it does not render. These are the lines that keep a narrowed container from
+ * quietly holding questions nobody is told about.
+ */
+describe('the count the host cannot draw', () => {
+  const hiding = { full: '3 more questions outside this passage', brief: '+3 elsewhere' }
+
+  const view = (questions: Asked[], note: typeof hiding | null) => (
+    <QuizView
+      epic="modes-are-modules"
+      questions={questions}
+      hiding={note}
+      onAnswer={() => {}}
+      onPoint={() => {}}
+      pointed={null}
+      onRetake={() => {}}
+      trouble={null}
+      busy={false}
+      room={ROOMY}
+    />
+  )
+
+  test('a narrowed list says how many it is not showing, and in what terms', () => {
+    const { container } = render(view([unanswered], hiding))
+    expect(container.querySelector('[data-scope-note="full"]')?.textContent).toBe(hiding.full)
+  })
+
+  test('an unnarrowed one says nothing, because “0 more” is a row saying nothing happened', () => {
+    const { container } = render(view([unanswered], null))
+    expect(container.querySelector('[data-scope-note]')).toBeNull()
+  })
+
+  test('an empty scope is told apart from a paper nobody has written questions about', () => {
+    /*
+     * Two empty screens, and confusing them sends a reader looking for questions
+     * that are sitting right there. One is a fact about the paper and asks for an
+     * agent; the other is a fact about a press and is undone by another press.
+     */
+    const { container: narrowed } = render(view([], hiding))
+    expect(narrowed.querySelector('[data-scope-note="empty"]')).toBeTruthy()
+    expect(narrowed.textContent).toContain(hiding.full)
+    expect(narrowed.textContent).not.toContain('Nothing has been asked about this paper yet')
+    cleanup()
+
+    const { container: bare } = render(view([], null))
+    expect(bare.querySelector('[data-scope-note]')).toBeNull()
+    expect(bare.textContent).toContain('Nothing has been asked about this paper yet')
+  })
+
+  test('the paged rungs say it in four words, with the sentence one hover away', () => {
+    /* A forty-character line in the row of controls would take a whole extra row
+       off a 220-pixel box — the same deferral the short source label makes. */
+    const { container } = render(
+      <QuizView
+        epic="modes-are-modules"
+        questions={[unanswered]}
+        hiding={hiding}
+        onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={null}
+        onRetake={() => {}}
+        trouble={null}
+        busy={false}
+        room={TIGHT}
+        ladder={{ rung: 'part', available: 200, heights: [200], snap: false, header: 0 }}
+        parts={['question', 'options', 'quote']}
+        part="options"
+      />,
+    )
+    const brief = container.querySelector('[data-scope-note="brief"]')
+    expect(brief?.textContent).toBe(hiding.brief)
+    expect(brief?.getAttribute('title')).toBe(hiding.full)
+  })
+})

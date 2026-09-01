@@ -93,7 +93,25 @@ const host = (width, height) => `<!doctype html>
 <script>
   window.__sent = []
   const frame = document.getElementById('frame')
+  /*
+   * Everything from the module's ORIGIN, and nothing else.
+   *
+   * This page listens to every message the window receives, which on a real
+   * canvas is every module in every frame — so a probe that counted them all
+   * would read another module's passage as this one's and would pass or fail on
+   * somebody else's behaviour. \`event.origin\` is the check that costs nothing
+   * and that the sender cannot forge.
+   *
+   * Deliberately NOT \`event.source === frame.contentWindow\`. It reads like the
+   * more precise test and it silently drops everything: the frame is
+   * cross-origin, so what arrives is an opaque window proxy that does not compare
+   * equal to the reference this page holds. A probe that quietly counts zero of
+   * everything reports a module as perfectly behaved, which is the most expensive
+   * way for a probe to be wrong.
+   */
+  const FROM = ${JSON.stringify(new URL(ORIGIN).origin)}
   addEventListener('message', (event) => {
+    if (event.origin !== FROM) return
     const message = event.data
     if (!message || typeof message.type !== 'string') return
     window.__sent.push(message)
@@ -262,6 +280,35 @@ for (const size of SIZES) {
   await page.waitForTimeout(400)
   const markedElsewhere = await marked()
 
+  /*
+   * 7. NARROWING, which is the newest way to change what this container shows.
+   *
+   * The scope control lives in the container header: the host draws it, the
+   * reader presses it, and the choice comes back as `filters` on a context. So
+   * from this module's side a narrowing is exactly a context — and a context must
+   * not point. It is the same argument as answering and as switching parts, and
+   * it needs the same proof, because narrowing REBUILDS the list from a passage
+   * and a page that pointed at whatever it had narrowed to would move every
+   * container on the canvas every time somebody chose a scope.
+   *
+   * Sent last, and with a passage, because a narrowing with nothing pointed at is
+   * a narrowing that cannot do anything: `scopeOf()` degrades an unhonourable
+   * rung to `all`. This is the version that genuinely re-filters the list.
+   */
+  if (sent) {
+    await page.evaluate((passage) => window.__context({ passage, filters: { scope: 'section' } }), sent)
+    await page.waitForTimeout(400)
+  }
+  const afterNarrowing = await passages()
+
+  /* What the module offered to be narrowed BY, for the record. That it arrives
+     at all, and with the right rungs, is `dev/scope.mjs`; here it is printed so
+     that a run of this probe says whether the header had a control on it. */
+  const offers = await page.evaluate(() =>
+    window.__sent
+      .filter((m) => m.type === 'roadmap.filters')
+      .map((m) => m.groups.map((g) => `${g.id}:${g.options.map((o) => o.id).join('/')}`).join(' ') || '(nothing)'))
+
   /* Put the store back, so the next size — and the next run — start clean. */
   await reset(frame)
 
@@ -274,6 +321,8 @@ for (const size of SIZES) {
     'passage.set after ANSWERING a question': afterAnswer.length,
     'passage.set after switching parts and paging': afterMoving.length,
     'passage.set after pressing the source': afterPress.length,
+    'passage.set after NARROWING the container': afterNarrowing.length,
+    'what it offered to be narrowed by': offers.at(-1) ?? '(never offered)',
     'the path sent': sent?.path ?? null,
     'the range sent': sent ? `${sent.from} … ${sent.to}` : null,
     'the page sent': sent?.page ?? null,
@@ -291,6 +340,7 @@ for (const size of SIZES) {
   if (afterPress.length !== afterMoving.length + 1) {
     at(`pressing the source sent ${afterPress.length - afterMoving.length} passages, not 1`)
   }
+  if (afterNarrowing.length !== afterPress.length) at('pointed when the container was NARROWED')
   if (sent && sent.path !== `${PROJECT}/${source}`) at(`sent ${sent.path}, not the project root joined onto ${source}`)
   if (sent && sent.page !== null) at('sent a page number for a document it has never paginated')
   if (sent && !(sent.from < sent.to)) at('sent a range that is not a range')

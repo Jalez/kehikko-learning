@@ -25,11 +25,23 @@
  *    much" is a third of the box, because a card that runs a few pixels past the
  *    bottom edge is a different experience from one you must scroll three
  *    screens through.
- * 2. **The question is legible while you choose.** Its text fully within the
- *    viewport at rest, and at least one option pressable without scrolling. A
- *    multiple-choice question you cannot read is not answerable, and a layout
- *    that pages the options away from their question would pass every height
- *    check and fail every reader.
+ * 2. **The question is legible while you choose — or it is one press away, and
+ *    never half-drawn.** At least one option pressable without scrolling, and
+ *    then, of the question: if it is on screen it is WHOLLY on screen and not
+ *    clipped; if it is not on screen there is a `question` chip that leads to it.
+ *
+ *    That was one predicate and is now three, and the split is the owner's:
+ *    "in Learning it's still showing the question partially when there's only
+ *    space for the options." The old version was satisfied by a `line-clamp-2`
+ *    header, because a clamped element measures exactly two lines and sits
+ *    happily inside the viewport — the reader got a fragment of a sentence AND
+ *    forty-six fewer pixels of options, and this probe called it clean. The
+ *    clipping check is what a clamp cannot pass: an element whose content
+ *    overflows its own box is measured, in the browser, at every size.
+ *
+ *    A multiple-choice question you cannot read is still not answerable, which
+ *    is why the third clause is not "it may simply be missing" — it may be
+ *    missing only where the switcher can reach it.
  * 3. **Answering works, from where the reader is standing.** The option is
  *    pressed IN THE PAGE rather than through Playwright, because Playwright
  *    scrolls an element into view before clicking it and would quietly undo the
@@ -131,6 +143,32 @@ const SEED = [
       + 'that cannot be made safely, which is why the protocol requires an answer in words.',
     quote: `${QUOTE} ${QUOTE}`,
   },
+  /*
+   * The fourth shape, and it is here because of what the other three could not
+   * catch: a SHORT question with long options.
+   *
+   * The three above are short-and-short, medium-and-medium, long-and-long, so at
+   * every size the question that had to be split was also the question too long
+   * to stand above its parts — and a probe seeded that way would pass a build in
+   * which the header was never drawn at all. This one splits (six options of
+   * three lines each do not fit in any box here) while its question is one line,
+   * which is the case `headerOf()` exists to say yes to. The header is measured
+   * for real, at every size, only because this question is in the list.
+   */
+  {
+    question: 'What settles the wire?',
+    options: [
+      'Whatever the host happens to have decided that morning, which is not written down anywhere at all',
+      'The manifest, which is the smallest half of the program and the only half a host ever reads first',
+      'A conversation between two programs that have never been introduced and never will be introduced',
+      'The person who opened the canvas, every time, by answering a dialog nobody wanted to be shown one',
+      'Nothing whatsoever: it is a comment with a file extension and an unusually confident set of names',
+      'Whichever module happened to load first, which is a race and is therefore a different answer daily',
+    ],
+    answer: 1,
+    why: 'The wire is the manifest and the messages; the module says what it is and the host says where it stands.',
+    quote: QUOTE,
+  },
 ].map((seed, n) => ({
   project: ROADMAP,
   epic: EPIC,
@@ -227,7 +265,11 @@ async function main() {
         const shown = cards[0]
         const rect = (el) => (el ? el.getBoundingClientRect() : null)
         const inside = (r) => r !== null && r.top >= -1 && r.bottom <= box + 1
-        const text = shown?.querySelector('p')
+        /* The question, by the attribute that says it IS the question. It used
+           to be `querySelector('p')` — the first paragraph on the card — which
+           is a different element the moment the card stops always drawing the
+           question first, and would have silently measured the byte range. */
+        const text = shown?.querySelector('[data-question-text]')
         const options = [...(shown?.querySelectorAll('button[data-slot="button"]') ?? [])]
         const passage = shown?.querySelector('[data-passage]')
         return {
@@ -246,8 +288,13 @@ async function main() {
           wholeInView: cards.filter((c) => inside(rect(c))).length,
           heights: cards.map((c) => Math.round(rect(c).height)),
           estimates: cards.map((c) => Number(c.getAttribute('data-estimate') ?? 0)),
+          questionShown: text !== null && text !== undefined,
           questionInView: inside(rect(text)),
           questionHeight: Math.round(rect(text)?.height ?? 0),
+          /* What a clamp looks like from outside: content taller than the box
+             drawn for it. One pixel of slack for sub-pixel line heights. */
+          questionClipped: !!text && text.scrollHeight > text.clientHeight + 1,
+          chips: [...document.querySelectorAll('[data-part]')].map((b) => b.getAttribute('data-part')),
           optionsInView: options.filter((o) => inside(rect(o))).length,
           options: options.length,
           passageOnScreen: passage !== null && passage !== undefined,
@@ -264,7 +311,8 @@ async function main() {
       )
       say(`  document is ${m.scrollHeight}px: ${overrun}px of scrolling (${Math.round((overrun / m.box) * 100)}% of the box)`)
       say(
-        `  the question is ${m.questionInView ? '' : 'NOT '}wholly in view (${m.questionHeight}px);`
+        `  the question is ${m.questionShown ? (m.questionInView ? '' : 'NOT ') + 'wholly in view' : 'not drawn here'}`
+          + ` (${m.questionHeight}px${m.questionClipped ? ', CLIPPED' : ''});`
           + ` ${m.optionsInView} of ${m.options} options pressable where the reader is standing;`
           + ` the source control is ${m.passageOnScreen ? (m.passageInView ? 'in view' : 'on the card but below the fold') : 'ABSENT'}`,
       )
@@ -285,9 +333,21 @@ async function main() {
         )
       }
 
-      /* 2. The question is legible while you choose. */
-      if (!m.questionInView) {
+      /* 2. Legible while you choose, or one press away — and never half-drawn. */
+      if (m.questionClipped) {
+        problems.push(
+          `${width}×${height}: the question was drawn clipped — a fragment of a sentence, which is the one`
+            + ' thing the header is not allowed to be',
+        )
+      }
+      if (m.questionShown && !m.questionInView) {
         problems.push(`${width}×${height}: the question is not wholly on screen where the options are pressed`)
+      }
+      if (!m.questionShown && !m.chips.includes('question')) {
+        problems.push(
+          `${width}×${height}: the question is neither on screen nor reachable — no header was drawn and no`
+            + ' chip leads to one',
+        )
       }
       if (m.optionsInView === 0) {
         problems.push(`${width}×${height}: no option could be pressed without scrolling`)
@@ -309,23 +369,24 @@ async function main() {
       }
 
       /*
-       * The LONG question, which is the one the ladder exists for.
+       * EVERY question, one page at a time.
        *
-       * Everything above is measured on the first card, and the first card is
-       * the short one — two options and a one-line quote. A five-line question
-       * with eight options in a 300-pixel box is the case a single rung for the
-       * whole list would get wrong, and it is only reachable by paging, so the
-       * probe pages: press "next" until it is disabled, which is the last
-       * question, and ask the same four things again.
+       * Everything above is measured on the first card, which is the short one —
+       * two options and a one-line quote. The rest are only reachable by paging,
+       * so the probe pages, and it stops at each of them rather than running to
+       * the end.
+       *
+       * It used to press "next" until the control was disabled and measure only
+       * the last question, on the argument that the longest one is the case a
+       * single rung would get wrong. True, and not enough: the seeded questions
+       * were short-and-short, medium-and-medium and long-and-long, so the
+       * question that had to be SPLIT was always also the one too long to stand
+       * above its parts. A build that never drew a header at all passed. The
+       * fourth seed is a short question with long options and is the one that
+       * gets a header; measuring every question is what makes sure it is seen.
        */
       const paged = await frame.$('[data-page="on"]')
-      if (paged) {
-        for (let step = 0; step < 10; step += 1) {
-          const on = await frame.$('[data-page="on"]:not([disabled])')
-          if (!on) break
-          await on.click()
-          await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
-        }
+      for (let page = 0; paged && page < 12; page += 1) {
         const last = await frame.evaluate(() => {
           const scroller = document.scrollingElement
           scroller.scrollTo({ top: 0, behavior: 'instant' })
@@ -336,6 +397,7 @@ async function main() {
             return !!r && r.top >= -1 && r.bottom <= box + 1
           }
           const options = [...card.querySelectorAll('button[data-slot="button"]')]
+          const text = card.querySelector('[data-question-text]')
           return {
             rung: card.getAttribute('data-rung'),
             part:
@@ -344,8 +406,10 @@ async function main() {
                 ?.getAttribute('data-part') ?? '(none)',
             chips: [...document.querySelectorAll('[data-part]')].map((b) => b.getAttribute('data-part')),
             height: Math.round(card.getBoundingClientRect().height),
-            questionInView: inside(card.querySelector('p')),
-            clamped: card.querySelector('[data-question-text]')?.getAttribute('data-question-text'),
+            questionShown: text !== null,
+            questionInView: inside(text),
+            questionClipped: !!text && text.scrollHeight > text.clientHeight + 1,
+            drawn: text?.getAttribute('data-question-text') ?? 'not drawn',
             optionsInView: options.filter(inside).length,
             options: options.length,
             passageInView: inside(card.querySelector('[data-passage]')),
@@ -354,22 +418,36 @@ async function main() {
           }
         })
         const over = Math.max(0, last.scrollHeight - last.box)
+        const which = `question ${page + 1}`
         say(
-          `  the long question, paged to: rung ${last.rung} · part ${last.part} · chips [${last.chips.join(' ')}]`
-            + ` · question ${last.clamped}`,
+          `  ${which}: rung ${last.rung} · part ${last.part} · chips [${last.chips.join(' ')}]`
+            + ` · question ${last.drawn}`,
         )
         say(
-          `    card ${last.height}px, ${over}px of scrolling, question ${last.questionInView ? 'in view' : 'NOT in view'},`
+          `    card ${last.height}px, ${over}px of scrolling, question `
+            + `${last.questionShown ? (last.questionInView ? 'in view' : 'NOT in view') : 'not drawn above the part'},`
             + ` ${last.optionsInView} of ${last.options} options pressable, source ${last.passageInView ? 'in view' : 'below the fold'}`,
         )
-        if (!last.questionInView) {
-          problems.push(`${width}×${height}: on the long question, the text of it is not on screen with the options`)
+        if (last.questionClipped) {
+          problems.push(
+            `${width}×${height}: on ${which}, the header was drawn clipped — part of a sentence, which is the`
+              + ' one thing it is not allowed to be',
+          )
+        }
+        if (last.questionShown && !last.questionInView) {
+          problems.push(`${width}×${height}: on ${which}, the text of it is not on screen with the options`)
+        }
+        if (!last.questionShown && !last.chips.includes('question')) {
+          problems.push(
+            `${width}×${height}: on ${which}, there is no header and no chip leading to one — the reader is`
+              + ' choosing between phrases with nothing saying what they answer',
+          )
         }
         if (last.optionsInView === 0) {
-          problems.push(`${width}×${height}: on the long question, no option could be pressed without scrolling`)
+          problems.push(`${width}×${height}: on ${which}, no option could be pressed without scrolling`)
         }
         if (!last.passageInView && over > last.box / 3) {
-          problems.push(`${width}×${height}: on the long question, the source control is unreachable without a long scroll`)
+          problems.push(`${width}×${height}: on ${which}, the source control is unreachable without a long scroll`)
         }
 
         /*
@@ -383,16 +461,21 @@ async function main() {
           await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
           const seen = await frame.evaluate(() => {
             const card = document.querySelector('[data-question]')
+            const text = card.querySelector('[data-question-text]')
             return {
               options: card.querySelectorAll('button[data-slot="button"]').length,
               quote: !!card.querySelector('blockquote'),
-              whole: card.querySelector('[data-question-text]')?.getAttribute('data-question-text') === 'whole',
+              drawn: text?.getAttribute('data-question-text') ?? 'not drawn',
+              /* Asserted on every part, not only on the question's own: a header
+                 above the options is the same sentence and is held to the same
+                 rule, which is that it is never shown in halves. */
+              clipped: !!text && text.scrollHeight > text.clientHeight + 1,
               scroll: document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight,
             }
           })
           say(
             `    part “${chip}”: ${seen.options} options, quote ${seen.quote ? 'shown' : 'not shown'},`
-              + ` question ${seen.whole ? 'whole' : 'clamped'}, ${Math.max(0, seen.scroll)}px of scrolling`,
+              + ` question ${seen.drawn}${seen.clipped ? ' (CLIPPED)' : ''}, ${Math.max(0, seen.scroll)}px of scrolling`,
           )
           if (chip === 'options' && seen.options === 0) {
             problems.push(`${width}×${height}: the "options" part showed no options`)
@@ -400,18 +483,28 @@ async function main() {
           if (chip === 'quote' && !seen.quote) {
             problems.push(`${width}×${height}: the "passage" part showed no passage`)
           }
-          if (chip === 'question' && !seen.whole) {
-            problems.push(`${width}×${height}: the "question" part still clamped the question it exists to show`)
+          if (chip === 'question' && seen.drawn !== 'whole') {
+            problems.push(`${width}×${height}: the "question" part did not show the question it exists to show`)
+          }
+          if (seen.clipped) {
+            problems.push(`${width}×${height}: on ${which}'s "${chip}" part, the question was drawn clipped`)
           }
         }
-        /* Back to the first question, so the answering step below is measured on
-           the same card at every size. */
-        for (let step = 0; step < 10; step += 1) {
-          const back = await frame.$('[data-page="back"]:not([disabled])')
-          if (!back) break
-          await back.click()
-          await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
-        }
+
+        /* On to the next question, or out of the loop at the last one. */
+        const on = await frame.$('[data-page="on"]:not([disabled])')
+        if (!on) break
+        await on.click()
+        await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+      }
+
+      /* Back to the first question, so the answering step below is measured on
+         the same card at every size. */
+      for (let step = 0; paged && step < 12; step += 1) {
+        const back = await frame.$('[data-page="back"]:not([disabled])')
+        if (!back) break
+        await back.click()
+        await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
       }
 
       /*
@@ -444,17 +537,84 @@ async function main() {
           return {
             verdict: badge?.textContent ?? null,
             verdictInView: !!r && r.top >= -1 && r.bottom <= box + 1,
+            /* Which screen the reader is on AFTER the press. Nothing should have
+               moved them: the verdict is drawn where they were standing. */
+            part:
+              [...document.querySelectorAll('[data-part]')]
+                .find((b) => b.getAttribute('aria-pressed') === 'true')
+                ?.getAttribute('data-part') ?? '(none)',
+            chips: [...document.querySelectorAll('[data-part]')].map((b) => b.getAttribute('data-part')),
+            /* The explanation must NOT be here: it has a part of its own, and a
+               card that draws it beside the verdict is the shape the owner asked
+               to be rid of. Whole cards have no parts and are exempt. */
+            whyHere: !!document.querySelector('[data-why="shown"]'),
             scrollHeight: scroller.scrollHeight,
             box,
           }
         })
         say(
           `  answered where they stood: verdict “${after.verdict}”, ${after.verdictInView ? 'in view' : 'BELOW THE FOLD'}`
+            + `, still on part ${after.part}, chips [${after.chips.join(' ')}]`
             + `, document now ${after.scrollHeight}px in a ${after.box}px box`,
         )
         if (!after.verdict) problems.push(`${width}×${height}: pressing an option produced no verdict`)
         if (!after.verdictInView) {
           problems.push(`${width}×${height}: the verdict for the press the reader just made is below the fold`)
+        }
+        /*
+         * The owner's fourth part, measured rather than asserted from the inside.
+         *
+         * Three things have to be true of a card that has just been answered in a
+         * box too small to hold it whole: the reader was not moved to another
+         * screen, the explanation is not stuffed onto the screen they are on, and
+         * there is a chip that leads to it. The first is what the press used to
+         * get wrong — it jumped to the `question` part — and the second is what
+         * the fourth part exists for.
+         */
+        if (after.part !== '(none)') {
+          if (after.part !== 'options') {
+            problems.push(
+              `${width}×${height}: answering moved the reader from the options to the "${after.part}" part —`
+                + ' the page changed under somebody who was still looking at what they chose',
+            )
+          }
+          if (after.whyHere) {
+            problems.push(
+              `${width}×${height}: the explanation was drawn on the "${after.part}" part, beside the verdict,`
+                + ' rather than on the part of its own it now has',
+            )
+          }
+          if (!after.chips.includes('why')) {
+            problems.push(
+              `${width}×${height}: the answer carried an explanation and no chip leads to it — it is in the`
+                + ' page and unreachable',
+            )
+          } else {
+            await frame.click('[data-part="why"]')
+            await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+            const why = await frame.evaluate(() => {
+              const box = document.scrollingElement.clientHeight
+              const card = document.querySelector('[data-question]')
+              const said = card.querySelector('[data-why="shown"]')
+              const r = said?.getBoundingClientRect()
+              return {
+                shown: !!said,
+                inView: !!r && r.top >= -1 && r.bottom <= box + 1,
+                /* Inside the CARD, not the document: the pager and the retake are
+                   also `data-slot="button"` and are in the row below, so counting
+                   the document would report three options on a screen that draws
+                   none. */
+                options: card.querySelectorAll('button[data-slot="button"]').length,
+              }
+            })
+            say(
+              `    the "why" part: explanation ${why.shown ? (why.inView ? 'in view' : 'shown but below the fold') : 'MISSING'}`
+                + `, ${why.options} of the card's own options drawn beside it`,
+            )
+            if (!why.shown) {
+              problems.push(`${width}×${height}: the "why" chip led to a screen with no explanation on it`)
+            }
+          }
         }
       } else {
         say('  answered where they stood: NO OPTION WAS REACHABLE')

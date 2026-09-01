@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { ModuleContext } from 'roadmap-module-protocol'
+import type { FilterChoice, FilterGroup, ModuleContext } from 'roadmap-module-protocol'
 
 import { connect, type Connection, type HostEvents } from 'roadmap-module-protocol/client'
 
@@ -26,10 +26,18 @@ import { connect, type Connection, type HostEvents } from 'roadmap-module-protoc
  *
  * Checklist keeps a per-kehikko choice through the protocol's kept state,
  * because a person has to PICK which list a container shows and the pick has to
- * stick. Nothing here is picked. Which questions are shown is decided by two
- * facts that both arrive in the context — the project this canvas is standing
- * in, and the epic that is open — so a kept string would have nothing to hold,
- * and `state:keep` is not declared. See `manifest.ts`.
+ * stick.
+ *
+ * There is one pick here now — how narrow the reader likes this container, the
+ * scope in `wire/scope.ts` — and it still needs no kept state, because the
+ * protocol already remembers it. A filter choice is stored by the host per
+ * container and comes back in `context.filters`, so keeping a second copy under
+ * `state.set` would be two records of one preference, disagreeing the first time
+ * one of them was written and the other was not.
+ *
+ * Everything else about which questions are shown is decided by two facts that
+ * both arrive in the context — the project this canvas is standing in, and the
+ * epic that is open. So `state:keep` is still not declared. See `manifest.ts`.
  *
  * ## How long to wait before deciding nobody is there
  *
@@ -95,8 +103,37 @@ export interface Roadmap {
    * still being open.
    */
   passage: Passage | null
+  /**
+   * Which of the scopes this page offered is chosen for THIS container.
+   *
+   * `{}` before any host has said anything, and `{}` from a host that has never
+   * heard of filters — the true answer in both cases, which is that nothing is
+   * narrowed. `wire/scope.ts` reads it, and reads it leniently, because the
+   * greeting carries a remembered choice before this page has said what it
+   * offers.
+   *
+   * Compared key by key before it is written, for the same reason `passage` is:
+   * the host builds a fresh record on every context whatever happened, and a new
+   * identity here would re-narrow the whole list several times a second on top of
+   * a poll that is already running.
+   */
+  chosen: FilterChoice
   /** Ask the host to make this container a given height. */
   resize: (height: number) => void
+  /**
+   * Say what this container can be narrowed by, so the host can draw the control.
+   *
+   * Fire and forget, like `resize`: the host may draw the offer, may draw part of
+   * it, or may never have heard of the idea. What comes back is not an answer but
+   * a context with `filters` in it.
+   *
+   * Stable across renders, so the effect that sends the offer can depend on the
+   * one thing that makes the offer change — which here is which RUNGS exist, not
+   * which one is chosen. The client replays the last offer after every greeting,
+   * so a reloaded frame is drawn correctly without this page doing anything; a
+   * page whose rungs have changed must send again itself.
+   */
+  filters: (groups: FilterGroup[]) => void
   /**
    * Point every container on the canvas at a passage.
    *
@@ -136,6 +173,7 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [project, setProject] = useState<string | null>(null)
   const [passage, setPassage] = useState<Passage | null>(null)
+  const [chosen, setChosen] = useState<FilterChoice>({})
   const host = useRef<Connection | null>(null)
 
   /* The handler is read through a ref so that a caller re-creating it does not
@@ -146,7 +184,7 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
 
   useEffect(() => {
     /* Typed as the protocol's own context rather than as the four fields this
-       page happens to read. It reads five now, and a hand-written shape that has
+       page happens to read. It reads six now, and a hand-written shape that has
        to be widened every time is a shape that will one day be widened wrongly —
        `passage` is nullable and optional in different senses, and the package
        says which. */
@@ -193,6 +231,11 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
        * compared for the same reason, so the fields are.
        */
       setPassage((was) => (same(was, context.passage ?? null) ? was : (context.passage ?? null)))
+      /* Compared before it is written, and for the reason directly above: this
+         is a record the host rebuilds on every context whatever happened, and a
+         fresh identity here re-narrows the list and re-decides the ladder for a
+         choice nobody changed. */
+      setChosen((was) => (agrees(was, context.filters ?? {}) ? was : (context.filters ?? {})))
     }
 
     /*
@@ -231,6 +274,12 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
 
   const resize = useCallback((height: number) => host.current?.resize(height), [])
 
+  /* Sent unconditionally: a page with no host posts into nothing, which costs
+     nothing, and a page that checked first would have to know whether the
+     greeting has arrived yet — which is exactly the race the client's own replay
+     of the last offer exists to end. */
+  const filters = useCallback((groups: FilterGroup[]) => host.current?.filters(groups), [])
+
   const point = useCallback((pointed: Passage | null) => {
     const conversation = host.current
     /* Unframed, or greeted by nothing. The page still works — that is the whole
@@ -240,9 +289,23 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
   }, [])
 
   return useMemo(
-    () => ({ where, epic, projectPath, project, passage, resize, point }),
-    [where, epic, projectPath, project, passage, resize, point],
+    () => ({ where, epic, projectPath, project, passage, chosen, resize, filters, point }),
+    [where, epic, projectPath, project, passage, chosen, resize, filters, point],
   )
+}
+
+/**
+ * Whether two filter choices say the same thing.
+ *
+ * Key by key, because the host builds a new record on every context whatever
+ * happened — the same reason `same()` below exists, about the same failure. One
+ * of these is a string comparison and the other is five, and both are cheaper
+ * than the render they prevent.
+ */
+function agrees(a: FilterChoice, b: FilterChoice): boolean {
+  const keys = Object.keys(a)
+  if (keys.length !== Object.keys(b).length) return false
+  return keys.every((key) => a[key] === b[key])
 }
 
 /**

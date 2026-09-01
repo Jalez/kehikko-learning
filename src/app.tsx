@@ -9,7 +9,8 @@ import { NoEpic, NoProject } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
 import { textWidth } from '@/view/text.ts'
 import { useFrame } from '@/view/use-frame.ts'
-import { pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
+import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
+import { hiddenNote, narrow, offer, reachOf, scopeOf } from '@/wire/scope.ts'
 
 /** Whether this page is in a frame. Unframed, it prints its own heading. */
 const framed = typeof window !== 'undefined' && window.parent !== window
@@ -61,35 +62,48 @@ export function App() {
     )
   }, [])
 
-  const { where, epic, projectPath, project, passage, resize, point } = useRoadmap(ID, onGoto)
+  const { where, epic, projectPath, project, passage, chosen, resize, filters, point } = useRoadmap(ID, onGoto)
 
   /*
-   * Nothing is offered to `roadmap.filters`, and the silence is the decision.
+   * What this container can be narrowed by, said whenever the answer changes.
    *
-   * The protocol lets a module hand the host a list of things it can be narrowed
-   * by, and the host draws one control in the container header for it. Six modules
-   * in this family have something to put there. This one does not, and it is
-   * worth writing down so that the next person to sweep the family does not go
-   * looking for the filter that was left behind.
+   * ## The paragraph that used to be here said there was nothing, and half of it was right
    *
-   * Everything this page holds is already narrowed by something nobody chooses:
-   * the questions are the questions about the paper that is open, in the project
-   * the host named, and both come off the context rather than off a press. What
-   * is left is a reader moving through them — `shown` and `part` — and that is a
-   * position, not a filter. It hides nothing: every question is still there, one
-   * press away, and the count on screen says how many.
+   * It argued that everything this page holds is already narrowed by something
+   * nobody chooses, that `shown` and `part` are a reader's POSITION rather than a
+   * filter, and that `only unanswered` should be refused because a quiz whose
+   * list loses a card the moment it is answered takes away the one thing a reader
+   * comes back for. The last of those still stands and is still not offered.
    *
-   * The temptation is `only unanswered`, and it is refused rather than
-   * postponed. A quiz whose list silently loses a card the moment it is answered
-   * takes away the one thing a reader comes back for, which is reading the
-   * explanation again. If somebody asks for it, it is an offer of one group with
-   * two options and it belongs here; inventing it to have something to send
-   * would be a control built for the header rather than for the reader.
+   * What the rest of it got wrong is that "the ladder is a position" quietly
+   * stood in for "there is nothing here to narrow by". There is, and the owner
+   * had already asked for it: questions about all files, this file, or the
+   * section being read. The rungs are offered as GRAIN — `all`, `file`,
+   * `section` — so what the host remembers per container is how narrow the reader
+   * likes it, which is a preference; which file and which section are read off
+   * the passage the canvas is standing on every time, which is why the old
+   * paragraph's worry about storing a position does not apply. `wire/scope.ts`
+   * carries the whole argument, including why there is no `page` rung.
    *
-   * A module with nothing to offer sends nothing. An empty offer would be this
-   * page saying "the last thing I offered is withdrawn", which is a different
-   * sentence and one it has never had cause to say.
+   * ## Why this is an effect, and what it depends on
+   *
+   * The offer changes when the RUNGS change: nothing is pointed at on a canvas
+   * that has just opened, and `this document` there is a control a person can
+   * press that answers nothing. So it is re-sent when a document or a selection
+   * appears or disappears — and NOT when the passage merely moves, because a
+   * reader scrolling through a chapter changes which questions are shown without
+   * changing what can be chosen. Two booleans, not the passage.
    */
+  const reach = reachOf(projectPath, passage)
+  useEffect(() => {
+    filters(offer({ file: reach.file, section: reach.section }))
+  }, [filters, reach.file, reach.section])
+
+  /* How narrow the reader asked for, as this context can honour it. A rung that
+     has gone away degrades to `all` rather than emptying the container — the
+     host keeps the choice, so it comes back the moment they highlight something
+     again. */
+  const scope = scopeOf(chosen, reach)
 
   /* How big the box actually is, and what therefore fits in it. Two lines here
      because the deciding is in `view/room.ts`, where it can be read as a table
@@ -125,13 +139,26 @@ export function App() {
     setPart('options')
   }, [])
 
-  /* A different paper is a different set of questions; starting the reader
-     halfway through it because that is where they were in the last one would be
-     a position they never chose. */
+  /*
+   * A different set of questions is a different place to be standing.
+   *
+   * A different paper, obviously: starting a reader halfway through one because
+   * that is where they were in the last is a position they never chose. And a
+   * different SCOPE for the same reason — narrowing to this document is a request
+   * to be shown that document's questions, not to be left on whichever index the
+   * old list happened to have them at.
+   *
+   * `narrowedBy` is what makes the second half honest without making it noisy. At
+   * `all` it is the constant string, so a reader scrolling through a chapter — a
+   * new passage several times a second — is never moved. Narrowed, it names the
+   * place being narrowed to, so moving to another paragraph is the one case that
+   * genuinely does change which questions exist.
+   */
+  const narrowedBy = scope === 'all' ? 'all' : `${scope} ${passage ? keyOf(passage) : ''}`
   useEffect(() => {
     setShown(0)
     setPart('options')
-  }, [projectPath, epic])
+  }, [projectPath, epic, narrowedBy])
 
   /*
    * The font engine, asked once.
@@ -144,6 +171,30 @@ export function App() {
   const measure = useMemo(() => textWidth() ?? roughly, [])
 
   /*
+   * The questions this scope leaves on screen, and how many it does not.
+   *
+   * Everything below this line — the cards, the ladder, which question is being
+   * shown — is about the narrowed list, because those are all statements about
+   * what a reader is looking at. `questions` stays whole above it, because that
+   * is what a press, an answer and the poll all act on: narrowing is a view of
+   * the store and never an edit to it.
+   *
+   * The count is kept and drawn in the page. The host cannot count rows it does
+   * not render, in a document it cannot read, in a frame on another origin — so a
+   * narrowing that says nothing about what it hid is a container that has quietly
+   * lost questions.
+   */
+  const visible = useMemo(
+    () => narrow(questions, projectPath, passage, scope),
+    [questions, projectPath, passage, scope],
+  )
+  const hidden = questions.length - visible.length
+  /* Worded once, and read by both the page and the geometry: `view/room.ts`
+     needs the short form's WIDTH, because it is one more item in the row of
+     controls the paged rungs measure their room against. */
+  const hiding = hiddenNote(scope, hidden)
+
+  /*
    * The questions, reduced to the fields that decide how tall a card is.
    *
    * `view/room.ts` deliberately does not import `Asked`: it is a file of
@@ -152,7 +203,7 @@ export function App() {
    */
   const cards = useMemo<Card[]>(
     () =>
-      questions.map((question) => ({
+      visible.map((question) => ({
         question: question.question,
         options: question.options,
         source: sourceLabel(question.passage.path, fits.source),
@@ -161,19 +212,25 @@ export function App() {
         why: question.why,
         answered: question.attempts.length > 0,
       })),
-    [questions, fits.source],
+    [visible, fits.source],
   )
 
+  const brief = hiding?.brief ?? null
   const rungs = useMemo(
-    () => ladder({ frame, epic: epic ?? '', cards, fits, shown, measure }),
-    [frame, epic, cards, fits, shown, measure],
+    () => ladder({ frame, epic: epic ?? '', cards, fits, shown, measure, note: brief }),
+    [frame, epic, cards, fits, shown, measure, brief],
   )
 
   const at = Math.min(Math.max(shown, 0), Math.max(0, cards.length - 1))
+  /* The chips, decided by the same number that decided whether the question is
+     on screen above them. `rungs.header` is zero when no header was drawn —
+     because the question is longer than the header's ceiling, or because drawing
+     one would have cost the reader their last whole option — and a question that
+     is not on screen is a question that needs a chip leading to it. */
   const parts = useMemo<Part[]>(() => {
     const card = cards[at]
-    return card ? partsOf(card, frame.width, measure) : []
-  }, [cards, at, frame.width, measure])
+    return card ? partsOf(card, rungs.header) : []
+  }, [cards, at, rungs.header])
 
   /* Held in a ref as well as in state so the poll can read the current pair
      without being re-created — and therefore re-scheduled — on every context
@@ -249,20 +306,22 @@ export function App() {
         setTrouble(null)
         setQuestions((was) => was.map((question) => (question.id === id ? out.asked : question)))
         /*
-         * Show the reader what they just earned.
+         * And the reader stays exactly where they are.
          *
-         * At the `part` rung the verdict and the explanation are drawn with the
-         * question rather than with the options — they are the answer to what
-         * was asked, and the options screen after a press already says which one
-         * was right in colour. So a press that produces an explanation moves to
-         * the part holding it. This is a response to the reader's own press and
-         * not a layout deciding things on its own; the options are one chip away
-         * and still carry their marks.
+         * This line used to be `setPart('question')`, because the verdict and the
+         * explanation were both drawn on the `question` part and a press that
+         * earned them had to lead somewhere. Both halves of that have changed:
+         * the verdict is now drawn with the OPTIONS, which is the screen the
+         * reader is already standing on, and the explanation has a part of its
+         * own with a chip that appears the moment it exists.
          *
-         * At `list` and `one` nothing about this is visible, because the whole
-         * card is on screen and there are no parts.
+         * So there is nothing left to move them for, and moving them would be the
+         * page changing under somebody who was still looking at the option they
+         * chose — the complaint this whole ladder keeps being corrected by. What
+         * a press does now is change the screen they are on: the badge appears,
+         * their choice and the key are marked, and a fourth chip shows up in the
+         * row saying there is an explanation to read when they want it.
          */
-        setPart('question')
       } finally {
         writing.current = false
         setBusy(false)
@@ -316,7 +375,7 @@ export function App() {
    * what this does is mark a card. On this module's own echo that is not merely
    * harmless, it is the confirmation the press was made to produce.
    */
-  const pointed = pointedQuestion(projectPath, questions, passage)
+  const pointed = pointedQuestion(projectPath, visible, passage)
 
   const onRetake = useCallback(async () => {
     if (!projectPath || !epic) return
@@ -401,7 +460,10 @@ export function App() {
     ) : (
       <QuizView
         epic={epic}
-        questions={questions}
+        questions={visible}
+        /* What the narrowing hid, in this module's own words. Drawn in the page
+           because the host cannot count rows it does not render. */
+        hiding={hiding}
         onAnswer={(id, chose) => void onAnswer(id, chose)}
         onPoint={onPoint}
         pointed={pointed}

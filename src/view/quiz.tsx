@@ -4,6 +4,7 @@ import type { Asked } from '@/store/ask.ts'
 import type { Ladder, Part, Room } from '@/view/room.ts'
 import { PART_LABEL } from '@/view/room.ts'
 import { sourceLabel } from '@/wire/pointed.ts'
+import type { Hidden } from '@/wire/scope.ts'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button.tsx'
 
@@ -122,17 +123,27 @@ function PassagePanel({ question, onClose }: { question: Asked; onClose: () => v
  *   the padding returns 18 pixels in each axis, and 18 pixels of width at 220 is
  *   a wrapped line back in every option.
  * - `part` — one of `question`, `options` and `quote`, chosen by the switcher in
- *   the row below, with the question kept above it as a two-line header.
+ *   the row below, with the question above it as a header where there is room
+ *   for the whole of it and nowhere else.
  *
- * ### The header is not decoration, it is what makes `part` answerable
+ * ### The header is what makes `part` answerable — until it is what makes it unanswerable
  *
  * A multiple-choice question you cannot read is not a question. If `options`
  * were a part shown on its own, the reader would be choosing between four
  * phrases with nothing on screen saying what they are answers TO. So the
- * question text is drawn above every part — clamped to two lines, with the whole
- * of it one chip away on the `question` part and in the element's `title` at all
- * times. `dev/ladder.mjs` presses an option at 220×300 and 320×200 with nothing
- * scrolled and asserts that the question was legible while it did.
+ * question text is drawn above every part, and `dev/ladder.mjs` presses an
+ * option at 220×300 and 320×200 with nothing scrolled and asserts the reader
+ * could tell what they were answering while it did.
+ *
+ * That was `line-clamp-2`, and the clamp was the bug. At the tightest sizes it
+ * drew two lines of a seven-line question, put an ellipsis on the end, and took
+ * forty-six pixels off the options — a fragment of a sentence AND less room to
+ * answer in. The rule above survives; the clamp does not. `headerOf()` in
+ * `view/room.ts` now draws the header only where the WHOLE question fits in two
+ * lines and there is still room beneath it for the source control and one whole
+ * option, and draws nothing otherwise. A question with no header is exactly a
+ * question with a `question` chip, because `partsOf()` reads the same number, so
+ * "you cannot read it here" and "here is where to read it" are one decision.
  *
  * ### And the press that points the canvas survives the split
  *
@@ -184,6 +195,7 @@ export function QuestionCard({
   room,
   rung = 'list',
   part = null,
+  header = 0,
   estimate = 0,
 }: {
   question: Asked
@@ -206,6 +218,22 @@ export function QuestionCard({
   rung?: Ladder['rung']
   /** Which piece is showing, at `part` and nowhere else. */
   part?: Part | null
+  /**
+   * How many lines of the question stand above that piece — and zero means no
+   * header at all, which is a real and common answer.
+   *
+   * Decided in `headerOf()` in `view/room.ts` against the room this card was
+   * given, never here. It is a number of LINES rather than a boolean because the
+   * only header this card will draw is one the whole question fits in: the
+   * element carries no clamp, so what the number says is "the question is this
+   * tall, and there is room for it", and the alternative to a number that means
+   * that is a truncation nothing on screen can show.
+   *
+   * Defaults to 0, like every other ladder prop defaults to the list: a caller
+   * that has measured nothing is a caller drawing the whole card, where the
+   * question is the card's first line anyway and this is never consulted.
+   */
+  header?: number
   /**
    * What `ladder()` estimated this card would need, in pixels.
    *
@@ -249,13 +277,41 @@ export function QuestionCard({
   const whole = part === null
   const showOptions = whole || part === 'options'
   const showQuote = paged && (whole || part === 'quote')
-  /* The header stays above every part, so a person choosing an option can read
-     what they are answering. Only the `question` part unclamps it. */
-  const clamped = part !== null && part !== 'question'
-  /* The verdict and the explanation are the payoff for having answered. Whole,
-     they sit under the options; in parts they go with the question, which is
-     where `QuizView` sends the reader the moment they answer. */
-  const showVerdict = answered && (whole || part === 'question')
+  /*
+   * Whether this drawing of the question is a HEADER above another part rather
+   * than the question itself — and, if it is, whether there was room for one.
+   *
+   * The header is what makes a screen of bare options answerable, so it is drawn
+   * wherever it can be. What it is never allowed to be is a fragment: `header` is
+   * a line count the whole question fits inside, or it is zero, and zero means
+   * the question is not drawn here at all and the `question` chip is the way to
+   * it. `headerOf()` in `view/room.ts` carries the whole argument, including why
+   * two lines of a seven-line question was worse than none.
+   */
+  const heading = part !== null && part !== 'question'
+  const showQuestion = !heading || header > 0
+  /*
+   * The two halves of what answering earns you, and they are drawn in two
+   * different places now.
+   *
+   * The VERDICT stays with the options: "right" or "wrong" is about the button
+   * that was just pressed, the marks on the options say which one was which, and
+   * splitting a judgement from the thing it judges is how you get a reader
+   * pressing a chip to find out what they already did. So a press changes the
+   * screen the reader is standing on rather than moving them.
+   *
+   * The EXPLANATION goes to its own part, which is the owner's call and is right
+   * for a reason the rest of this file keeps running into: it is prose, it is the
+   * longest thing a card holds, and it does not exist until it is earned. On the
+   * `question` part — where both of these used to go — it made that part mean two
+   * things and pushed the question itself off a 300-pixel box. On its own part it
+   * is sized by nothing but itself.
+   *
+   * Whole, both are simply drawn: there are no parts at `list` or `one`, and the
+   * card reads question, options, verdict, explanation, passage, top to bottom.
+   */
+  const showVerdict = answered && (whole || part === 'options')
+  const showWhy = answered && question.why !== null && (whole || part === 'why')
 
   const about = pointed
     ? `the canvas is pointed at this passage of ${question.passage.path}`
@@ -349,17 +405,38 @@ export function QuestionCard({
             : 'min-w-0 snap-start rounded border bg-card p-2 @sm/container:p-2.5'
       }
     >
-      <p
-        data-question-text={clamped ? 'clamped' : 'whole'}
-        title={clamped ? question.question : undefined}
-        className={
-          clamped
-            ? 'line-clamp-2 text-[0.78rem] leading-5 font-medium @sm/container:text-[0.85rem] @sm/container:leading-6'
-            : 'text-[0.78rem] leading-5 font-medium @sm/container:text-[0.85rem] @sm/container:leading-6'
-        }
-      >
-        {question.question}
-      </p>
+      {/*
+        The question, whole or not at all.
+
+        There is no `line-clamp` here any more and its absence is the fix. It
+        used to be `line-clamp-2` above every part that is not the question,
+        which drew two lines of a seven-line question with an ellipsis on the
+        end — a fragment of a sentence, and forty-six pixels the options did not
+        get. The owner's words for it: "it's still showing the question
+        partially when there's only space for the options."
+
+        So the deciding moved to `headerOf()` in `view/room.ts`, where it can be
+        made against the measured box and asserted in a test, and what arrives
+        here is a line count the whole question is known to fit in. With no clamp
+        in the class list a truncated header is not a thing this component can
+        draw: if the estimate is ever wrong the header is a line taller than
+        planned, which is visible and is measured, rather than a sentence quietly
+        cut off, which is not.
+
+        `data-question-text` says which of the two drawings this is — `whole` for
+        the question on its own screen, `header` for the same text standing above
+        another part. Both are the entire sentence. Its ABSENCE is the third
+        state and the new one: no room for a header, and the `question` chip is
+        how the reader reads it.
+      */}
+      {showQuestion ? (
+        <p
+          data-question-text={heading ? 'header' : 'whole'}
+          className="text-[0.78rem] leading-5 font-medium @sm/container:text-[0.85rem] @sm/container:leading-6"
+        >
+          {question.question}
+        </p>
+      ) : null}
 
       {rung === 'part' ? sourceControl : null}
 
@@ -426,8 +503,11 @@ export function QuestionCard({
         </div>
       ) : null}
 
-      {showVerdict && question.why ? (
-        <p className="mt-1.5 border-l-2 border-border pl-2 text-[0.7rem] leading-4 text-muted-foreground">
+      {showWhy && question.why ? (
+        <p
+          data-why="shown"
+          className="mt-1.5 border-l-2 border-border pl-2 text-[0.7rem] leading-4 text-muted-foreground"
+        >
           {question.why}
         </p>
       ) : null}
@@ -621,6 +701,7 @@ export function QuestionCard({
 export function QuizView({
   epic,
   questions,
+  hiding = null,
   onAnswer,
   onPoint,
   pointed,
@@ -631,7 +712,7 @@ export function QuizView({
   /* All six default to the list, for the same reason `QuestionCard`'s do: a
      caller with no ladder is a caller that has measured nothing, and the list is
      what this view has always drawn. */
-  ladder = { rung: 'list', available: 0, heights: [], snap: false },
+  ladder = { rung: 'list', available: 0, heights: [], snap: false, header: 0 },
   parts = ['options', 'quote'],
   shown = 0,
   onShow = () => {},
@@ -640,6 +721,21 @@ export function QuizView({
 }: {
   epic: string
   questions: Asked[]
+  /**
+   * What the scope is hiding, already worded — `3 more questions about other
+   * documents` — or null when it is hiding nothing.
+   *
+   * A string rather than a number and a scope, because the sentence has to stay
+   * true to what `narrow()` in `wire/scope.ts` actually did, and the two are read
+   * together there. This view's job is to find it a line.
+   *
+   * It is drawn in the PAGE, and that is the point of it. The scope control lives
+   * in the container header now, where the host draws it, and a host cannot count
+   * rows it does not render, in a document it cannot read, in a frame on another
+   * origin. A container that quietly holds nine questions and shows two, with
+   * nothing on screen saying so, is a container that has lost them.
+   */
+  hiding?: Hidden | null
   onAnswer: (id: string, chose: number) => void
   /** A person pressed a question's source. Nothing else may call this. */
   onPoint: (id: string) => void
@@ -674,9 +770,26 @@ export function QuizView({
     return (
       <section className="flex min-w-0 flex-col gap-1.5">
         <h2 className="text-[0.8rem] font-semibold [overflow-wrap:anywhere] @sm/container:text-sm">{epic}</h2>
-        <p className="text-[0.7rem] leading-4 text-muted-foreground">
-          Nothing has been asked about this paper yet. An agent writes the questions, with <code>add_quiz</code>.
-        </p>
+        {/*
+          Two empty screens, not one, and telling them apart is the whole reason
+          the count is drawn here.
+
+          "Nothing has been asked yet" is a fact about the paper and asks for an
+          agent. "The scope you chose has nothing in it" is a fact about a press,
+          it is undone by another press, and drawing the first sentence over it
+          would be this container blaming an absence on the wrong thing — a reader
+          would go looking for questions that are sitting right there.
+        */}
+        {hiding ? (
+          <p data-scope-note="empty" className="text-[0.7rem] leading-4 text-muted-foreground">
+            Nothing has been asked about this, at the scope this container is set to — {hiding.full}. Widen it in the
+            container’s header.
+          </p>
+        ) : (
+          <p className="text-[0.7rem] leading-4 text-muted-foreground">
+            Nothing has been asked about this paper yet. An agent writes the questions, with <code>add_quiz</code>.
+          </p>
+        )}
       </section>
     )
   }
@@ -713,6 +826,7 @@ export function QuizView({
             room={room}
             rung={ladder.rung}
             part={ladder.rung === 'part' ? showing : null}
+            header={ladder.header}
             estimate={ladder.heights[at] ?? 0}
             pointed={pointed === question.id}
             onAnswer={(chose) => onAnswer(question.id, chose)}
@@ -798,6 +912,28 @@ export function QuizView({
               ))
             : null}
 
+          {/*
+            What the scope is hiding, in the row rather than on a line of its
+            own, and in four words rather than forty.
+
+            At 220 wide a sentence here would take a whole extra row from the
+            question, so this is `+3 elsewhere` with the long form on the row's
+            `title` — the same deferral by one hover that the short source label
+            already makes. `controlsHeight()` in `view/room.ts` reserves it at
+            every paged rung whether or not it is drawn, so a reader pressing the
+            scope control in the container header cannot change which rung they
+            are on.
+          */}
+          {hiding ? (
+            <span
+              data-scope-note="brief"
+              title={hiding.full}
+              className="text-[0.65rem] whitespace-nowrap text-muted-foreground"
+            >
+              {hiding.brief}
+            </span>
+          ) : null}
+
           {answered ? (
             <>
               <span className="text-[0.65rem] whitespace-nowrap text-muted-foreground">{right} right</span>
@@ -840,6 +976,28 @@ export function QuizView({
       <div className="flex min-w-0 snap-start flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <h2 className="text-[0.8rem] font-semibold [overflow-wrap:anywhere] @sm/container:text-sm">{epic}</h2>
         <span className="text-[0.65rem] text-muted-foreground">{score}</span>
+        {/*
+          The whole sentence here, and the short one in the paged row above.
+
+          This block is a list's heading and it already wraps to two rows at 220
+          wide; one more phrase in the same wrap costs a row only where the score
+          did not already take one. It says what it is a count OF, which is what
+          a reader who did not press the scope control themselves — a container
+          restored with yesterday's preference on it — needs in order to know why
+          there are two questions where there were nine.
+
+          `headingHeight()` in `view/room.ts` does not count it, and that is the
+          same decision it makes about `trouble`: the list rung is decided from
+          what the questions are rather than from what the reader has done, and a
+          row reserved for every reader to pay for a narrowing most of them have
+          not chosen is the wrong side of that trade. The consequence is a list
+          that scrolls a few pixels more while narrowed, which is what a list does.
+        */}
+        {hiding ? (
+          <span data-scope-note="full" className="text-[0.65rem] text-muted-foreground">
+            {hiding.full}
+          </span>
+        ) : null}
       </div>
 
       {trouble ? (
