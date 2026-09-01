@@ -47,10 +47,29 @@ describe('what can be narrowed by, given where the canvas is standing', () => {
     expect(offer(reachOf(null, at(BRIDGE, 10, 20)))).toEqual([])
   })
 
+  /*
+   * The one that erased somebody's setting on every load.
+   *
+   * An empty offer is a CLAIM the host acts on: it withdraws the control and
+   * prunes the container's stored choice. This effect first runs on mount,
+   * before the canvas has said anything, when there is no passage and therefore
+   * no ladder — so answering `[]` there claims "nothing to narrow by" at the one
+   * moment the module cannot know, and the remembered scope is thrown away every
+   * time the page loads. Found in the checklist module against the real host.
+   */
+  test('before the canvas has spoken there is nothing to say, which is not the same as nothing to offer', () => {
+    expect(offer(reachOf(PROJECT, null), false)).toBeNull()
+    expect(offer(reachOf(null, null), false)).toBeNull()
+  })
+
+  test('and once it has spoken, no document really is an empty offer', () => {
+    expect(offer(reachOf(PROJECT, null), true)).toEqual([])
+  })
+
   test('a document, but no selection, offers everywhere and this document', () => {
     const groups = offer(reachOf(PROJECT, at(BRIDGE, null, null)))
-    expect(groups.map((group) => group.id)).toEqual([SCOPE])
-    expect(groups[0]?.options.map((option) => option.id)).toEqual(['all', 'file'])
+    expect(groups!.map((group) => group.id)).toEqual([SCOPE])
+    expect(groups![0]?.options.map((option) => option.id)).toEqual(['all', 'file'])
   })
 
   test('a selection adds the passage rung, and only then', () => {
@@ -59,12 +78,12 @@ describe('what can be narrowed by, given where the canvas is standing', () => {
        anything is a control that either hides everything or nothing, decided by
        a comparison this module cannot make. */
     const groups = offer(reachOf(PROJECT, at(BRIDGE, 1050, 1100)))
-    expect(groups[0]?.options.map((option) => option.id)).toEqual(['all', 'file', 'section'])
+    expect(groups![0]?.options.map((option) => option.id)).toEqual(['all', 'file', 'section'])
   })
 
   test('everywhere is always the fallback, so a host has one press that puts it all back', () => {
     for (const passage of [at(BRIDGE, null, null), at(BRIDGE, 1050, 1100)]) {
-      expect(offer(reachOf(PROJECT, passage))[0]?.fallback).toBe('all')
+      expect(offer(reachOf(PROJECT, passage))![0]?.fallback).toBe('all')
     }
   })
 
@@ -82,7 +101,7 @@ describe('what can be narrowed by, given where the canvas is standing', () => {
     /* `kehikko-paper` does publish a page and this module cannot honour one: a
        question is anchored by a path and a byte range, and nothing here has ever
        opened the file. See the essay in `wire/scope.ts`. */
-    const ids = offer(reachOf(PROJECT, at(BRIDGE, 1050, 1100)))[0]?.options.map((option) => option.id) ?? []
+    const ids = offer(reachOf(PROJECT, at(BRIDGE, 1050, 1100)))![0]?.options.map((option) => option.id) ?? []
     expect(ids).not.toContain('page')
   })
 })

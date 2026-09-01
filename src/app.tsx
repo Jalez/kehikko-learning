@@ -95,9 +95,15 @@ export function App() {
    * changing what can be chosen. Two booleans, not the passage.
    */
   const reach = reachOf(projectPath, passage)
+  const greeted = where !== 'listening'
   useEffect(() => {
-    filters(offer({ file: reach.file, section: reach.section }))
-  }, [filters, reach.file, reach.section])
+    /* `null` means "nothing to say yet" and is not sent: an empty offer is a
+       claim the host acts on by pruning this container's stored choice, and
+       making that claim before the canvas has spoken erased the remembered
+       scope on every load. See `offer`. */
+    const groups = offer({ file: reach.file, section: reach.section }, greeted)
+    if (groups) filters(groups)
+  }, [filters, reach.file, reach.section, greeted])
 
   /* How narrow the reader asked for, as this context can honour it. A rung that
      has gone away degrades to `all` rather than emptying the container — the

@@ -127,7 +127,26 @@ export function reachOf(projectPath: string | null, passage: Pointing | null): R
  * count OF. The host cannot count rows it does not render; this module can, and
  * it does it in its own words in `view/quiz.tsx`.
  */
-export function offer(reach: Reach): FilterGroup[] {
+export function offer(reach: Reach, greeted = true): FilterGroup[] | null {
+  /*
+   * Three answers, not two, and the third is the one that was missing.
+   *
+   * An empty offer is a CLAIM — "there is nothing here to narrow by" — and the
+   * host acts on it: it withdraws the control and prunes this container's
+   * stored choice, which is right when a module genuinely has no ladder.
+   *
+   * But this effect first runs on mount, before the canvas has said anything,
+   * when `passage` is null and `reach.file` is therefore false. So a module that
+   * answered `[]` there would claim it had nothing to offer at the one moment it
+   * could not possibly know — and the host, believing it, would erase the
+   * remembered scope on every single load. The setting would appear to work
+   * perfectly and be forgotten every time the page was reloaded.
+   *
+   * Found in the checklist module against the real host, where it did exactly
+   * that. `null` is the honest answer for "I have nothing to say yet": the
+   * caller sends nothing at all, and whatever was last offered stands.
+   */
+  if (!greeted) return null
   if (!reach.file) return []
   const options = [
     { id: 'all', label: 'Anywhere' },
