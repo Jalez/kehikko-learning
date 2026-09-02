@@ -244,6 +244,13 @@ export interface Card {
   source: string
   /** The project-relative path, printed under the source where the label is short. */
   path: string
+  /**
+   * Whether the document is there — `quiz/where.ts`. Optional here because
+   * this file is geometry and a missing anchor changes no measurement: the
+   * card draws the same one-line label with a few words after it. It rides
+   * along so that the projection in `app.tsx` is one object and not two.
+   */
+  anchor?: 'holds' | 'missing' | 'unchecked'
   quote: string
   /** The explanation, once it has been earned. `null` before that. */
   why: string | null

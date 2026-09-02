@@ -65,13 +65,13 @@ export const PREFERRED_PORT = 7950
  *   read this origin's `/api` and ask it for the whole store, so the CORS
  *   argument above is not hygiene here, it is the second half of the mechanism.
  *
- * - **`uses: ['passage:set']` — one capability, and this paragraph used to say
- *   there were none.** What stood here was "nothing is asked for, and that is
- *   not an oversight", on the argument that this app needs the context and
- *   nothing else. That was right about the default and had not met its
- *   exception, and the user supplied it in one sentence: "the question should
- *   point to the specific location from which it was derived from, highlighting
- *   that section of the paper, much like the notes do."
+ * - **`uses: ['passage:set', 'showing:set']` — two capabilities, and this
+ *   paragraph used to say there were none.** What stood here was "nothing is
+ *   asked for, and that is not an oversight", on the argument that this app
+ *   needs the context and nothing else. That was right about the default and
+ *   had not met its exception, and the user supplied it in one sentence: "the
+ *   question should point to the specific location from which it was derived
+ *   from, highlighting that section of the paper, much like the notes do."
  *
  *   It is a sentence this module cannot answer no to, because the fact it asks
  *   for is one this module already holds and nothing else does. Every question
@@ -104,6 +104,34 @@ export const PREFERRED_PORT = 7950
  *   module consumes and provides reads this field. Declaring `passage:set` is
  *   how a person browsing the modules discovers that Learning and a reader work
  *   together at all.
+ *
+ * - **`showing:set` — declared, and it was not obvious.** The protocol's
+ *   `context.containers` lets a person pick out containers and have every
+ *   other pane narrow to what those show. This module CONSUMES that — see
+ *   `reacts` below and `wire/aim.ts` — and the question was whether it should
+ *   also PRODUCE it: whether a pane listing four questions about chapter three
+ *   is, in the canvas's sense, showing chapter three.
+ *
+ *   The case against is real. What this container has open is questions, not
+ *   a document; a document is what they are ABOUT, one step removed. And a
+ *   module that reads the list and writes to it can feed itself — its own row
+ *   comes back in the next context, and a union that included it would hold
+ *   yesterday's chapter beside today's and never narrow again.
+ *
+ *   It is declared anyway, for the reason the user's own sentence gives:
+ *   "same with notes, and references". A person who ticks THIS container and
+ *   looks at the notes pane expects the notes on the chapters these questions
+ *   are about, and that expectation is exactly what the capability exists to
+ *   carry — a reader working through a chapter's questions is standing in that
+ *   chapter, and the canvas should be able to know it. What is sent is the
+ *   distinct documents of the questions ON SCREEN (narrowed, not held), by
+ *   path alone, with no range and no quote, and never a document whose anchor
+ *   does not resolve. The loop is closed on the reading side: `wire/aim.ts`
+ *   drops this module's own row before counting anything, and `test/aim.test.ts`
+ *   holds the case. And the bound: it is sent by the program when the set of
+ *   documents on screen changes, compared as a string, and never on a press —
+ *   the opposite discipline from `passage:set`, and `wire/use-roadmap.ts` says
+ *   so beside each.
  *
  * - **Everything else — still not asked for, and each for its own reason.**
  *   The context itself is not a capability: it arrives in the greeting and on
@@ -257,9 +285,37 @@ export const MANIFEST: Manifest = manifestSchema.parse({
     about: 'Write the questions a reader of a paper should be able to answer, anchored to the passage they are about.',
   },
   extensions: { emits: [], consumes: [] },
+  /**
+   * `reacts: ['passage', 'containers']` — a description, not a request.
+   *
+   * Every framed module is handed the whole context, so this names only what
+   * this program DOES with it, for a registry that until now could say who
+   * sends a fact and not who moves on it. Two words, each earned:
+   *
+   * - `passage`: the card whose anchor the canvas is standing on is marked,
+   *   and the `scope` group narrows the list to the pointed document or
+   *   range. The page is different afterwards. This was true before this line
+   *   existed and was simply not written down.
+   * - `containers`: the list is narrowed to what the picked-out containers
+   *   show, and to the union of what every container shows when nothing is
+   *   picked — `wire/aim.ts`. A tick on a neighbour changes which questions
+   *   are on screen, which is the protocol's own test for the word: "it
+   *   narrows, it scrolls, it re-queries".
+   *
+   * Not `selection`. A question is anchored to a document and never to a
+   * reference, and this page reads no refs at all — declaring the word would
+   * be ticking a box because the field arrives, which the protocol's essay on
+   * `reacts` names as the thing the word was chosen to prevent.
+   *
+   * Nothing here is asked for and nothing is granted. A host that withheld
+   * `containers` from a module that had not declared this would have turned a
+   * line of documentation into a permission over a broadcast, and the
+   * protocol refuses that in so many words.
+   */
+  reacts: ['passage', 'containers'],
   declares: {
     protocol: `>=${PROTOCOL} <${PROTOCOL + 1}`,
-    uses: ['passage:set'],
+    uses: ['passage:set', 'showing:set'],
     storage: true,
     prompt: false,
   },

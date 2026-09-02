@@ -313,13 +313,29 @@ export function QuestionCard({
   const showVerdict = answered && (whole || part === 'options')
   const showWhy = answered && question.why !== null && (whole || part === 'why')
 
-  const about = pointed
-    ? `the canvas is pointed at this passage of ${question.passage.path}`
-    : paged
-      ? `${question.passage.path}, bytes ${question.passage.start}–${question.passage.end} — point the canvas `
-        + 'at it, wherever this document is open'
-      : `${question.passage.path}, bytes ${question.passage.start}–${question.passage.end} — show it, here and wherever `
-        + 'this document is open on the canvas'
+  /*
+   * Whether there is anything to point at.
+   *
+   * A question whose document is not in the project — `quiz/where.ts`, and
+   * the eighteen real questions it was written against — used to be drawn
+   * with the same press as every other card, and the press pointed the canvas
+   * at a file that does not exist. Nothing reacted, and nothing said why. So
+   * a missing anchor is not a button: it is the same label, with the sentence
+   * that explains it in its title and beside it, and no handler. The path is
+   * still on `data-source`, because it is still a fact about the question.
+   */
+  const missing = question.anchor === 'missing'
+
+  const about = missing
+    ? `${question.passage.path} is not in this project — the anchor does not resolve, so there is nothing to point `
+      + 'the canvas at. An agent re-anchors it with reword_quiz.'
+    : pointed
+      ? `the canvas is pointed at this passage of ${question.passage.path}`
+      : paged
+        ? `${question.passage.path}, bytes ${question.passage.start}–${question.passage.end} — point the canvas `
+          + 'at it, wherever this document is open'
+        : `${question.passage.path}, bytes ${question.passage.start}–${question.passage.end} — show it, here and wherever `
+          + 'this document is open on the canvas'
 
   /* Only ever true on an answered card in the LIST, and only for options that
      are neither the key nor the one that was pressed. Paged, the options are
@@ -347,7 +363,16 @@ export function QuestionCard({
    * Above the part it costs nothing: it is one 16-pixel line either way, and the
    * order reads as a caption on the question rather than a footer on the card.
    */
-  const sourceControl = (
+  const sourceControl = missing ? (
+    <span
+      data-passage="missing"
+      data-source={question.passage.path}
+      title={about}
+      className="mt-1.5 block min-w-0 text-[0.65rem] text-wrong [overflow-wrap:anywhere]"
+    >
+      {source} — not in this project
+    </span>
+  ) : (
     <button
       type="button"
       data-passage="button"
@@ -596,20 +621,25 @@ export function QuestionCard({
         <>
           <button
             type="button"
-            data-passage="button"
+            data-passage={missing ? 'missing' : 'button'}
             data-source={question.passage.path}
             title={about}
             onClick={() => {
               setOpen(true)
-              onPoint()
+              /* The quote is still worth reading — it is what the question is
+                 about — but there is nothing to point the canvas at. */
+              if (!missing) onPoint()
             }}
             className={
-              pointed
-                ? 'mt-1.5 block min-w-0 text-[0.65rem] font-medium text-foreground underline underline-offset-2 [overflow-wrap:anywhere]'
-                : 'mt-1.5 block min-w-0 text-[0.65rem] text-muted-foreground underline-offset-2 [overflow-wrap:anywhere] hover:underline'
+              missing
+                ? 'mt-1.5 block min-w-0 text-[0.65rem] text-wrong underline-offset-2 [overflow-wrap:anywhere] hover:underline'
+                : pointed
+                  ? 'mt-1.5 block min-w-0 text-[0.65rem] font-medium text-foreground underline underline-offset-2 [overflow-wrap:anywhere]'
+                  : 'mt-1.5 block min-w-0 text-[0.65rem] text-muted-foreground underline-offset-2 [overflow-wrap:anywhere] hover:underline'
             }
           >
             {source}
+            {missing ? ' — not in this project' : null}
           </button>
           {open ? <PassagePanel question={question} onClose={() => setOpen(false)} /> : null}
         </>
@@ -620,21 +650,25 @@ export function QuestionCard({
           className="mt-1.5 min-w-0"
         >
           <summary
-            data-passage="summary"
+            data-passage={missing ? 'missing' : 'summary'}
             data-source={question.passage.path}
             title={about}
             onClick={() => {
               /* The state before the browser toggles it, so this is "about to
-                 open". Closing publishes nothing. */
-              if (!open) onPoint()
+                 open". Closing publishes nothing, and neither does a document
+                 that is not there. */
+              if (!open && !missing) onPoint()
             }}
             className={
-              pointed
-                ? 'min-w-0 cursor-pointer text-[0.65rem] font-medium text-foreground [overflow-wrap:anywhere]'
-                : 'min-w-0 cursor-pointer text-[0.65rem] text-muted-foreground [overflow-wrap:anywhere]'
+              missing
+                ? 'min-w-0 cursor-pointer text-[0.65rem] text-wrong [overflow-wrap:anywhere]'
+                : pointed
+                  ? 'min-w-0 cursor-pointer text-[0.65rem] font-medium text-foreground [overflow-wrap:anywhere]'
+                  : 'min-w-0 cursor-pointer text-[0.65rem] text-muted-foreground [overflow-wrap:anywhere]'
             }
           >
             {source}
+            {missing ? ' — not in this project' : null}
           </summary>
           {/*
             The path is only repeated here where the summary above did not say
@@ -712,6 +746,7 @@ export function QuizView({
   epic,
   questions,
   hiding = null,
+  aimed = null,
   onAnswer,
   onPoint,
   pointed,
@@ -746,6 +781,15 @@ export function QuizView({
    * nothing on screen saying so, is a container that has lost them.
    */
   hiding?: Hidden | null
+  /**
+   * Why the aim emptied this pane, already worded — `whyEmpty` in
+   * `wire/aim.ts` — or null when it did not. Names the picked-out containers,
+   * the ones showing nothing, and the questions whose anchors do not resolve,
+   * because a pane emptied by a tick on a NEIGHBOUR is a pane whose emptiness
+   * has no visible cause otherwise. Drawn before the scope's sentence, since
+   * the aim narrows first.
+   */
+  aimed?: { said: string; remedy: string } | null
   onAnswer: (id: string, chose: number) => void
   /** A person pressed a question's source. Nothing else may call this. */
   onPoint: (id: string) => void
@@ -790,7 +834,16 @@ export function QuizView({
           would be this container blaming an absence on the wrong thing — a reader
           would go looking for questions that are sitting right there.
         */}
-        {hiding ? (
+        {aimed ? (
+          <>
+            <p data-aim-note="empty" className="text-[0.7rem] leading-4 text-muted-foreground">
+              {aimed.said}
+            </p>
+            <p data-aim-note="remedy" className="text-[0.65rem] leading-4 text-muted-foreground">
+              {aimed.remedy}
+            </p>
+          </>
+        ) : hiding ? (
           <p data-scope-note="empty" className="text-[0.7rem] leading-4 text-muted-foreground">
             Nothing has been asked about this, at the scope this container is set to — {hiding.full}. Widen it in the
             container’s header.

@@ -45,6 +45,12 @@ beforeEach(() => {
   outside = join(dir, 'somewhere-else')
   mkdirSync(project)
   mkdirSync(outside)
+  /* The document the fixture questions are anchored to has to EXIST now: the
+     store refuses an anchor whose file is not in the project, because eighteen
+     real questions were once written about a paper that then moved and nothing
+     could say so. See `quiz/where.ts`. */
+  mkdirSync(join(project, 'chapters'))
+  writeFileSync(join(project, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
 })
 
 afterEach(() => {
@@ -258,7 +264,8 @@ describe('the project’s .gitignore', () => {
     const repo = join(dir, 'repo')
     const deep = join(repo, 'drafts', 'thesis_latex')
     mkdirSync(join(repo, '.git'), { recursive: true })
-    mkdirSync(deep, { recursive: true })
+    mkdirSync(join(deep, 'chapters'), { recursive: true })
+    writeFileSync(join(deep, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
 
     expect(question({ project: deep }).ok).toBe(true)
     /* Written AT THE PROJECT, not at the repository root: git honours a
@@ -274,7 +281,8 @@ describe('the project’s .gitignore', () => {
        version control", because git writes a file there pointing at the real
        repository. */
     const work = join(dir, 'worktree')
-    mkdirSync(work)
+    mkdirSync(join(work, 'chapters'), { recursive: true })
+    writeFileSync(join(work, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
     writeFileSync(join(work, '.git'), 'gitdir: /somewhere/else/.git/worktrees/x\n')
     expect(question({ project: work }).ok).toBe(true)
     expect(readFileSync(join(work, '.gitignore'), 'utf8')).toContain(`${KEHIKOT_DIR}/`)

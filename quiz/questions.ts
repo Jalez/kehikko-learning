@@ -2,8 +2,9 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
 import { z } from 'zod'
 
-import { dataFile, makeDir } from '../store.ts'
+import { dataFile, makeDir, rootOf } from '../store.ts'
 import type { Asked, Attempt, Question, Standing } from './types.ts'
+import { anchorOf, resolved, stored } from './where.ts'
 
 /* ------------------------------------------------------------------------ *
  * Bounds
@@ -172,20 +173,28 @@ const empty = (): Store => storeSchema.parse({})
  * sentence says so, because a person who can see the words "recoverable: fix or
  * move it" is a person who does not delete the directory.
  */
-function read(projectPath: string | null | undefined): { store: Store; trouble: string | null; nowhere: boolean } {
+function read(projectPath: string | null | undefined): {
+  store: Store
+  trouble: string | null
+  nowhere: boolean
+  /** The resolved project root, for saying where each question's document is. Null with `nowhere` or trouble. */
+  root: string | null
+} {
   const { path, trouble } = dataFile(projectPath)
-  if (trouble) return { store: empty(), trouble, nowhere: false }
-  if (path === null) return { store: empty(), trouble: null, nowhere: true }
+  if (trouble) return { store: empty(), trouble, nowhere: false, root: null }
+  if (path === null) return { store: empty(), trouble: null, nowhere: true, root: null }
+  const root = rootOf(projectPath)
   /* An absent file in a real project is an empty store and not trouble: it is
      what a project nobody has written a question about looks like, and it is the
      ordinary first run. */
-  if (!existsSync(path)) return { store: empty(), trouble: null, nowhere: false }
+  if (!existsSync(path)) return { store: empty(), trouble: null, nowhere: false, root }
   try {
-    return { store: storeSchema.parse(JSON.parse(readFileSync(path, 'utf8'))), trouble: null, nowhere: false }
+    return { store: storeSchema.parse(JSON.parse(readFileSync(path, 'utf8'))), trouble: null, nowhere: false, root }
   } catch (e) {
     return {
       store: empty(),
       nowhere: false,
+      root,
       trouble:
         `${path} could not be read (${e instanceof Error ? (e.message.split('\n')[0] ?? '') : String(e)}), so no `
         + 'question is being shown and nothing will be written over it. Every question in that file and every answer '
@@ -273,7 +282,7 @@ function now(): string {
  * leaves this process. An `Asked` is what leaves. The only function that makes
  * one is here.**
  */
-export function asked(question: Question): Asked {
+export function asked(question: Question, root: string | null): Asked {
   const answered = question.attempts.length > 0
   return {
     id: question.id,
@@ -281,6 +290,10 @@ export function asked(question: Question): Asked {
     question: question.question,
     options: question.options,
     passage: question.passage,
+    /* Decided here, on every read, and never stored: the disk is the thing
+       that moved last time, and a verdict written into the file would have
+       gone on saying `holds` about a document that was no longer there. */
+    anchor: anchorOf(root, question.passage.path),
     by: question.by,
     viaMcp: question.viaMcp,
     at: question.at,
@@ -332,10 +345,10 @@ export function standings(projectPath: string | null | undefined): { standings: 
  * the reader's order, and re-sorting by anything else would throw that away.
  */
 export function forEpic(projectPath: string | null | undefined, epic: string): { questions: Asked[] } & Read {
-  const { store, trouble, nowhere } = read(projectPath)
+  const { store, trouble, nowhere, root } = read(projectPath)
   if (trouble || nowhere) return { questions: [], trouble, nowhere }
   /* No sort. The array's order is the order they were written in. */
-  const questions = store.questions.filter((question) => question.epic === epic).map(asked)
+  const questions = store.questions.filter((question) => question.epic === epic).map((question) => asked(question, root))
   return { questions, trouble, nowhere }
 }
 
@@ -350,11 +363,14 @@ export function forEpic(projectPath: string | null | undefined, epic: string): {
 export function withKey(
   projectPath: string | null | undefined,
   epic: string | null,
-): { questions: Question[] } & Read {
-  const { store, trouble, nowhere } = read(projectPath)
-  if (trouble || nowhere) return { questions: [], trouble, nowhere }
+): { questions: Question[]; root: string | null } & Read {
+  const { store, trouble, nowhere, root } = read(projectPath)
+  if (trouble || nowhere) return { questions: [], trouble, nowhere, root: null }
   const questions = store.questions.filter((question) => epic === null || question.epic === epic)
-  return { questions, trouble, nowhere }
+  /* The root rides along so the door can say, beside each anchor, whether its
+     document is there — `anchorOf` needs the same resolved spelling every
+     stored path was relativised against. */
+  return { questions, trouble, nowhere, root }
 }
 
 /* ------------------------------------------------------------------------ *
@@ -396,6 +412,13 @@ export type Op =
       options?: string[]
       answer?: number
       why?: string
+      /**
+       * The anchor, re-spelled in whole or in part. Any field left out is
+       * kept, so `{ path }` alone moves a question to the same bytes of the
+       * same file under a new name — which is the repair for a document that
+       * moved inside its project. See `quiz/where.ts`.
+       */
+      passage?: { path?: string; start?: number; end?: number; quote?: string }
     }
   | { op: 'drop'; project: string | null; id: string }
   | { op: 'retake'; project: string | null; epic: string }
@@ -419,7 +442,7 @@ const NOWHERE =
   + 'Nothing was recorded.'
 
 export function change(op: Op): Done {
-  const { store, trouble, nowhere } = read(op.project)
+  const { store, trouble, nowhere, root } = read(op.project)
   /* Nothing is written while there is no project, and nothing is written while
      the file is unreadable. The second is the sharper rule — see `read`. */
   if (nowhere) return no(NOWHERE)
@@ -489,6 +512,9 @@ export function change(op: Op): Done {
         + '`head -c N file | wc -c` settles it.',
       )
     }
+    const path = stored(root, op.passage.path)
+    const absent = missingAnchor(root, path)
+    if (absent) return no(absent)
     const id = newId()
     /* On the end, which is where a new thing belongs. */
     held.questions.push({
@@ -498,7 +524,7 @@ export function change(op: Op): Done {
       options: op.options,
       answer: op.answer,
       why: op.why,
-      passage: op.passage,
+      passage: { ...op.passage, path },
       by: op.by,
       viaMcp: op.viaMcp === true,
       at: now(),
@@ -555,13 +581,54 @@ export function change(op: Op): Done {
     )
   }
   if (op.question !== undefined && !op.question) return no('a question cannot be reworded to nothing.')
+  /* The anchor, re-spelled. Each field falls back to what is held, so a caller
+     re-spelling only the path keeps the bytes and the quote — and the new
+     anchor is held to the same rules as a fresh one, including that its
+     document is there. A re-anchor that pointed at nothing would be the
+     eighteen again, one call at a time. */
+  const passage = {
+    path: stored(root, op.passage?.path ?? question.passage.path),
+    start: op.passage?.start ?? question.passage.start,
+    end: op.passage?.end ?? question.passage.end,
+    quote: op.passage?.quote ?? question.passage.quote,
+  }
+  if (!passage.path) return no('a question cannot be re-anchored to no document. Give the path, or leave it out.')
+  if (!passage.quote) return no('a question cannot be re-anchored to an empty quote. Paste the source those bytes hold.')
+  if (!Number.isInteger(passage.start) || !Number.isInteger(passage.end) || passage.start < 0 || passage.end <= passage.start) {
+    return no('the passage needs a byte range: start, and end one past the last byte, both whole numbers with end greater than start.')
+  }
+  const absent = missingAnchor(root, passage.path)
+  if (absent) return no(absent)
+  const moved = passage.path !== question.passage.path
   question.question = op.question ?? question.question
   question.options = options
   question.answer = answer
   question.why = op.why ?? question.why
+  question.passage = passage
   const wrote = save(op.project, store)
   if (wrote) return no(wrote)
-  return { ok: true, said: `Question ${op.id} reworded`, id: op.id }
+  return { ok: true, said: moved ? `Question ${op.id} reworded and re-anchored to ${passage.path}` : `Question ${op.id} reworded`, id: op.id }
+}
+
+/**
+ * The refusal for an anchor whose document is not in the project, or null
+ * when it is — or when this module cannot look.
+ *
+ * Refused at the door rather than recorded, because a question that points at
+ * nothing is a question a reader will press and get nothing from, and the
+ * moment the caller can still do something about it is now. `unchecked` is
+ * let through: a document outside the project is not this module's to
+ * vouch for either way, and refusing it would be a claim that it does not
+ * exist. The sentence names the spelling the other doors on this canvas use —
+ * a file name relative to the PAPER is the way these paths go wrong.
+ */
+function missingAnchor(root: string | null, path: string): string | null {
+  if (anchorOf(root, path) !== 'missing') return null
+  return (
+    `there is no "${path}" in this project — nothing at ${resolved(root, path)}. The path is taken relative to the `
+    + 'project root, or absolute. If you read the file through another module\'s door, that door may have spelled it '
+    + 'relative to something else, such as the paper\'s own folder: give the absolute path instead. Nothing was written.'
+  )
 }
 
 /* ------------------------------------------------------------------------ *
@@ -597,7 +664,7 @@ export function score(
   id: string,
   chose: number,
 ): { scored: Scored } | { error: string } {
-  const { store, trouble, nowhere } = read(projectPath)
+  const { store, trouble, nowhere, root } = read(projectPath)
   if (nowhere) return { error: NOWHERE }
   if (trouble) return { error: trouble }
   const question = store.questions.find((one) => one.id === id)
@@ -619,5 +686,5 @@ export function score(
   }
   const wrote = save(projectPath, store)
   if (wrote) return { error: wrote }
-  return { scored: { right: attempt.right, answer: question.answer, why: question.why, attempt, asked: asked(question) } }
+  return { scored: { right: attempt.right, answer: question.answer, why: question.why, attempt, asked: asked(question, root) } }
 }

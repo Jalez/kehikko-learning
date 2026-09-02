@@ -1,0 +1,418 @@
+{
+  "questions": [
+    {
+      "id": "b13a66fc",
+      "epic": "thesis",
+      "question": "(question 1, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/1_introduction.tex",
+        "start": 4720,
+        "end": 4914,
+        "quote": "The platform offers both this structured, graded activity an"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.946Z",
+      "attempts": []
+    },
+    {
+      "id": "db8cc4ff",
+      "epic": "thesis",
+      "question": "(question 2, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/1_introduction.tex",
+        "start": 5846,
+        "end": 6093,
+        "quote": "The comparison cohort data\nare not yet assembled \\missing{Co"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.950Z",
+      "attempts": []
+    },
+    {
+      "id": "6a485eae",
+      "epic": "thesis",
+      "question": "(question 3, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/2_literature_review.tex",
+        "start": 3690,
+        "end": 3833,
+        "quote": "Mixed-initiative means either party can steer the exchange:\n"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.951Z",
+      "attempts": []
+    },
+    {
+      "id": "3621c199",
+      "epic": "thesis",
+      "question": "(question 4, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/2_literature_review.tex",
+        "start": 10431,
+        "end": 10670,
+        "quote": "An average that\nshows no significant difference from human g"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.952Z",
+      "attempts": []
+    },
+    {
+      "id": "cac41d3a",
+      "epic": "thesis",
+      "question": "(question 5, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/2_literature_review.tex",
+        "start": 17787,
+        "end": 18017,
+        "quote": "The third is the rigid judge familiar from earlier tutoring\n"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.953Z",
+      "attempts": []
+    },
+    {
+      "id": "dd0e1c1b",
+      "epic": "thesis",
+      "question": "(question 6, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/2_literature_review.tex",
+        "start": 12591,
+        "end": 12859,
+        "quote": "The effects are stronger in higher\neducation and, notably,\nf"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.955Z",
+      "attempts": []
+    },
+    {
+      "id": "391882b9",
+      "epic": "thesis",
+      "question": "(question 7, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/2_literature_review.tex",
+        "start": 21131,
+        "end": 21331,
+        "quote": "Acceptance models predict an adoption decision and treat\nthe"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.956Z",
+      "attempts": []
+    },
+    {
+      "id": "0e220212",
+      "epic": "thesis",
+      "question": "(question 8, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/3_methods.tex",
+        "start": 11076,
+        "end": 11293,
+        "quote": "Retrieval fires only when a student's answer is judged incor"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.958Z",
+      "attempts": []
+    },
+    {
+      "id": "44bb2aec",
+      "epic": "thesis",
+      "question": "(question 9, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/3_methods.tex",
+        "start": 16409,
+        "end": 16490,
+        "quote": "THRESHOLDS: < 0.50 -> \"incorrect\"; 0.50-0.80 -> \"partial\";\n "
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.960Z",
+      "attempts": []
+    },
+    {
+      "id": "fef0653d",
+      "epic": "thesis",
+      "question": "(question 10, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/3_methods.tex",
+        "start": 17072,
+        "end": 17289,
+        "quote": "A 70-billion-parameter model reached the best\nagreement with"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.961Z",
+      "attempts": []
+    },
+    {
+      "id": "21ebe920",
+      "epic": "thesis",
+      "question": "(question 11, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/3_methods.tex",
+        "start": 22725,
+        "end": 22881,
+        "quote": "This pass is exploratory only and is not treated\nas the anal"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.962Z",
+      "attempts": []
+    },
+    {
+      "id": "eec5b3c6",
+      "epic": "thesis",
+      "question": "(question 12, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/4_results.tex",
+        "start": 9097,
+        "end": 9306,
+        "quote": "Satisfaction was significantly above neutral only after\nthe "
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.964Z",
+      "attempts": []
+    },
+    {
+      "id": "19d019b4",
+      "epic": "thesis",
+      "question": "(question 13, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/4_results.tex",
+        "start": 3910,
+        "end": 4186,
+        "quote": "First, the number of distinct students submitting each activ"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.965Z",
+      "attempts": []
+    },
+    {
+      "id": "8f0a53d8",
+      "epic": "thesis",
+      "question": "(question 14, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/4_results.tex",
+        "start": 11667,
+        "end": 11814,
+        "quote": "Reported confidence rose to 2.97 after module four and\npeake"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.966Z",
+      "attempts": []
+    },
+    {
+      "id": "4718b138",
+      "epic": "thesis",
+      "question": "(question 15, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/5_discussion.tex",
+        "start": 5475,
+        "end": 5681,
+        "quote": "A category bears on implementation when the\ncomplaint would "
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.967Z",
+      "attempts": []
+    },
+    {
+      "id": "264de1f8",
+      "epic": "thesis",
+      "question": "(question 16, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/5_discussion.tex",
+        "start": 15077,
+        "end": 15192,
+        "quote": "The claim that the concept is ``not refuted'' is\ntherefore t"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:09:26.968Z",
+      "attempts": []
+    },
+    {
+      "id": "f0d01e86",
+      "epic": "thesis",
+      "question": "(question 17, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/6_conclusion.tex",
+        "start": 5883,
+        "end": 6131,
+        "quote": "Second, it offers a grounded characterization of the failure"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:10:11.732Z",
+      "attempts": []
+    },
+    {
+      "id": "5625e334",
+      "epic": "thesis",
+      "question": "(question 18, wording replaced; the anchor is what this fixture is for)",
+      "options": [
+        "(option 0)",
+        "(option 1)",
+        "(option 2)",
+        "(option 3)"
+      ],
+      "answer": 0,
+      "why": "(explanation replaced)",
+      "passage": {
+        "path": "chapters/6_conclusion.tex",
+        "start": 7203,
+        "end": 7381,
+        "quote": "Two things are\nworth retaining as the activity is refined: t"
+      },
+      "by": "claude-code",
+      "viaMcp": true,
+      "at": "2026-08-31T22:10:11.735Z",
+      "attempts": []
+    }
+  ]
+}

@@ -18,7 +18,7 @@ describe('the manifest', () => {
     expect(MANIFEST.declares?.protocol).toBe(`>=${PROTOCOL} <${PROTOCOL + 1}`)
   })
 
-  test('the installed protocol package is 0.15, which is what carries the filter offer', () => {
+  test('the installed protocol package is 0.20, which is what carries context.containers', () => {
     /* A stale copy STRIPS fields it has never heard of and `parse` does not
        complain, so a manifest field vanishes with no error at all. That has
        bitten four modules in this workspace. `bun pm cache rm` then `bun update`
@@ -43,6 +43,13 @@ describe('the manifest', () => {
        container, and `wire/scope.ts` argues for it. So 0.15 is not merely a pin
        kept current here, it is a version this module now uses.
 
+       And 0.20 carries `context.containers`, `showing.set` and the
+       `containers` reaction — what each container on the kehikko shows and
+       which are picked out — which `wire/aim.ts` reads and `manifest.ts`
+       declares both ends of. This module was pinned at 0.15 when that landed,
+       and a 0.15 copy would have stripped `reacts` from the manifest on parse
+       without a word: that is the failure this pin exists to make loud.
+
        A copy without any of them does not strip a field quietly — `store.ts`
        fails to import, and a copy older than 0.13 has no `serves()` at all, so
        the Vite config will not load — but the pin is here because the version is
@@ -53,7 +60,12 @@ describe('the manifest', () => {
     const packaged = JSON.parse(
       readFileSync(join(here, 'node_modules/roadmap-module-protocol/package.json'), 'utf8'),
     ) as { version: string }
-    expect(packaged.version.startsWith('0.15.')).toBe(true)
+    const [major, minor] = packaged.version.split('.').map(Number)
+    expect(major).toBe(0)
+    expect(minor).toBeGreaterThanOrEqual(20)
+    /* And the field a stale copy would have stripped is actually there after
+       the parse, which is the only check that catches the silent version. */
+    expect(MANIFEST.reacts).toEqual(['passage', 'containers'])
   })
 
   test('says who it is, and the filename register.ts writes matches', () => {
@@ -69,32 +81,50 @@ describe('the manifest', () => {
     expect(MANIFEST.declares?.storage).toBe(true)
   })
 
-  test('asks for exactly one capability: to point the canvas at a passage', () => {
-    /* This test used to assert `[]`, and the essay in manifest.ts used to argue
-       for it. The exception it had not met is that every question here is
-       ANCHORED — a document, a byte range and the source those bytes held — so a
-       question IS a passage, and a container that could name one and not show it
-       would be withholding the fact it exists to hold.
+  test('asks for exactly two capabilities: to point the canvas at a passage, and to say what it shows', () => {
+    /* This test used to assert `[]`, and then `['passage:set']`, and the essay
+       in manifest.ts argued for each in turn. The first exception was that every
+       question here is ANCHORED — so a question IS a passage, and a container
+       that could name one and not show it would be withholding the fact it
+       exists to hold. The second is `showing:set`: a pane listing the questions
+       about chapter three is standing in chapter three, and the canvas should be
+       able to know it so a neighbour can narrow to this pane the way this pane
+       narrows to the paper.
 
        Nothing else. A capability asked for and never used is the fastest way to
-       teach somebody to press yes without reading, and this one is used in
-       exactly one place: a person pressing the source of a question. That bound
-       is checked by `dev/pointing.mjs`, from where a host sits, because it is a
-       claim about runtime behaviour and nothing static can settle one. */
-    expect(MANIFEST.declares?.uses).toEqual(['passage:set'])
+       teach somebody to press yes without reading. The first is used in exactly
+       one place — a person pressing the source of a question, a bound checked
+       by `dev/pointing.mjs` from where a host sits — and the second is sent by
+       the program when the documents on screen change, compared as a string,
+       and never on a press. */
+    expect(MANIFEST.declares?.uses).toEqual(['passage:set', 'showing:set'])
   })
 
-  test('the essay is honest about the capability it now declares', () => {
+  test('says which context fields it moves on, and only those', () => {
+    /* A description and not a request: the context arrives whole whatever is
+       written here. `passage` marks a card and narrows by scope; `containers`
+       narrows to what the picked-out containers show. `selection` is NOT here,
+       because this page reads no refs and never will, and ticking a word
+       because the field arrives is what the protocol's essay on `reacts` names
+       as the thing to refuse. */
+    expect(MANIFEST.reacts).toEqual(['passage', 'containers'])
+  })
+
+  test('the essay is honest about the capabilities it now declares', () => {
     /* The house rule: a file that argues for what it deliberately does NOT do
        must be rewritten when it starts doing it, rather than left describing a
        module that no longer exists. This catches the declaration being changed
        without the argument. */
     const source = readFileSync(join(here, 'manifest.ts'), 'utf8')
-    expect(source).toContain("uses: ['passage:set']")
+    expect(source).toContain("uses: ['passage:set', 'showing:set']")
+    expect(source).toContain("reacts: ['passage', 'containers']")
     expect(source).not.toContain('nothing is asked for, and that is not an oversight')
-    /* And the bound, which is the whole of what the capability was granted
-       under, has to still be written down beside it. */
+    expect(source).not.toContain('one capability, and this paragraph used to say')
+    /* And the bound, which is the whole of what the first capability was
+       granted under, has to still be written down beside it — and the loop the
+       second one could open has to be named where it is closed. */
     expect(source).toContain('points when a person presses the source of a question')
+    expect(source).toContain('drops this module\'s own row before counting anything')
   })
 
   test('nothing in this module names the module it expects to react', () => {
