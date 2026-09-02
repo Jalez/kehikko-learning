@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { LIMITS } from 'roadmap-module-protocol'
+
 import { ID } from '../manifest.ts'
 
 import { answer, openEpic, retake, type Asked, type Standing } from '@/store/ask.ts'
@@ -9,8 +11,10 @@ import { NoEpic, NoProject } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
 import { textWidth } from '@/view/text.ts'
 import { useFrame } from '@/view/use-frame.ts'
+import { aimNote, aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
 import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
 import { hiddenNote, narrow, offer, reachOf, scopeOf } from '@/wire/scope.ts'
+import { containersFrom } from '@/wire/use-roadmap.ts'
 
 /** Whether this page is in a frame. Unframed, it prints its own heading. */
 const framed = typeof window !== 'undefined' && window.parent !== window
@@ -62,7 +66,32 @@ export function App() {
     )
   }, [])
 
-  const { where, epic, projectPath, project, passage, chosen, resize, filters, point } = useRoadmap(ID, onGoto)
+  const { where, epic, projectPath, project, passage, chosen, containers, resize, filters, point, show: tell } = useRoadmap(
+    ID,
+    onGoto,
+  )
+
+  /*
+   * The host's list of containers, inflated once from the string the wire
+   * holds, and what the picks make of it. Memoised on the string and on the
+   * header's choice, so a context that re-states the same canvas is the same
+   * object and nothing below re-decides which questions are in front.
+   *
+   * `self` is this module's own id, so that its own row — which it writes,
+   * with `tell` below — is never read back. `wire/aim.ts` says why that is
+   * the difference between a pane that narrows and one that ratchets wider.
+   */
+  const onCanvas = useMemo<Shown[]>(() => containersFrom(containers), [containers])
+  const front = useMemo(
+    () =>
+      inFrontOf({
+        self: ID,
+        passage: passage ? { path: passage.path, from: passage.from, to: passage.to } : null,
+        containers: onCanvas,
+        aim: aimOf(chosen),
+      }),
+    [onCanvas, passage, chosen],
+  )
 
   /*
    * What this container can be narrowed by, said whenever the answer changes.
@@ -102,8 +131,15 @@ export function App() {
        making that claim before the canvas has spoken erased the remembered
        scope on every load. See `offer`. */
     const groups = offer({ file: reach.file, section: reach.section }, greeted)
-    if (groups) filters(groups)
-  }, [filters, reach.file, reach.section, greeted])
+    if (!groups) return
+    /* And the `aim` group, only when the host lists containers, with its own
+       count in its own label — see `aimOffer` in `wire/aim.ts`. It depends on
+       the list, so a tick on any container re-sends the offer with the count
+       moved; that is a message per tick and not per context, because the
+       string the list is held as does not change when the canvas merely
+       re-states itself. */
+    filters([...groups, ...aimOffer(onCanvas)])
+  }, [filters, reach.file, reach.section, greeted, onCanvas])
 
   /* How narrow the reader asked for, as this context can honour it. A rung that
      has gone away degrades to `all` rather than emptying the container — the
@@ -161,10 +197,15 @@ export function App() {
    * genuinely does change which questions exist.
    */
   const narrowedBy = scope === 'all' ? 'all' : `${scope} ${passage ? keyOf(passage) : ''}`
+  /* And the aim, by the same argument: a different set of documents in front
+     is a different set of questions, and the reader should start at its top.
+     The string is the paths, so a context that re-states the same canvas
+     moves nobody. */
+  const aimedAt = front.everything ? 'everything' : front.documents.map((one) => one.path).join('\n')
   useEffect(() => {
     setShown(0)
     setPart('options')
-  }, [projectPath, epic, narrowedBy])
+  }, [projectPath, epic, narrowedBy, aimedAt])
 
   /*
    * The font engine, asked once.
@@ -190,15 +231,51 @@ export function App() {
    * narrowing that says nothing about what it hid is a container that has quietly
    * lost questions.
    */
+  /*
+   * Two narrowings, in order: first what the canvas shows (the aim), then how
+   * narrow the reader likes it (the scope). The aim decides which DOCUMENTS
+   * are in front and matches by path alone; the scope is the reader's own
+   * grain within the pointed document. `wire/aim.ts` argues for the split.
+   */
+  const aimed = useMemo(() => inFront(questions, projectPath, front), [questions, projectPath, front])
   const visible = useMemo(
-    () => narrow(questions, projectPath, passage, scope),
-    [questions, projectPath, passage, scope],
+    () => narrow(aimed.shown, projectPath, passage, scope),
+    [aimed, projectPath, passage, scope],
   )
   const hidden = questions.length - visible.length
   /* Worded once, and read by both the page and the geometry: `view/room.ts`
      needs the short form's WIDTH, because it is one more item in the row of
-     controls the paged rungs measure their room against. */
-  const hiding = hiddenNote(scope, hidden)
+     controls the paged rungs measure their room against. The scope's sentence
+     wins when both narrowed, because the scope is the reader's own press and
+     the thing they will look for first. */
+  const hiding = hiddenNote(scope, hidden) ?? aimNote(front, hidden)
+  /* Why the aim left nothing, in this module's words — or null. Held apart
+     from `hiding`, because it is drawn as the whole screen and not a line. */
+  const emptied = aimed.shown.length === 0 ? whyEmpty(front, questions.length, aimed.unresolved) : null
+
+  /*
+   * What this container is showing, told to the canvas whenever it changes.
+   *
+   * The distinct documents of the questions ON SCREEN, compared as a string
+   * so that a context re-stating the same canvas — or a poll returning the
+   * same list — sends nothing. Sent as `[]` when nothing is on screen,
+   * because "showing nothing" is a state the canvas has to be able to move
+   * back into. Not sent before the host has greeted: there is nobody to tell,
+   * and the client would only queue a refusal. `manifest.ts` carries the
+   * argument for declaring the capability at all, and `wire/use-roadmap.ts`
+   * the bound this effect is held to.
+   */
+  const shownDocuments = useMemo(() => showing(visible, projectPath, LIMITS.SHOWING_DOCUMENTS), [visible, projectPath])
+  const shownKey = shownDocuments.map((one) => one.path).join('\n')
+  const told = useRef<string | null>(null)
+  useEffect(() => {
+    if (where !== 'hosted') return
+    if (told.current === shownKey) return
+    told.current = shownKey
+    tell(shownDocuments)
+    /* `shownDocuments` is a function of `shownKey` and `projectPath`; the key
+       is what decides whether to send. */
+  }, [where, shownKey, tell])
 
   /*
    * The questions, reduced to the fields that decide how tall a card is.
@@ -214,6 +291,7 @@ export function App() {
         options: question.options,
         source: sourceLabel(question.passage.path, fits.source),
         path: question.passage.path,
+        anchor: question.anchor,
         quote: question.passage.quote,
         why: question.why,
         answered: question.attempts.length > 0,
@@ -359,6 +437,10 @@ export function App() {
     (id: string) => {
       const question = questions.find((held) => held.id === id)
       if (!question) return
+      /* A missing document is not pointed at. The card draws no press for it
+         — `view/quiz.tsx` — and this is the same rule from the other side,
+         because "unreachable" is a property of a layout somebody may change. */
+      if (question.anchor === 'missing') return
       const where_ = pointingAt(projectPath, question.passage)
       if (!where_) return
       point(where_)
@@ -502,6 +584,7 @@ export function App() {
         /* What the narrowing hid, in this module's own words. Drawn in the page
            because the host cannot count rows it does not render. */
         hiding={hiding}
+        aimed={emptied}
         onAnswer={(id, chose) => void onAnswer(id, chose)}
         onPoint={onPoint}
         pointed={pointed}

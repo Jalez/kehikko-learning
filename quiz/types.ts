@@ -47,8 +47,29 @@
  * right thing. Keeping one and dropping the other would be choosing between a
  * fast wrong answer and a slow one.
  */
+/**
+ * Whether a question's document is where its anchor says, as far as this
+ * module looks. Decided in `quiz/where.ts`, which carries the argument.
+ *
+ * - `holds` — there is a file at the resolved path. The BYTES are not checked:
+ *   this module never opens a document, and "the file is there" is the whole
+ *   of what it can vouch for.
+ * - `missing` — the path resolves under the project and there is no file
+ *   there. A paper that moved inside its project leaves every question about
+ *   it here.
+ * - `unchecked` — the anchor names somewhere this module does not look: an
+ *   absolute path outside the project, or a relative one that climbs out.
+ */
+export type Anchor = 'holds' | 'missing' | 'unchecked'
+
 export interface Passage {
-  /** The document, as the project spells it. Relative to the project, not absolute. */
+  /**
+   * The document, relative to the project root — which is the folder the
+   * store itself is in, so the root is never a second fact. Absolute only for
+   * a document outside the project. `quiz/where.ts` is the one boundary that
+   * converts, and says why a relative path is right and what it cannot
+   * survive.
+   */
   path: string
   /** Byte offset of the first byte of the passage. */
   start: number
@@ -143,6 +164,15 @@ export interface Asked {
   question: string
   options: string[]
   passage: Passage
+  /**
+   * Whether the document the passage names is where the anchor says, as far
+   * as this module looks. Decided at the store, on every read, against the
+   * project the store is in — never remembered, because the disk is what
+   * moved last time. `quiz/where.ts` carries the whole story: eighteen real
+   * questions whose paper moved inside the project an hour after they were
+   * written, and a page that could not say so.
+   */
+  anchor: Anchor
   by: string
   viaMcp: boolean
   at: string

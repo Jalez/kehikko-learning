@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -32,6 +32,14 @@ beforeEach(() => {
   B = join(dir, 'two')
   mkdirSync(A)
   mkdirSync(B)
+  /* The document the fixture questions are anchored to has to EXIST now: the
+     store refuses an anchor whose file is not in the project, because eighteen
+     real questions were once written about a paper that then moved and nothing
+     could say so. See `quiz/where.ts`. */
+  mkdirSync(join(A, 'chapters'))
+  writeFileSync(join(A, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
+  mkdirSync(join(B, 'chapters'))
+  writeFileSync(join(B, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
   delete process.env.LEARNING_PROJECT
   delete process.env.ROADMAP_PROJECT
 })
@@ -313,6 +321,47 @@ describe('quizzes', () => {
   })
 })
 
+describe('where the document is', () => {
+  test('add_quiz takes the absolute path the other doors on the canvas hand out, and stores it relative', () => {
+    const id = added({ path: join(A, 'chapters', 'bridge.tex') })
+    const { text } = tool('quizzes', { project: A, epic: 'modes-are-modules' })
+    expect(text).toContain(`${id}`)
+    expect(text).toContain('anchored to chapters/bridge.tex')
+    expect(text).not.toContain(`anchored to ${A}`)
+  })
+
+  test('add_quiz refuses an anchor whose document is not in the project, and says what it looked for', () => {
+    /* The spelling that produced the eighteen: a file name relative to the
+       PAPER, handed to a door that reads it relative to the PROJECT. Refused at
+       the moment the caller can still do something about it. */
+    const { text, isError } = tool('add_quiz', { ...good(), path: 'chapters/agents.tex' })
+    expect(isError).toBe(true)
+    expect(text).toContain(`nothing at ${join(A, 'chapters', 'agents.tex')}`)
+    expect(text).toContain('relative to something else')
+    expect(text).toContain('Nothing was written')
+  })
+
+  test('quizzes says, beside the anchor, when a document has gone — the agent is the one who can fix it', () => {
+    const id = added()
+    rmSync(join(A, 'chapters', 'bridge.tex'))
+    const { text } = tool('quizzes', { project: A, epic: 'modes-are-modules' })
+    expect(text).toContain(id)
+    expect(text).toContain(`the anchor does NOT resolve: there is no ${join(A, 'chapters', 'bridge.tex')}`)
+    expect(text).toContain('reword_quiz with `path`')
+  })
+
+  test('the page is told the same thing, on every read', () => {
+    const id = added()
+    const before = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
+    const held = (before?.body as { questions: { id: string; anchor: string }[] }).questions.find((q) => q.id === id)
+    expect(held?.anchor).toBe('holds')
+    rmSync(join(A, 'chapters', 'bridge.tex'))
+    const after = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
+    const gone = (after?.body as { questions: { id: string; anchor: string }[] }).questions.find((q) => q.id === id)
+    expect(gone?.anchor).toBe('missing')
+  })
+})
+
 describe('reword_quiz and drop_quiz', () => {
   test('both need an id, and say it is not the words', () => {
     for (const name of ['reword_quiz', 'drop_quiz']) {
@@ -338,6 +387,31 @@ describe('reword_quiz and drop_quiz', () => {
     const { text, isError } = tool('reword_quiz', { project: A, id, options: 'a, b' })
     expect(isError).toBe(true)
     expect(text).toContain('not an array')
+  })
+
+  test('a reword can re-spell the anchor’s path alone, keeping the bytes and the quote', () => {
+    /* The repair for the which-root bug — `quiz/where.ts`. The document moved
+       inside the project; the question is about the same bytes of the same
+       file under a new name, and the agent gives the absolute path, which is
+       the one spelling it can produce without knowing where the paper module
+       keeps papers. */
+    const id = added()
+    mkdirSync(join(A, 'moved'))
+    writeFileSync(join(A, 'moved', 'bridge.tex'), 'the manifest is the smallest half')
+    const { text, isError } = tool('reword_quiz', { project: A, id, path: join(A, 'moved', 'bridge.tex') })
+    expect(isError).toBe(false)
+    expect(text).toContain(`Question ${id} reworded and re-anchored to moved/bridge.tex`)
+    expect(text).toContain('anchored to moved/bridge.tex bytes 100–240')
+    expect(text).not.toContain('does NOT resolve')
+  })
+
+  test('a reword cannot re-anchor to a document that is not there', () => {
+    const id = added()
+    const { text, isError } = tool('reword_quiz', { project: A, id, path: 'chapters/gone.tex' })
+    expect(isError).toBe(true)
+    expect(text).toContain('there is no "chapters/gone.tex" in this project')
+    /* And the anchor is exactly as it was. */
+    expect(tool('quizzes', { project: A, epic: 'modes-are-modules' }).text).toContain('anchored to chapters/bridge.tex')
   })
 
   test('a drop says how many answers went with it', () => {

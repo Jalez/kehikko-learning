@@ -18,6 +18,7 @@ import {
   type Op,
 } from './quiz/questions.ts'
 import { MAX_PROJECT, defaultProject, usablePath } from './quiz/projects.ts'
+import { anchorOf, resolved } from './quiz/where.ts'
 
 /**
  * Every door this app answers on that is not the page itself.
@@ -223,8 +224,10 @@ function tools() {
           path: {
             type: 'string',
             description:
-              'The document the passage is in, as the project spells it — a path relative to the project, not an '
-              + 'absolute one.',
+              'The document the passage is in: its absolute path, or a path relative to the PROJECT root (the '
+              + 'folder you passed as project). Stored relative to the project. It is refused if there is no such '
+              + 'file — so if you read the document through another module\'s door, which may spell files relative to '
+              + 'the paper\'s own folder rather than the project, give the absolute path.',
           },
           start: { type: 'integer', minimum: 0, description: 'Byte offset of the first byte of the passage.' },
           end: { type: 'integer', minimum: 0, description: 'Byte offset one past the last. Must be greater than start.' },
@@ -243,10 +246,11 @@ function tools() {
     {
       name: 'reword_quiz',
       description:
-        'Sharpen a question that already exists, keeping its id, its passage and every answer given to it. For fixing '
-        + 'wording, a misleading option, or a key you got wrong. To ask a different thing, write a different question '
-        + '— a question changed enough that the old answers no longer mean anything has silently rewritten somebody’s '
-        + 'history.',
+        'Sharpen a question that already exists, keeping its id and every answer given to it. For fixing wording, a '
+        + 'misleading option, a key you got wrong — or an anchor that no longer resolves, which `quizzes` marks: give '
+        + '`path` to re-spell where the same bytes now are, and `start`, `end` and `quote` only if the passage itself '
+        + 'moved. To ask a different thing, write a different question — a question changed enough that the old '
+        + 'answers no longer mean anything has silently rewritten somebody’s history.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -260,6 +264,15 @@ function tools() {
           },
           answer: { type: 'integer', minimum: 0, description: 'The new correct index. Omit to leave it alone.' },
           why: { type: 'string', description: 'The new explanation. Omit to leave it alone.' },
+          path: {
+            type: 'string',
+            description:
+              'Where the document now is — absolute, or relative to the project root. Refused if there is no such '
+              + 'file. Omit to leave the anchor where it is.',
+          },
+          start: { type: 'integer', minimum: 0, description: 'New byte offset of the first byte. Omit to keep it.' },
+          end: { type: 'integer', minimum: 0, description: 'New byte offset one past the last. Omit to keep it.' },
+          quote: { type: 'string', description: 'What the new bytes hold, pasted. Omit to keep the quote.' },
         },
         required: ['id'],
       },
@@ -350,7 +363,7 @@ function standingsText(project: string): string {
  * which is reading what did and did not land.
  */
 function epicText(project: string, epic: string, reveal: boolean): string {
-  const { questions, trouble, nowhere } = withKey(project, epic)
+  const { questions, trouble, nowhere, root } = withKey(project, epic)
   if (nowhere) return noProjectText('quizzes')
   if (trouble) return trouble
   if (!questions.length) {
@@ -368,13 +381,25 @@ function epicText(project: string, epic: string, reveal: boolean): string {
         + (question.attempts.length > 1 ? ` — ${question.attempts.length} attempts in all` : '')
       : '  not answered yet'
     const why = (reveal || seen) && question.why ? `\n  why: ${question.why}` : ''
+    /* Said to the agent in the same breath as the anchor, because the agent is
+       the one that can fix it: a reader sees "not in this project" on the card
+       and can do nothing about it from there. */
+    const anchor = anchorOf(root, question.passage.path)
+    const held =
+      anchor === 'missing'
+        ? `\n  the anchor does NOT resolve: there is no ${resolved(root, question.passage.path)}. The document may have `
+          + 'moved inside the project — reword_quiz with `path` re-spells where it is now.'
+        : anchor === 'unchecked'
+          ? '\n  the anchor names a document outside this project, which this module does not look at.'
+          : ''
     return [
       `${at + 1}. ${question.id} — ${question.question}`,
       ...question.options.map((option, index) => `     [${index}] ${option}`),
       key,
       said,
       `  anchored to ${question.passage.path} bytes ${question.passage.start}–${question.passage.end}: `
-      + `“${question.passage.quote.length > 160 ? `${question.passage.quote.slice(0, 160)}…` : question.passage.quote}”`,
+      + `“${question.passage.quote.length > 160 ? `${question.passage.quote.slice(0, 160)}…` : question.passage.quote}”`
+      + held,
       `  written by ${question.by}${question.viaMcp ? ', over MCP' : ''}, ${question.at}${why}`,
     ].join('\n')
   })
@@ -486,6 +511,19 @@ function call(name: string, args: Record<string, unknown>, project: string): str
     ...(Array.isArray(args.options)
       ? { options: args.options.slice(0, MAX_OPTIONS + 1).map((option) => str(option, MAX_OPTION)) }
       : {}),
+    /* The anchor, field by field, and only the fields that were sent: the
+       store fills the rest from what it holds, so `path` alone is a re-spelling
+       of the same bytes. */
+    ...(args.path === undefined && args.start === undefined && args.end === undefined && args.quote === undefined
+      ? {}
+      : {
+          passage: {
+            ...(args.path === undefined ? {} : { path: str(args.path, MAX_PATH) }),
+            ...(args.start === undefined ? {} : { start: whole(args.start) }),
+            ...(args.end === undefined ? {} : { end: whole(args.end) }),
+            ...(args.quote === undefined ? {} : { quote: str(args.quote, MAX_QUOTE) }),
+          },
+        }),
   }
   if (args.options !== undefined && !Array.isArray(args.options)) {
     throw new Error('reword_quiz was given options that are not an array. Omit them to leave the options alone.')

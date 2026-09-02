@@ -44,6 +44,7 @@ const unanswered: Asked = {
     'Who owns the repository the module lives in',
     'Which tab the page gets, and what the module would like to be allowed to ask',
   ],
+  anchor: 'holds',
   passage: {
     path: 'data/papers/modes-are-modules/chapters/bridge.tex',
     start: 1024,
@@ -713,6 +714,99 @@ describe('the count the host cannot draw', () => {
     expect(bare.querySelector('[data-scope-note]')).toBeNull()
     expect(bare.textContent).toContain('Nothing has been asked about this paper yet')
   })
+
+  test('a pane the AIM emptied says which containers did it, before the scope gets a word', () => {
+    /* The third empty screen. A tick on a NEIGHBOUR emptied this pane, and a
+       reader looking at it has no way to see that unless it says so — and the
+       way out is a different control from the scope's. */
+    const why = {
+      said: 'journeys is picked out and shows no document, so there is nothing here for a question to be about.',
+      remedy: 'Untick a container, pick out one that shows a document, or set this container’s aim to everything on this kehikko.',
+    }
+    const { container } = render(
+      <QuizView
+        epic="modes-are-modules"
+        questions={[]}
+        hiding={hiding}
+        aimed={why}
+        onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={null}
+        onRetake={() => {}}
+        trouble={null}
+        busy={false}
+        room={ROOMY}
+      />,
+    )
+    expect(container.querySelector('[data-aim-note="empty"]')?.textContent).toBe(why.said)
+    expect(container.querySelector('[data-aim-note="remedy"]')?.textContent).toBe(why.remedy)
+    expect(container.querySelector('[data-scope-note]')).toBeNull()
+    expect(container.textContent).not.toContain('Nothing has been asked about this paper yet')
+  })
+})
+
+describe('a question whose document is not in the project', () => {
+  /* The eighteen. Their paper moved inside the project an hour after they were
+     written, and the card used to draw the same press as every other — a press
+     that pointed the canvas at a file that does not exist, with nothing on
+     screen saying why nothing reacted. See `quiz/where.ts`. */
+  const missing: Asked = { ...unanswered, id: 'e5f6a7b8', anchor: 'missing' }
+
+  test('says so on the card, in words, and pressing it points at nothing — at every rung', () => {
+    /* Three drawings of the source, and every one of them has to say it: the
+       overlay press in a tight list, the details summary in a roomy one, and
+       the caption at the paged rungs. The quote stays reachable where it was —
+       it is what the question is about — but no press leaves the frame. */
+    for (const [room, extra] of [
+      [TIGHT, {}],
+      [ROOMY, {}],
+      [TIGHT, { rung: 'part' as const, part: 'options' as const, header: 2 }],
+    ] as const) {
+      let pointed = 0
+      const { container } = render(
+        <QuestionCard
+          question={missing}
+          onAnswer={() => {}}
+          onPoint={() => (pointed += 1)}
+          pointed={false}
+          busy={false}
+          room={room}
+          {...extra}
+        />,
+      )
+      const control = container.querySelector('[data-passage]')
+      expect(control?.getAttribute('data-passage')).toBe('missing')
+      expect(control?.textContent).toContain('not in this project')
+      expect(control?.getAttribute('title')).toContain('the anchor does not resolve')
+      /* The path is still a fact about the question, and still on the element. */
+      expect(control?.getAttribute('data-source')).toBe(missing.passage.path)
+      fireEvent.click(control!)
+      expect(pointed).toBe(0)
+      cleanup()
+    }
+  })
+
+  test('is still listed, still answerable, and never hidden', () => {
+    const { container } = render(
+      <QuizView
+        epic="modes-are-modules"
+        questions={[missing]}
+        onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={null}
+        onRetake={() => {}}
+        trouble={null}
+        busy={false}
+        room={ROOMY}
+      />,
+    )
+    expect(container.querySelector('[data-question="e5f6a7b8"]')).toBeTruthy()
+    expect(container.querySelectorAll('button[data-slot="button"]').length).toBeGreaterThan(0)
+  })
+})
+
+describe('the count the host cannot draw, at the paged rungs', () => {
+  const hiding = { full: '3 more questions outside this passage', brief: '+3 elsewhere' }
 
   test('the paged rungs say it in four words, with the sentence one hover away', () => {
     /* A forty-character line in the row of controls would take a whole extra row

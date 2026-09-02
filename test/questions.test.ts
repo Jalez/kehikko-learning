@@ -47,6 +47,14 @@ beforeEach(() => {
   B = join(dir, 'two')
   mkdirSync(A)
   mkdirSync(B)
+  /* The document the fixture questions are anchored to has to EXIST now: the
+     store refuses an anchor whose file is not in the project, because eighteen
+     real questions were once written about a paper that then moved and nothing
+     could say so. See `quiz/where.ts`. */
+  mkdirSync(join(A, 'chapters'))
+  writeFileSync(join(A, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
+  mkdirSync(join(B, 'chapters'))
+  writeFileSync(join(B, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
 })
 
 afterEach(() => {
@@ -378,7 +386,7 @@ describe('asked()', () => {
     const [held] = withKey(A, 'modes-are-modules').questions
     expect(question).toBeUndefined()
     expect(held?.answer).toBe(0)
-    const shown = asked(held!)
+    const shown = asked(held!, A)
     expect(shown.answer).toBeNull()
     expect(shown.why).toBeNull()
     /* And nothing else about it is missing — this is a projection, not a stub. */
@@ -391,7 +399,7 @@ describe('asked()', () => {
     if (!made.ok) return
     score(A, made.id, 2)
     const [held] = withKey(A, 'modes-are-modules').questions
-    const shown = asked(held!)
+    const shown = asked(held!, A)
     expect(shown.answer).toBe(0)
     expect(shown.why).toBe('The manifest is the only half a host reads.')
   })

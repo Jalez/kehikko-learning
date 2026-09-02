@@ -239,6 +239,22 @@ function underGit(from: string): boolean {
   }
 }
 
+/**
+ * The project root as this program uses it — resolved, a real directory — or
+ * null when there is no project or the path was refused.
+ *
+ * The refusal itself is `dataFile`'s to report; this is for the callers that
+ * already have the store open and need the root for one more thing, which is
+ * saying where a question's document is. `quiz/where.ts` joins stored paths
+ * onto it and checks them against the disk, and it has to be THIS spelling —
+ * the resolved one — because that is the spelling every path under it was
+ * relativised against on the way in.
+ */
+export function rootOf(projectPath: string | null | undefined): string | null {
+  const root = projectRoot(projectPath)
+  return root !== null && 'path' in root ? root.path : null
+}
+
 /** The project, resolved — or null for "no project", or a sentence for a refusal. */
 function projectRoot(projectPath: string | null | undefined): { path: string } | { trouble: string } | null {
   if (typeof projectPath !== 'string') return null

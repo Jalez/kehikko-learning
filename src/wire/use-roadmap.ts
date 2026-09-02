@@ -118,6 +118,25 @@ export interface Roadmap {
    * a poll that is already running.
    */
   chosen: FilterChoice
+  /**
+   * Every container on the kehikko, whether it is picked out, and what
+   * documents it says it is showing, as the host last said — flattened to ONE
+   * STRING, for the reason the passage is compared field by field: a context
+   * arrives after every change anywhere on the canvas, and a fresh array of
+   * fresh rows each time would re-decide which questions are in front several
+   * times a second. `wire/aim.ts` reads it; `App` inflates it once.
+   *
+   * `''` is no containers: nothing is framing this page, or a host too old to
+   * say. Both are answered the same way — the page shows the epic as it
+   * always did, and offers no control for a narrowing it cannot do.
+   *
+   * Read structurally rather than off `ModuleContext`, so that this page
+   * typechecks against a copy of the protocol from before the field existed
+   * and simply finds nothing there — which is also what the wire does: an
+   * older client strips the field before this page sees it. The sibling
+   * notes module made the same choice for the same reason.
+   */
+  containers: string
   /** Ask the host to make this container a given height. */
   resize: (height: number) => void
   /**
@@ -163,6 +182,30 @@ export interface Roadmap {
    * must not do is throw a rejection out of a click handler.
    */
   point: (passage: Passage | null) => void
+  /**
+   * Say which documents this container is showing, so a neighbour can narrow
+   * to it.
+   *
+   * ## The bound, which is different from `point`'s and is stated so it can be checked
+   *
+   * `point` is a person's press and nothing else. This is the opposite kind
+   * of message: it is sent by the PROGRAM, whenever the set of documents on
+   * screen changes — a context that narrowed the list, a poll that brought a
+   * question about a new chapter, an aim turned off — and never by a press.
+   * What it must not do is fire when nothing changed: the caller compares the
+   * set as a string and sends only on a difference, because a message on
+   * every render is a message a second at every host on the canvas.
+   *
+   * It says what is SHOWN, not what is held. A pane narrowed to chapter three
+   * is showing chapter three, and a neighbour that narrows to this pane gets
+   * chapter three — which is the reading a person ticking this container's
+   * box expects. `wire/aim.ts` spells the list.
+   *
+   * Fire and forget, and every refusal is swallowed, for the reason `point`
+   * gives: a host that has not heard of the method is not a fault in this
+   * page and the page must not throw out of an effect over it.
+   */
+  show: (documents: Passage[]) => void
 }
 
 export type GotoHandler = NonNullable<HostEvents['onGoto']>
@@ -174,6 +217,7 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
   const [project, setProject] = useState<string | null>(null)
   const [passage, setPassage] = useState<Passage | null>(null)
   const [chosen, setChosen] = useState<FilterChoice>({})
+  const [containers, setContainers] = useState('')
   const host = useRef<Connection | null>(null)
 
   /* The handler is read through a ref so that a caller re-creating it does not
@@ -236,6 +280,9 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
          fresh identity here re-narrows the list and re-decides the ladder for a
          choice nobody changed. */
       setChosen((was) => (agrees(was, context.filters ?? {}) ? was : (context.filters ?? {})))
+      /* Flattened to a string on arrival, so the setter is a no-op when the
+         canvas did not move — see `containers` above. */
+      setContainers(flattenContainers((context as { containers?: unknown }).containers))
     }
 
     /*
@@ -288,10 +335,75 @@ export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
     void conversation.request('passage.set', { passage: pointed }).catch(() => {})
   }, [])
 
+  const show = useCallback((documents: Passage[]) => {
+    const conversation = host.current
+    if (!conversation) return
+    void conversation.request('showing.set', { refs: [], documents }).catch(() => {})
+  }, [])
+
   return useMemo(
-    () => ({ where, epic, projectPath, project, passage, chosen, resize, filters, point }),
-    [where, epic, projectPath, project, passage, chosen, resize, filters, point],
+    () => ({ where, epic, projectPath, project, passage, chosen, containers, resize, filters, point, show }),
+    [where, epic, projectPath, project, passage, chosen, containers, resize, filters, point, show],
   )
+}
+
+/**
+ * The host's containers as one string, or `''`.
+ *
+ * Only what this page reads survives: the module, the flag, and each document
+ * as its path and range. Refs are dropped — a question is never anchored to
+ * one — and so are the page and the quote: this page compares documents by
+ * path, and the rest is what happened to be pointed at in them.
+ */
+function flattenContainers(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return ''
+  const rows = value.flatMap((one) => {
+    if (typeof one !== 'object' || one === null) return []
+    const row = one as { module?: unknown; selected?: unknown; showing?: unknown }
+    if (typeof row.module !== 'string' || !row.module) return []
+    const showing = (typeof row.showing === 'object' && row.showing !== null ? row.showing : {}) as {
+      documents?: unknown
+    }
+    const documents = Array.isArray(showing.documents)
+      ? showing.documents.flatMap((d) => {
+          const doc = d as { path?: unknown; from?: unknown; to?: unknown } | null
+          if (!doc || typeof doc.path !== 'string' || !doc.path) return []
+          return [
+            {
+              path: doc.path,
+              from: typeof doc.from === 'number' ? doc.from : null,
+              to: typeof doc.to === 'number' ? doc.to : null,
+            },
+          ]
+        })
+      : []
+    return [{ module: row.module, selected: row.selected === true, documents }]
+  })
+  return rows.length ? JSON.stringify(rows) : ''
+}
+
+/** The string back into rows. The inverse of `flattenContainers`, and lenient about anything that is not one. */
+export function containersFrom(flat: string): { module: string; selected: boolean; documents: { path: string; from: number | null; to: number | null }[] }[] {
+  if (!flat) return []
+  try {
+    const parsed: unknown = JSON.parse(flat)
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((one) => {
+      if (typeof one !== 'object' || one === null) return []
+      const row = one as { module?: unknown; selected?: unknown; documents?: unknown }
+      if (typeof row.module !== 'string' || !row.module) return []
+      const documents = Array.isArray(row.documents)
+        ? row.documents.flatMap((d) => {
+            const doc = d as { path?: unknown; from?: unknown; to?: unknown } | null
+            if (!doc || typeof doc.path !== 'string' || !doc.path) return []
+            return [{ path: doc.path, from: typeof doc.from === 'number' ? doc.from : null, to: typeof doc.to === 'number' ? doc.to : null }]
+          })
+        : []
+      return [{ module: row.module, selected: row.selected === true, documents }]
+    })
+  } catch {
+    return []
+  }
 }
 
 /**
