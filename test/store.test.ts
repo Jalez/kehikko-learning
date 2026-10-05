@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { KEHIKOT_DIR, moduleFolder } from 'roadmap-module-protocol'
+import { KEHIKOT_DIR, moduleFolder } from 'kehikot-module-protocol'
 
 import { ID } from '../manifest.ts'
 import { FILE, dataFile, makeDir } from '../store.ts'
@@ -76,7 +76,7 @@ describe('where the file is', () => {
     const { path, trouble } = dataFile(project)
     expect(trouble).toBeNull()
     expect(path).toBe(join(project, KEHIKOT_DIR, 'learning', `${FILE}.json`))
-    /* The folder name is derived from the id with `roadmap.` taken off, and
+    /* The folder name is derived from the id with `kehikot.` taken off, and
        nothing here spells either half a second time. */
     expect(MINE).toBe('learning')
     expect(path).toBe(join(mine(project), `${FILE}.json`))

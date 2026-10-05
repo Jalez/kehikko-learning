@@ -1,4 +1,4 @@
-import type { Passage as Pointing } from 'roadmap-module-protocol'
+import type { Passage as Pointing } from 'kehikot-module-protocol'
 
 import type { Passage } from '../../quiz/types.ts'
 
@@ -69,8 +69,8 @@ import type { Passage } from '../../quiz/types.ts'
  * With no `projectPath` this app has been told a canvas is standing somewhere
  * it will not name, and a relative path published as though it were a document
  * identity is a claim every other module would resolve against its own root.
- * That is the same rule the store keeps — see `Roadmap.projectPath` in
- * `use-roadmap.ts` — and it costs nothing on screen, because a page with no
+ * That is the same rule the store keeps — see `Kehikot.projectPath` in
+ * `use-kehikot.ts` — and it costs nothing on screen, because a page with no
  * project path is showing `NoProject` and has no questions to press.
  *
  * ## What is deliberately not sent
@@ -92,7 +92,7 @@ export function pointingAt(projectPath: string | null, passage: Passage): Pointi
   if (!projectPath) return null
   const root = projectPath.endsWith('/') ? projectPath.slice(0, -1) : projectPath
   const path = passage.path.startsWith('/') ? passage.path : `${root}/${passage.path}`
-  return { path, page: null, from: passage.start, to: passage.end, quoted: passage.quote }
+  return { path, page: null, section: null, from: passage.start, to: passage.end, quoted: passage.quote }
 }
 
 /**

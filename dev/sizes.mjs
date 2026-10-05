@@ -18,7 +18,7 @@
  * straight to `/app` would measure 130 pixels of explanation that a reader on a
  * canvas never sees, and would then draw conclusions about a layout nobody has.
  * The harness below is the smallest thing that is honestly a host: an iframe of
- * exactly the container's size, and a `roadmap.hello` posted into it.
+ * exactly the container's size, and a `kehikot.hello` posted into it.
  *
  * ## What it establishes
  *
@@ -38,7 +38,7 @@ const EXECUTABLE =
   ?? '/Users/jaakkorajala/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell'
 
 const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7950'
-const ROADMAP = '/Users/jaakkorajala/Projects/roadmap'
+const KEHIKOT = '/Users/jaakkorajala/Projects/kehikko'
 /* Its own epic, so this never touches the questions the other probe asserts on. */
 const EPIC = 'sizes-probe'
 
@@ -53,8 +53,8 @@ const SIZES = [
 
 const ctx = (over = {}) => ({
   epic: EPIC,
-  project: 'roadmap',
-  projectPath: ROADMAP,
+  project: 'kehikko',
+  projectPath: KEHIKOT,
   theme: 'light',
   selection: [],
   kehikko: { id: 1, name: 'A canvas' },
@@ -75,7 +75,7 @@ const mcp = (name, args) =>
 /* Six questions of the length an agent actually writes, so what is measured is a
    column of them and not one card with room to spare. */
 const SEED = [0, 1, 2, 3, 4, 5].map((n) => ({
-  project: ROADMAP,
+  project: KEHIKOT,
   epic: EPIC,
   question: `Question ${n}: what does the ${['manifest', 'wire', 'door', 'store', 'ticket', 'container'][n]} settle, and who reads it?`,
   options: [
@@ -126,7 +126,7 @@ async function main() {
       await page.evaluate(
         ([context]) =>
           document.getElementById('frame').contentWindow.postMessage(
-            { type: 'roadmap.hello', protocol: 2, session: 'sizes-probe', context, state: null },
+            { type: 'kehikot.hello', protocol: 2, session: 'sizes-probe', context, state: null },
             '*',
           ),
         [ctx()],
@@ -144,7 +144,7 @@ async function main() {
           headers: { 'content-type': 'application/json', 'x-learning-ticket': ticket },
           body: JSON.stringify({ project, epic: 'sizes-probe' }),
         })
-      }, ROADMAP)
+      }, KEHIKOT)
       await frame.waitForSelector('[data-question][data-answered="no"]', { timeout: 15000 })
       await frame.waitForFunction(
         () => document.querySelectorAll('[data-question][data-answered="yes"]').length === 0,
@@ -357,7 +357,7 @@ async function main() {
       await page.close()
     }
   } finally {
-    for (const id of ids) await mcp('drop_quiz', { project: ROADMAP, id })
+    for (const id of ids) await mcp('drop_quiz', { project: KEHIKOT, id })
     say(`\ndropped ${ids.length} seeded questions`)
   }
 

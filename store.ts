@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
 
-import { kehikotDir, moduleDir, moduleFile, withKehikotIgnored, within } from 'roadmap-module-protocol'
+import { kehikotDir, moduleDir, moduleFile, withKehikotIgnored, within } from 'kehikot-module-protocol'
 
 import { ID } from './manifest.ts'
 
@@ -26,7 +26,7 @@ import { ID } from './manifest.ts'
  *
  * So: `<projectPath>/.kehikot/learning/questions.json`. The folder name, the
  * derivation of `learning` from this module's id, and the join are all
- * `roadmap-module-protocol`'s, deliberately, because four modules answering
+ * `kehikot-module-protocol`'s, deliberately, because four modules answering
  * "where does my data live" separately is four answers and the disagreement has
  * no symptom — every module starts, every module saves, and a person finds half
  * their work in one folder and half in another. Nothing in this file spells
@@ -77,7 +77,7 @@ import { ID } from './manifest.ts'
  * ## The fence, which matters more here than it did before
  *
  * This app is about to write files into a path it was handed OVER THE WIRE — by
- * a host through `roadmap.context`, or by an agent through the MCP door. So the
+ * a host through `kehikot.context`, or by an agent through the MCP door. So the
  * path is resolved with `realpathSync` and the folder it lands in is checked to
  * be under the project it claims to be under, AFTER resolution, because a
  * `.kehikot` that is a symlink to somewhere else is exactly the case a string

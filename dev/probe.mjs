@@ -32,13 +32,13 @@ const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7950'
 /* The header above promises these can be set from the environment, and until
    now only ORIGIN could be. The partitioning step needs a SECOND project with a
    question of its own in it, and where that is, is this machine's business. */
-const ROADMAP = process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/roadmap'
+const KEHIKOT = process.env.KEHIKOT ?? process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/kehikko'
 const OTHER = process.env.OTHER ?? '/Users/jaakkorajala/Projects/kehikko-checklist'
 
 /** Greet the page the way a host does: HELLO with a context, on the page itself. */
 const greet = (context) => `
   window.postMessage({
-    type: 'roadmap.hello',
+    type: 'kehikot.hello',
     protocol: 2,
     session: 'probe-session',
     context: ${JSON.stringify(context)},
@@ -48,8 +48,8 @@ const greet = (context) => `
 
 const ctx = (over = {}) => ({
   epic: 'modes-are-modules',
-  project: 'roadmap',
-  projectPath: ROADMAP,
+  project: 'kehikko',
+  projectPath: KEHIKOT,
   theme: 'light',
   selection: [],
   kehikko: { id: 1, name: 'A canvas' },
@@ -91,7 +91,7 @@ async function main() {
       body: JSON.stringify({ project, epic: 'modes-are-modules' }),
     })
     return { status: r.status, said: (await r.json()).said }
-  }, ROADMAP)
+  }, KEHIKOT)
   say('\n=== 0. RESET (through the page, with the page’s own ticket) ===')
   say(JSON.stringify(reset))
 
@@ -103,7 +103,7 @@ async function main() {
       body: JSON.stringify({ project, epic: 'modes-are-modules' }),
     })
     return { status: r.status, error: (await r.json()).error }
-  }, ROADMAP)
+  }, KEHIKOT)
   say('without the ticket:', JSON.stringify(ungated))
   if (ungated.status !== 403) problems.push('a write without the ticket was not refused')
 
@@ -124,7 +124,7 @@ async function main() {
   )
   say('\n=== 1. QUESTIONS WRITTEN OVER MCP, AS THE PANE SEES THEM ===')
   say(JSON.stringify(shown, null, 2))
-  if (shown.length !== 2) problems.push(`expected 2 questions for roadmap, saw ${shown.length}`)
+  if (shown.length !== 2) problems.push(`expected 2 questions for kehikko, saw ${shown.length}`)
 
   /* ------------------------------------------------------------------ *
    * 2. Partitioned by project — the other project's question is NOT here
@@ -174,7 +174,7 @@ async function main() {
   const wire = await page.evaluate(async (project) => {
     const r = await fetch(`/api/questions?project=${encodeURIComponent(project)}&epic=modes-are-modules`)
     return r.text()
-  }, ROADMAP)
+  }, KEHIKOT)
   say('\n  what /api/questions actually sent (the key fields):')
   for (const q of JSON.parse(wire).questions) {
     say(`    ${q.id}: answer=${JSON.stringify(q.answer)} why=${JSON.stringify(q.why)} options=${q.options.length}`)
@@ -242,7 +242,7 @@ async function main() {
       params: {
         name: 'add_quiz',
         arguments: {
-          project: ROADMAP,
+          project: KEHIKOT,
           epic: 'modes-are-modules',
           question: 'Where does the answer key live, in this module?',
           options: [
@@ -276,7 +276,7 @@ async function main() {
       jsonrpc: '2.0',
       id: 10,
       method: 'tools/call',
-      params: { name: 'drop_quiz', arguments: { project: ROADMAP, id: wroteId } },
+      params: { name: 'drop_quiz', arguments: { project: KEHIKOT, id: wroteId } },
     }),
   })
 

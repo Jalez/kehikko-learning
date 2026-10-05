@@ -22,7 +22,7 @@
  *
  * A migration on read happens inside a request, for ONE project — whichever
  * project the container is standing in. The old file holds several. Reading it in the
- * `/Users/…/roadmap` request would mean either writing other projects' questions
+ * `/Users/…/kehikko` request would mean either writing other projects' questions
  * into folders nobody asked about, or migrating a third of the file and leaving
  * the rest for a request that may never come. Both leave the same material in
  * two places, which is the state this is most trying to avoid: a migration that
@@ -51,7 +51,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { moduleDir, moduleFile } from 'roadmap-module-protocol'
+import { moduleDir, moduleFile } from 'kehikot-module-protocol'
 
 import { ID } from '../manifest.ts'
 import { FILE } from '../store.ts'

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { LIMITS, PROTOCOL, manifestSchema } from 'roadmap-module-protocol'
+import { LIMITS, PROTOCOL, manifestSchema } from 'kehikot-module-protocol'
 
 import { ID, MANIFEST, PREFERRED_PORT, VERSION } from '../manifest.ts'
 
@@ -26,11 +26,11 @@ describe('the manifest', () => {
        0.8 carried `projectPath`, which is where the store learns which project
        it is standing in; 0.11 carries `moduleDir` and `withKehikotIgnored`,
        which is where it learns what to call the folder and which folder inside
-       it is this module's; 0.12 carries `roadmap-module-protocol/client`, which
+       it is this module's; 0.12 carries `kehikot-module-protocol/client`, which
        is the wire this module no longer writes for itself; 0.13 carries
        `/serve`, which is the port and the registration it no longer decides for
        itself; 0.14 carries `reacts`, which is a module saying which fields of
-       the context it follows; 0.15 carries `roadmap.filters`, which is a module
+       the context it follows; 0.15 carries `kehikot.filters`, which is a module
        offering what it can be narrowed by so the host can draw one control in
        the container header instead of every module drawing its own.
 
@@ -58,7 +58,7 @@ describe('the manifest', () => {
        `bun update` ALONE will not advance a `#main` git dependency; it takes
        `bun pm cache rm` first, and this number goes with it. */
     const packaged = JSON.parse(
-      readFileSync(join(here, 'node_modules/roadmap-module-protocol/package.json'), 'utf8'),
+      readFileSync(join(here, 'node_modules/kehikot-module-protocol/package.json'), 'utf8'),
     ) as { version: string }
     const [major, minor] = packaged.version.split('.').map(Number)
     expect(major).toBe(0)
@@ -69,7 +69,7 @@ describe('the manifest', () => {
   })
 
   test('says who it is, and the filename register.ts writes matches', () => {
-    expect(ID).toBe('roadmap.learning')
+    expect(ID).toBe('kehikot.learning')
     expect(MANIFEST.id).toBe(ID)
     expect(MANIFEST.version).toBe(VERSION)
   })
@@ -148,7 +148,7 @@ describe('the manifest', () => {
       const source = readFileSync(join(here, file), 'utf8')
       /* Comments may discuss sibling modules by name and should. What must not
          appear is a module ID or an origin this app could address. */
-      expect(`${file} names a module id: ${source.includes('roadmap.paper')}`).toBe(`${file} names a module id: false`)
+      expect(`${file} names a module id: ${source.includes('kehikot.paper')}`).toBe(`${file} names a module id: false`)
       expect(`${file} names a sibling origin: ${/https?:\/\/[^\s'"]*:79\d\d/.test(source)}`).toBe(
         `${file} names a sibling origin: false`,
       )
@@ -252,7 +252,7 @@ describe('the shape of the repository', () => {
     const lines = readFileSync(join(here, 'run.sh'), 'utf8')
       .split('\n')
       .filter((line) => line.startsWith('exec '))
-    expect(lines).toEqual(['exec bunx vite'])
+    expect(lines).toEqual(['exec bunx vite $VITE_FORCE'])
   })
 
   test('register.ts writes both url and dir', () => {

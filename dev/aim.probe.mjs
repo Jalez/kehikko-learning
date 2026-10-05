@@ -6,13 +6,13 @@
  *     rm -rf /tmp/learning-aim-project && mkdir -p /tmp/learning-aim-project/.kehikot
  *     cp -R <CS-DEGREE>/.kehikot/learning /tmp/learning-aim-project/.kehikot/
  *     cp -R <CS-DEGREE>/.kehikot/paper    /tmp/learning-aim-project/.kehikot/
- *     ROADMAP_MODULES_DIR=/tmp/learning-aim-registry PORT=7971 bunx vite    # in the module
+ *     KEHIKOT_MODULES_DIR=/tmp/learning-aim-registry PORT=7971 bunx vite    # in the module
  *     ORIGIN=http://127.0.0.1:7971 PROJECT=/tmp/learning-aim-project bun dev/aim.probe.mjs
  *
  * ## What it plays
  *
  * A host, from where a host sits: it frames `/app`, greets it with a context
- * that carries `containers`, answers every `roadmap.request` (so `showing.set`
+ * that carries `containers`, answers every `kehikot.request` (so `showing.set`
  * and `passage.set` resolve rather than time out), records every offer and
  * every `showing.set`, and walks the canvases the consumer rule names:
  *
@@ -38,7 +38,7 @@ const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7971'
 const PROJECT = process.env.PROJECT ?? '/tmp/learning-aim-project'
 const EPIC = 'thesis'
 const PAPER = `${PROJECT}/.kehikot/paper/${EPIC}`
-const SELF = 'roadmap.learning'
+const SELF = 'kehikot.learning'
 
 const host = (width, height) => `<!doctype html>
 <html><body style="margin:0;background:#888">
@@ -60,16 +60,16 @@ const host = (width, height) => `<!doctype html>
     if (!message || typeof message.type !== 'string') return
     window.__sent.push(message)
     /* Every request is answered, so nothing times out. */
-    if (message.type === 'roadmap.request') {
-      frame.contentWindow.postMessage({ type: 'roadmap.response', id: message.id, ok: true, data: {} }, '*')
+    if (message.type === 'kehikot.request') {
+      frame.contentWindow.postMessage({ type: 'kehikot.response', id: message.id, ok: true, data: {} }, '*')
     }
   })
   window.__context = (over) => {
     current = Object.assign(base(), over || {})
-    frame.contentWindow.postMessage(Object.assign({ type: 'roadmap.context', protocol: 2 }, current), '*')
+    frame.contentWindow.postMessage(Object.assign({ type: 'kehikot.context', protocol: 2 }, current), '*')
   }
   frame.addEventListener('load', () => {
-    frame.contentWindow.postMessage({ type: 'roadmap.hello', protocol: 2, session: 'aim', state: null, context: base() }, '*')
+    frame.contentWindow.postMessage({ type: 'kehikot.hello', protocol: 2, session: 'aim', state: null, context: base() }, '*')
   })
 </script>
 </body></html>`
@@ -126,8 +126,8 @@ for (const size of [
     const note = await frame.locator('[data-aim-note], [data-scope-note]').evaluateAll((nodes) => nodes.map((n) => n.textContent.trim()))
     return { cards, note }
   }
-  const offers = () => page.evaluate(() => window.__sent.filter((m) => m.type === 'roadmap.filters').map((m) => JSON.stringify(m.groups)))
-  const showings = () => page.evaluate(() => window.__sent.filter((m) => m.type === 'roadmap.request' && m.method === 'showing.set').map((m) => m.params.documents.map((d) => d.path.split('/').pop()).join(',') || '(nothing)'))
+  const offers = () => page.evaluate(() => window.__sent.filter((m) => m.type === 'kehikot.filters').map((m) => JSON.stringify(m.groups)))
+  const showings = () => page.evaluate(() => window.__sent.filter((m) => m.type === 'kehikot.request' && m.method === 'showing.set').map((m) => m.params.documents.map((d) => d.path.split('/').pop()).join(',') || '(nothing)'))
   const snap = async (name) => page.screenshot({ path: `/tmp/learning-aim-${size.name}-${name}.png`, clip: { x: 0, y: 0, width: size.width, height: size.height } })
   const walk = async (name, over) => {
     await page.evaluate((o) => window.__context(o), over)
@@ -145,7 +145,7 @@ for (const size of [
   await snap('0-as-loaded')
 
   await walk('1-broken-paper-ch3-unpicked', {
-    containers: [row('roadmap.paper', false, [doc('chapters/3_methods.tex')]), row('roadmap.journeys', false), row(SELF, false)],
+    containers: [row('kehikot.paper', false, [doc('chapters/3_methods.tex')]), row('kehikot.journeys', false), row(SELF, false)],
   })
 
   if (size.name === '220x340') {
@@ -159,30 +159,30 @@ for (const size of [
   }
 
   await walk('2-paper-ch3-unpicked', {
-    containers: [row('roadmap.paper', false, [doc('chapters/3_methods.tex')]), row('roadmap.journeys', false), row(SELF, false)],
+    containers: [row('kehikot.paper', false, [doc('chapters/3_methods.tex')]), row('kehikot.journeys', false), row(SELF, false)],
   })
   await walk('3-paper-ch3-picked', {
-    containers: [row('roadmap.paper', true, [doc('chapters/3_methods.tex')]), row('roadmap.journeys', false), row(SELF, false)],
+    containers: [row('kehikot.paper', true, [doc('chapters/3_methods.tex')]), row('kehikot.journeys', false), row(SELF, false)],
   })
   await walk('4-paper-ch1-picked-passage-ch3', {
     passage: doc('chapters/3_methods.tex', 100, 200),
-    containers: [row('roadmap.paper', true, [doc('chapters/1_introduction.tex')]), row('roadmap.journeys', false), row(SELF, false)],
+    containers: [row('kehikot.paper', true, [doc('chapters/1_introduction.tex')]), row('kehikot.journeys', false), row(SELF, false)],
   })
   await walk('5-journeys-picked-alone', {
-    containers: [row('roadmap.paper', false, [doc('chapters/3_methods.tex')]), row('roadmap.journeys', true), row(SELF, false)],
+    containers: [row('kehikot.paper', false, [doc('chapters/3_methods.tex')]), row('kehikot.journeys', true), row(SELF, false)],
   })
   await walk('6-aim-all', {
     filters: { aim: 'all' },
-    containers: [row('roadmap.paper', false, [doc('chapters/3_methods.tex')]), row('roadmap.journeys', true), row(SELF, false)],
+    containers: [row('kehikot.paper', false, [doc('chapters/3_methods.tex')]), row('kehikot.journeys', true), row(SELF, false)],
   })
   await walk('7-self-picked-alone', {
-    containers: [row('roadmap.paper', false, [doc('chapters/3_methods.tex')]), row(SELF, true, [doc('chapters/1_introduction.tex')])],
+    containers: [row('kehikot.paper', false, [doc('chapters/3_methods.tex')]), row(SELF, true, [doc('chapters/1_introduction.tex')])],
   })
   await walk('8-no-containers', {})
   await walk('9-scope-section-within-ch3', {
     filters: { scope: 'section' },
     passage: doc('chapters/3_methods.tex', 0, 4000),
-    containers: [row('roadmap.paper', false, [doc('chapters/3_methods.tex', 0, 4000)])],
+    containers: [row('kehikot.paper', false, [doc('chapters/3_methods.tex', 0, 4000)])],
   })
 
   console.log('  offers:')

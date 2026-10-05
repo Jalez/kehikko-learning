@@ -1,4 +1,4 @@
-import type { FilterChoice, FilterGroup, Passage as Pointing } from 'roadmap-module-protocol'
+import type { FilterChoice, FilterGroup, Passage as Pointing } from 'kehikot-module-protocol'
 
 import { pointingAt, type Anchored } from '@/wire/pointed.ts'
 
@@ -8,7 +8,7 @@ import { pointingAt, type Anchored } from '@/wire/pointed.ts'
  * ## What was here before, and which half of it was wrong
  *
  * `src/app.tsx` used to carry a paragraph saying this module had nothing to
- * offer `roadmap.filters`. Its argument was in two halves and they have not
+ * offer `kehikot.filters`. Its argument was in two halves and they have not
  * fared the same:
  *
  * - **`only unanswered` is refused, and that half stands.** A quiz whose list

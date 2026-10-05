@@ -15,7 +15,7 @@ import { aimNote, aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type S
  * empties the pane.
  */
 
-const SELF = 'roadmap.learning'
+const SELF = 'kehikot.learning'
 const PROJECT = '/Users/somebody/Projects/thesis'
 const PAPER = `${PROJECT}/.kehikot/paper/thesis`
 const CH1 = `${PAPER}/chapters/1_introduction.tex`
@@ -59,7 +59,7 @@ describe('what is in front, by the protocol’s rule', () => {
     const front = inFrontOf({
       self: SELF,
       passage: null,
-      containers: [container('roadmap.paper', false, [place(CH3)]), container('roadmap.journeys', false), container(SELF, false)],
+      containers: [container('kehikot.paper', false, [place(CH3)]), container('kehikot.journeys', false), container(SELF, false)],
       aim: 'follow',
     })
     expect(front.everything).toBe(false)
@@ -75,7 +75,7 @@ describe('what is in front, by the protocol’s rule', () => {
     const front = inFrontOf({
       self: SELF,
       passage: null,
-      containers: [container('roadmap.paper', false), container('roadmap.journeys', false)],
+      containers: [container('kehikot.paper', false), container('kehikot.journeys', false)],
       aim: 'follow',
     })
     expect(front.everything).toBe(true)
@@ -87,7 +87,7 @@ describe('what is in front, by the protocol’s rule', () => {
     const front = inFrontOf({
       self: SELF,
       passage: place(CH1, 100, 200),
-      containers: [container('roadmap.paper', false, [place(CH3)])],
+      containers: [container('kehikot.paper', false, [place(CH3)])],
       aim: 'follow',
     })
     expect(front.documents.map((one) => one.path)).toEqual([CH1, CH3])
@@ -98,11 +98,11 @@ describe('what is in front, by the protocol’s rule', () => {
     const front = inFrontOf({
       self: SELF,
       passage: place(CH1),
-      containers: [container('roadmap.paper', true, [place(CH3)]), container('roadmap.notes', false, [place(CH1)])],
+      containers: [container('kehikot.paper', true, [place(CH3)]), container('kehikot.notes', false, [place(CH1)])],
       aim: 'follow',
     })
     expect(front.narrowed).toBe(true)
-    expect(front.picked).toEqual(['roadmap.paper'])
+    expect(front.picked).toEqual(['kehikot.paper'])
     expect(front.documents.map((one) => one.path)).toEqual([CH3])
     expect(ids(inFront(QUESTIONS, PROJECT, front).shown)).toEqual(['q3a', 'q3b'])
   })
@@ -112,13 +112,13 @@ describe('what is in front, by the protocol’s rule', () => {
       self: SELF,
       passage: null,
       containers: [
-        container('roadmap.paper', true, [place(CH3)]),
-        container('roadmap.notes', true, [place(CH1)]),
-        container('roadmap.references', false, [place(`${PAPER}/chapters/5_discussion.tex`)]),
+        container('kehikot.paper', true, [place(CH3)]),
+        container('kehikot.notes', true, [place(CH1)]),
+        container('kehikot.references', false, [place(`${PAPER}/chapters/5_discussion.tex`)]),
       ],
       aim: 'follow',
     })
-    expect(front.picked).toEqual(['roadmap.paper', 'roadmap.notes'])
+    expect(front.picked).toEqual(['kehikot.paper', 'kehikot.notes'])
     expect(ids(inFront(QUESTIONS, PROJECT, front).shown)).toEqual(['q1', 'q3a', 'q3b'])
   })
 
@@ -128,11 +128,11 @@ describe('what is in front, by the protocol’s rule', () => {
     const front = inFrontOf({
       self: SELF,
       passage: place(CH3),
-      containers: [container('roadmap.journeys', true), container('roadmap.paper', false, [place(CH3)])],
+      containers: [container('kehikot.journeys', true), container('kehikot.paper', false, [place(CH3)])],
       aim: 'follow',
     })
     expect(front.narrowed).toBe(true)
-    expect(front.quiet).toEqual(['roadmap.journeys'])
+    expect(front.quiet).toEqual(['kehikot.journeys'])
     expect(inFront(QUESTIONS, PROJECT, front).shown).toEqual([])
     expect(whyEmpty(front, 4, 0)).toEqual({
       said: 'journeys is picked out and shows no document, so there is nothing here for a question to be about.',
@@ -144,7 +144,7 @@ describe('what is in front, by the protocol’s rule', () => {
     const front = inFrontOf({
       self: SELF,
       passage: null,
-      containers: [container('roadmap.paper', false, [place(`${PAPER}/main.tex`)])],
+      containers: [container('kehikot.paper', false, [place(`${PAPER}/main.tex`)])],
       aim: 'follow',
     })
     expect(inFront(QUESTIONS, PROJECT, front).shown).toEqual([])
@@ -159,8 +159,8 @@ describe('what is in front, by the protocol’s rule', () => {
       self: SELF,
       passage: null,
       containers: [
-        container('roadmap.paper', true, [place(`${PAPER}/main.tex`)]),
-        container('roadmap.journeys', true),
+        container('kehikot.paper', true, [place(`${PAPER}/main.tex`)]),
+        container('kehikot.journeys', true),
       ],
       aim: 'follow',
     })
@@ -174,7 +174,7 @@ describe('what is in front, by the protocol’s rule', () => {
     const front = inFrontOf({
       self: SELF,
       passage: null,
-      containers: [container('roadmap.journeys', true)],
+      containers: [container('kehikot.journeys', true)],
       aim: 'all',
     })
     expect(front.everything).toBe(true)
@@ -188,7 +188,7 @@ describe('what is in front, by the protocol’s rule', () => {
     const front = inFrontOf({
       self: SELF,
       passage: null,
-      containers: [container('roadmap.paper', true, [place(CH3, 5000, 5100)])],
+      containers: [container('kehikot.paper', true, [place(CH3, 5000, 5100)])],
       aim: 'follow',
     })
     expect(ids(inFront(QUESTIONS, PROJECT, front).shown)).toEqual(['q3a', 'q3b'])
@@ -203,7 +203,7 @@ describe('this container’s own row', () => {
     const front = inFrontOf({
       self: SELF,
       passage: null,
-      containers: [container(SELF, false, [place(CH3)]), container('roadmap.paper', false, [place(CH1)])],
+      containers: [container(SELF, false, [place(CH3)]), container('kehikot.paper', false, [place(CH1)])],
       aim: 'follow',
     })
     expect(front.documents.map((one) => one.path)).toEqual([CH1])
@@ -213,7 +213,7 @@ describe('this container’s own row', () => {
     const front = inFrontOf({
       self: SELF,
       passage: null,
-      containers: [container(SELF, true, [place(CH3)]), container('roadmap.paper', false, [place(CH1)])],
+      containers: [container(SELF, true, [place(CH3)]), container('kehikot.paper', false, [place(CH1)])],
       aim: 'follow',
     })
     expect(front.narrowed).toBe(false)
@@ -238,7 +238,7 @@ describe('a question whose anchor does not resolve', () => {
     const front = inFrontOf({
       self: SELF,
       passage: null,
-      containers: [container('roadmap.paper', true, [place(CH3)])],
+      containers: [container('kehikot.paper', true, [place(CH3)])],
       aim: 'follow',
     })
     const out = inFront(ROTTEN, PROJECT, front)
@@ -265,9 +265,9 @@ describe('a question whose anchor does not resolve', () => {
 describe('what this container tells the canvas it is showing', () => {
   test('one place per document, by path, with no range and no quote', () => {
     expect(showing(QUESTIONS, PROJECT, 16)).toEqual([
-      { path: CH1, page: null, from: null, to: null, quoted: '' },
-      { path: CH3, page: null, from: null, to: null, quoted: '' },
-      { path: `${PAPER}/chapters/5_discussion.tex`, page: null, from: null, to: null, quoted: '' },
+      { path: CH1, page: null, section: null, from: null, to: null, quoted: '' },
+      { path: CH3, page: null, section: null, from: null, to: null, quoted: '' },
+      { path: `${PAPER}/chapters/5_discussion.tex`, page: null, section: null, from: null, to: null, quoted: '' },
     ])
   })
 
@@ -279,7 +279,7 @@ describe('what this container tells the canvas it is showing', () => {
 
 describe('the offer and the note', () => {
   test('is worded the way the sibling modules word it, with the count in the label', () => {
-    expect(aimOffer([container('roadmap.paper', true), container('roadmap.journeys', false)])).toEqual([
+    expect(aimOffer([container('kehikot.paper', true), container('kehikot.journeys', false)])).toEqual([
       {
         id: 'aim',
         label: 'aim',
@@ -290,7 +290,7 @@ describe('the offer and the note', () => {
         fallback: 'follow',
       },
     ])
-    expect(aimOffer([container('roadmap.paper', false)])[0]?.options[0]?.label).toBe(
+    expect(aimOffer([container('kehikot.paper', false)])[0]?.options[0]?.label).toBe(
       'follow what is picked out (nothing picked out)',
     )
   })
@@ -307,7 +307,7 @@ describe('the offer and the note', () => {
     const picked = inFrontOf({
       self: SELF,
       passage: null,
-      containers: [container('roadmap.paper', true, [place(CH3)])],
+      containers: [container('kehikot.paper', true, [place(CH3)])],
       aim: 'follow',
     })
     expect(aimNote(picked, 2)).toEqual({
@@ -317,7 +317,7 @@ describe('the offer and the note', () => {
     const union = inFrontOf({
       self: SELF,
       passage: null,
-      containers: [container('roadmap.paper', false, [place(CH3)])],
+      containers: [container('kehikot.paper', false, [place(CH3)])],
       aim: 'follow',
     })
     expect(aimNote(union, 1)?.full).toBe('1 more question about documents nothing here is showing')

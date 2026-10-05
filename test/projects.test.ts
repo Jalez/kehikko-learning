@@ -16,7 +16,7 @@ import { MAX_PROJECT, defaultProject, usablePath } from '../quiz/projects.ts'
  */
 describe('usablePath', () => {
   test('an ordinary path is itself', () => {
-    expect(usablePath('/Users/somebody/Projects/roadmap')).toBe('/Users/somebody/Projects/roadmap')
+    expect(usablePath('/Users/somebody/Projects/kehikko')).toBe('/Users/somebody/Projects/kehikko')
   })
 
   test('trailing slashes are the same project', () => {
@@ -82,33 +82,45 @@ describe('usablePath', () => {
 })
 
 describe('defaultProject', () => {
-  const was = { learning: process.env.LEARNING_PROJECT, roadmap: process.env.ROADMAP_PROJECT }
+  const was = { learning: process.env.LEARNING_PROJECT, kehikot: process.env.KEHIKOT_PROJECT }
 
   beforeEach(() => {
     delete process.env.LEARNING_PROJECT
+    delete process.env.KEHIKOT_PROJECT
     delete process.env.ROADMAP_PROJECT
   })
 
   afterEach(() => {
     if (was.learning === undefined) delete process.env.LEARNING_PROJECT
     else process.env.LEARNING_PROJECT = was.learning
-    if (was.roadmap === undefined) delete process.env.ROADMAP_PROJECT
-    else process.env.ROADMAP_PROJECT = was.roadmap
+    if (was.kehikot === undefined) delete process.env.KEHIKOT_PROJECT
+    else process.env.KEHIKOT_PROJECT = was.kehikot
   })
 
   test('is null when nobody has said, which is what makes the door refuse', () => {
     expect(defaultProject()).toBeNull()
   })
 
-  test('LEARNING_PROJECT wins over ROADMAP_PROJECT', () => {
-    process.env.ROADMAP_PROJECT = '/from/the/host'
+  test('LEARNING_PROJECT wins over KEHIKOT_PROJECT', () => {
+    process.env.KEHIKOT_PROJECT = '/from/the/host'
     process.env.LEARNING_PROJECT = '/from/this/app'
     expect(defaultProject()).toBe('/from/this/app')
   })
 
-  test('ROADMAP_PROJECT is honoured on its own', () => {
-    process.env.ROADMAP_PROJECT = '/from/the/host/'
+  test('KEHIKOT_PROJECT is honoured on its own', () => {
+    process.env.KEHIKOT_PROJECT = '/from/the/host/'
     expect(defaultProject()).toBe('/from/the/host')
+  })
+
+  test('ROADMAP_PROJECT, its name before the rename, is the fallback', () => {
+    process.env.ROADMAP_PROJECT = '/from/an/old/host'
+    try {
+      expect(defaultProject()).toBe('/from/an/old/host')
+      process.env.KEHIKOT_PROJECT = '/from/the/host'
+      expect(defaultProject()).toBe('/from/the/host')
+    } finally {
+      delete process.env.ROADMAP_PROJECT
+    }
   })
 
   test('an unusable value is not a default', () => {

@@ -1,6 +1,6 @@
-import { MANIFEST_KIND, PROTOCOL, manifestSchema, type Manifest } from 'roadmap-module-protocol'
+import { MANIFEST_KIND, PROTOCOL, manifestSchema, type Manifest } from 'kehikot-module-protocol'
 
-export const ID = 'roadmap.learning'
+export const ID = 'kehikot.learning'
 export const VERSION = '1.0.0'
 
 /**
@@ -10,7 +10,7 @@ export const VERSION = '1.0.0'
  * It used to be said twice — `--port "${PORT:-7950}"` at the bottom of `run.sh`
  * and `Number(process.env.PORT ?? 7950)` in `register.ts` — with a test whose
  * whole job was to notice when the two stopped agreeing, and a third copy of the
- * number sitting in `~/.roadmap/modules` from whenever somebody last ran the
+ * number sitting in `~/Library/Application Support/Kehikot/modules` from whenever somebody last ran the
  * second. A test that watches two literals agree is a test admitting there
  * should only be one.
  *
@@ -22,7 +22,7 @@ export const VERSION = '1.0.0'
  * And it is a PREFERENCE. 7820 through 7960 belong to the other modules on this
  * machine and 4180/4181 to the host, and if something else holds 7950 when this
  * starts then `serves()` moves to the next free port and rewrites the
- * registration to match — see `roadmap-module-protocol/serve`. The registry is
+ * registration to match — see `kehikot-module-protocol/serve`. The registry is
  * what a host reads, so the registry is what has to be true; this number is only
  * where to start looking.
  */
@@ -90,10 +90,10 @@ export const PREFERRED_PORT = 7950
  *   That is a claim about runtime behaviour, so it is checked the only honest
  *   way a claim about runtime behaviour can be — `dev/pointing.mjs` sits where a
  *   host sits and counts what arrives. See also the note on `point` in
- *   `wire/use-roadmap.ts`, which is the one line of code the bound constrains.
+ *   `wire/use-kehikot.ts`, which is the one line of code the bound constrains.
  *
  *   What the capability does NOT buy is a route to any particular module. A
- *   passage goes into `roadmap.context` and the host broadcasts it to every
+ *   passage goes into `kehikot.context` and the host broadcasts it to every
  *   framed module; whatever is showing that document reacts. This app has no
  *   idea what that is, names no module anywhere, and would go on working if the
  *   reader on the canvas were replaced by a different one. That is the general
@@ -130,7 +130,7 @@ export const PREFERRED_PORT = 7950
  *   drops this module's own row before counting anything, and `test/aim.test.ts`
  *   holds the case. And the bound: it is sent by the program when the set of
  *   documents on screen changes, compared as a string, and never on a press —
- *   the opposite discipline from `passage:set`, and `wire/use-roadmap.ts` says
+ *   the opposite discipline from `passage:set`, and `wire/use-kehikot.ts` says
  *   so beside each.
  *
  * - **Everything else — still not asked for, and each for its own reason.**
@@ -160,7 +160,7 @@ export const PREFERRED_PORT = 7950
  *     moves anything when you ANSWER a question. A quiz that re-pointed the
  *     canvas when you chose an option would be answering for you.
  *   - **`view:navigate` — no, and this is settled rather than deferred.** Being
- *     walked TO is `roadmap.goto` arriving and needs no declaration; this
+ *     walked TO is `kehikot.goto` arriving and needs no declaration; this
  *     container answers that it has nothing to walk to, because a question is
  *     not a place. Walking a READER to a question's passage is what somebody
  *     wants from this module, and `view.goto` cannot carry it: it names an epic,
@@ -174,7 +174,7 @@ export const PREFERRED_PORT = 7950
  *     the pick has to stick per kehikko.
  *
  *     There is a pick here now, and it is still not this: the scope offered over
- *     `roadmap.filters` — `all`, `file`, `section`, how narrow the reader likes
+ *     `kehikot.filters` — `all`, `file`, `section`, how narrow the reader likes
  *     this container — is remembered by the HOST per container and arrives back
  *     in `context.filters`. Keeping a second copy under `state.set` would be two
  *     records of one preference, and they would disagree the first time one was
@@ -221,7 +221,7 @@ export const PREFERRED_PORT = 7950
  * every other module's. A question belongs to the epic whose paper it was
  * written about, so `scope: 'epic'` is not a display choice — it is the key the
  * store is read by. An epic-scoped mode is told which epic is open by
- * `roadmap.context`, on load and on every switch, which is what makes "the
+ * `kehikot.context`, on load and on every switch, which is what makes "the
  * questions about this paper" answerable without anybody typing a slug.
  *
  * `context.epic` is nullable and that is a real screen rather than an error. A
