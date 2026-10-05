@@ -28,7 +28,7 @@
  *
  * ## The one thing that will waste an hour
  *
- * `roadmap.hello` WRAPS the context in a `context` field. `roadmap.context` is
+ * `kehikot.hello` WRAPS the context in a `context` field. `kehikot.context` is
  * FLAT — the same fields one level up. See `contextMessageSchema` in the
  * protocol's `wire.ts`. Send a context message in the hello's shape and every
  * field takes its schema default, `theme` defaults to `'light'`, and the module
@@ -46,7 +46,7 @@ const EXECUTABLE =
   ?? '/Users/jaakkorajala/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell'
 
 const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7950'
-const ROADMAP = process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/roadmap'
+const KEHIKOT = process.env.KEHIKOT ?? process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/kehikko'
 
 /* The two backgrounds, out of `src/index.css`. Asserted as strings rather than
    as "not the other one", so that a palette change fails here loudly instead of
@@ -56,8 +56,8 @@ const DARK_BG = 'oklch(0.145 0 0)'
 
 const ctx = (theme) => ({
   epic: 'modes-are-modules',
-  project: 'roadmap',
-  projectPath: ROADMAP,
+  project: 'kehikko',
+  projectPath: KEHIKOT,
   theme,
   selection: [],
   kehikko: { id: 1, name: 'A canvas' },
@@ -88,7 +88,7 @@ async function main() {
       page.evaluate(
         ([type_, context]) =>
           document.getElementById('f').contentWindow.postMessage(
-            type_ === 'roadmap.hello'
+            type_ === 'kehikot.hello'
               ? { type: type_, protocol: 2, session: 'theme-probe', context, state: null }
               : { type: type_, protocol: 2, ...context },
             '*',
@@ -117,11 +117,11 @@ async function main() {
     /* Before anybody has spoken the OS is the only thing to go on, and it is
        the ONLY place it is consulted. */
     check('before any greeting', await look(), machine === 'dark' ? DARK_BG : LIGHT_BG, null)
-    await send('roadmap.hello', 'dark')
+    await send('kehikot.hello', 'dark')
     check('hello says dark', await look(), DARK_BG, 'dark')
-    await send('roadmap.context', 'light')
+    await send('kehikot.context', 'light')
     check('then context: light', await look(), LIGHT_BG, 'light')
-    await send('roadmap.context', 'dark')
+    await send('kehikot.context', 'dark')
     check('and back to dark', await look(), DARK_BG, 'dark')
 
     await page.close()

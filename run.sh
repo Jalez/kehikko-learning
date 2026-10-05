@@ -10,7 +10,7 @@
 #     with 7950 written here and again in `register.ts` — 7820 through 7960
 #     belong to the other modules on this machine and 4180/4181 to the host, so
 #     moving this one meant two edits and then remembering that the file in
-#     `~/.roadmap/modules` still named the old address. It is said once now,
+#     `~/Library/Application Support/Kehikot/modules` still named the old address. It is said once now,
 #     beside the id, as `PREFERRED_PORT` in `manifest.ts`.
 #
 #     $PORT is still honoured — by `serves()` in `vite.config.ts` rather than by
@@ -32,7 +32,7 @@
 #     are found however the script was invoked. It no longer has anything to do
 #     with where the store is: the questions are not here any more. Each project
 #     keeps its own in `<project>/.kehikot/learning/questions.json`, which is the folder
-#     the host names in `roadmap.context`.
+#     the host names in `kehikot.context`.
 #
 # It does NOT register a module that had none. Registration is a deliberate act
 # by a person — see `register.ts` — and a start script that quietly wrote into
@@ -73,15 +73,31 @@ cd "$(dirname "$0")"
 #
 # There is nothing left for it to name. The questions are inside the projects
 # they are about, at `<project>/.kehikot/learning/questions.json`, and the project is a
-# path the HOST supplies per canvas in `roadmap.context` — one process now serves
+# path the HOST supplies per canvas in `kehikot.context` — one process now serves
 # whichever project is open rather than one directory it was pointed at. A
 # variable that still moved "the store" would be a second answer to a question
 # the host already answers, and the two would disagree the first time somebody
 # switched project.
 
-if [ ! -d node_modules ]; then
+# Install when nothing is installed, AND whenever bun.lock or package.json is
+# newer than the last install here — the same rule as the host's own run.sh. A
+# pull that moves the protocol pin leaves the old package in node_modules, and
+# a page that imports a name the old package does not have draws nothing.
+# `--frozen-lockfile`, so a start installs exactly what bun.lock says and never
+# rewrites it behind somebody's back. The stamp is written only after an
+# install that succeeded.
+INSTALLED=node_modules/.kehikot-installed
+VITE_FORCE=
+if [ ! -d node_modules ] || [ ! -f "$INSTALLED" ] || [ bun.lock -nt "$INSTALLED" ] || [ package.json -nt "$INSTALLED" ]; then
   echo "installing…" >&2
-  bun install >&2
+  if [ -f bun.lock ]; then
+    bun install --frozen-lockfile >&2 || { echo "bun install --frozen-lockfile failed: bun.lock does not match package.json. Run \`bun install\` and commit bun.lock." >&2; exit 1; }
+  else
+    bun install >&2
+  fi
+  touch "$INSTALLED"
+  # Rebuild Vite's pre-bundle rather than trust one made from the old packages.
+  VITE_FORCE=--force
 fi
 
-exec bunx vite
+exec bunx vite $VITE_FORCE

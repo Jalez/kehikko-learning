@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { LIMITS } from 'roadmap-module-protocol'
+import { LIMITS } from 'kehikot-module-protocol'
 
 import { ID } from '../manifest.ts'
 
 import { answer, openEpic, retake, type Asked, type Standing } from '@/store/ask.ts'
-import { useRoadmap, type GotoHandler } from '@/wire/use-roadmap.ts'
+import { useKehikot, type GotoHandler } from '@/wire/use-kehikot.ts'
 import { QuizView } from '@/view/quiz.tsx'
 import { NoEpic, NoProject } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
@@ -14,7 +14,7 @@ import { useFrame } from '@/view/use-frame.ts'
 import { aimNote, aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
 import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
 import { hiddenNote, narrow, offer, reachOf, scopeOf } from '@/wire/scope.ts'
-import { containersFrom } from '@/wire/use-roadmap.ts'
+import { containersFrom } from '@/wire/use-kehikot.ts'
 
 /** Whether this page is in a frame. Unframed, it prints its own heading. */
 const framed = typeof window !== 'undefined' && window.parent !== window
@@ -66,7 +66,7 @@ export function App() {
     )
   }, [])
 
-  const { where, epic, projectPath, project, passage, chosen, containers, resize, filters, point, show: tell } = useRoadmap(
+  const { where, epic, projectPath, project, passage, chosen, containers, resize, filters, point, show: tell } = useKehikot(
     ID,
     onGoto,
   )
@@ -262,7 +262,7 @@ export function App() {
    * because "showing nothing" is a state the canvas has to be able to move
    * back into. Not sent before the host has greeted: there is nobody to tell,
    * and the client would only queue a refusal. `manifest.ts` carries the
-   * argument for declaring the capability at all, and `wire/use-roadmap.ts`
+   * argument for declaring the capability at all, and `wire/use-kehikot.ts`
    * the bound this effect is held to.
    */
   const shownDocuments = useMemo(() => showing(visible, projectPath, LIMITS.SHOWING_DOCUMENTS), [visible, projectPath])
@@ -420,7 +420,7 @@ export function App() {
    *
    * The only place in this app that publishes anything, and the only thing it
    * publishes is a passage. It goes onto the canvas through the general
-   * pipeline — `passage.set`, into `roadmap.context`, broadcast to every framed
+   * pipeline — `passage.set`, into `kehikot.context`, broadcast to every framed
    * module — and this app therefore does not know and must not know what
    * answers it. A reader of that document reacts; so would a diff, a source
    * browser, or notes. Nothing here names one, and the feature keeps working if
@@ -542,7 +542,7 @@ export function App() {
    * again, because it would always exactly fit itself.
    *
    * So the attribute goes on `<html>` and `index.css` answers it. The precedent
-   * is `wire/use-roadmap.ts`, which sets `.dark` on the same element for the
+   * is `wire/use-kehikot.ts`, which sets `.dark` on the same element for the
    * same reason: it is the one node above this component that CSS can key on.
    *
    * ## And it is `rungs.snap`, not `fits.snap`

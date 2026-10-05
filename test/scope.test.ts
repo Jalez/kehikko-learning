@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { filtersSchema, type Passage as Pointing } from 'roadmap-module-protocol'
+import { filtersSchema, type Passage as Pointing } from 'kehikot-module-protocol'
 
 import { hiddenNote, narrow, offer, reachOf, scopeOf, SCOPE } from '../src/wire/scope.ts'
 import type { Anchored } from '../src/wire/pointed.ts'
@@ -14,7 +14,7 @@ import type { Anchored } from '../src/wire/pointed.ts'
  * alternative to asserting them is driving a browser and reading a menu.
  */
 
-const PROJECT = '/Users/somebody/Projects/roadmap'
+const PROJECT = '/Users/somebody/Projects/kehikko'
 const BRIDGE = 'data/papers/modes-are-modules/chapters/bridge.tex'
 const AGENTS = 'data/papers/modes-are-modules/chapters/agents.tex'
 
@@ -31,7 +31,7 @@ const QUESTIONS = [
 
 const at = (path: string, from: number | null, to: number | null): Pointing => ({
   path: `${PROJECT}/${path}`,
-  page: null,
+  page: null, section: null,
   from,
   to,
   quoted: '',
@@ -93,7 +93,7 @@ describe('what can be narrowed by, given where the canvas is standing', () => {
        against a shape written out here by hand. */
     for (const passage of [at(BRIDGE, null, null), at(BRIDGE, 1050, 1100)]) {
       const groups = offer(reachOf(PROJECT, passage))
-      expect(filtersSchema.safeParse({ type: 'roadmap.filters', groups }).success).toBe(true)
+      expect(filtersSchema.safeParse({ type: 'kehikot.filters', groups }).success).toBe(true)
     }
   })
 
@@ -178,7 +178,7 @@ describe('what the scope leaves on screen', () => {
     /* A question's path is project-relative and a passage on the wire is
        absolute. One join, used in both directions — see `pointingAt`. A raw
        relative path from a host would match nothing rather than matching wrongly. */
-    const relative: Pointing = { path: BRIDGE, page: null, from: null, to: null, quoted: '' }
+    const relative: Pointing = { path: BRIDGE, page: null, section: null, from: null, to: null, quoted: '' }
     expect(narrow(QUESTIONS, PROJECT, relative, 'file')).toEqual([])
   })
 })

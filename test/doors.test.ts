@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { KEHIKOT_DIR } from 'roadmap-module-protocol'
+import { KEHIKOT_DIR } from 'kehikot-module-protocol'
 
 import { TICKET, answer } from '../doors.ts'
 
@@ -41,6 +41,7 @@ beforeEach(() => {
   mkdirSync(join(B, 'chapters'))
   writeFileSync(join(B, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
   delete process.env.LEARNING_PROJECT
+  delete process.env.KEHIKOT_PROJECT
   delete process.env.ROADMAP_PROJECT
 })
 
@@ -100,7 +101,7 @@ describe('the MCP door', () => {
   test('initialize names this app and says what the door is for', () => {
     const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'initialize' }, null)
     const result = (reply?.body as { result?: { serverInfo?: { name?: string }; instructions?: string } }).result
-    expect(result?.serverInfo?.name).toBe('roadmap.learning')
+    expect(result?.serverInfo?.name).toBe('kehikot.learning')
     expect(result?.instructions).toContain('withheld')
   })
 
@@ -563,7 +564,7 @@ describe('the other doors', () => {
     added()
     const body = answer('GET', '/healthz', nothing, null, null)?.body as Record<string, unknown>
     expect(body.ok).toBe(true)
-    expect(body.id).toBe('roadmap.learning')
+    expect(body.id).toBe('kehikot.learning')
     expect(body.projects).toBeUndefined()
     expect(body.questions).toBeUndefined()
   })

@@ -2,7 +2,7 @@
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { originFor, registerAt } from 'roadmap-module-protocol/serve'
+import { originFor, registerAt } from 'kehikot-module-protocol/serve'
 
 import { ID, PREFERRED_PORT } from './manifest.ts'
 
@@ -51,9 +51,9 @@ import { ID, PREFERRED_PORT } from './manifest.ts'
  * ## Where a host looks is no longer said in this file
  *
  * The registry directory, the rule that the FILENAME carries the id — a host
- * sweeps the directory and reads the id off the name, so `roadmap.learning.json`
- * is what makes this `roadmap.learning` — and the shape of the document are in
- * `roadmap-module-protocol/serve` now. This file used to spell the path out with
+ * sweeps the directory and reads the id off the name, so `kehikot.learning.json`
+ * is what makes this `kehikot.learning` — and the shape of the document are in
+ * `kehikot-module-protocol/serve` now. This file used to spell the path out with
  * a note explaining that the copy was deliberate so the directory could stand
  * alone. Fourteen deliberate copies of one path are fourteen chances to disagree
  * by a character, and writing to the wrong directory is the worst failure a

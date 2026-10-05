@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { FilterChoice, FilterGroup, ModuleContext } from 'roadmap-module-protocol'
+import type { FilterChoice, FilterGroup, ModuleContext } from 'kehikot-module-protocol'
 
-import { connect, type Connection, type HostEvents } from 'roadmap-module-protocol/client'
+import { connect, type Connection, type HostEvents } from 'kehikot-module-protocol/client'
 
 /**
  * The context, as React state, and nothing else.
@@ -10,7 +10,7 @@ import { connect, type Connection, type HostEvents } from 'roadmap-module-protoc
  * ## What used to be underneath this
  *
  * `wire/host.ts` and `wire/mailbox.ts` — 418 lines, near-identical to the copy
- * in six sibling modules — are `roadmap-module-protocol/client` now. Nothing
+ * in six sibling modules — are `kehikot-module-protocol/client` now. Nothing
  * this page says on the wire changed: `ready` to every greeting, the `goto`
  * handed straight to the caller's handler, and a backstop of 500ms, which is
  * this module's lineage and the client's default so it needed no option.
@@ -55,7 +55,7 @@ export type Where = 'listening' | 'unhosted' | 'hosted'
 /** A passage, as the context carries one and as `passage.set` takes one. */
 export type Passage = NonNullable<ModuleContext['passage']>
 
-export interface Roadmap {
+export interface Kehikot {
   where: Where
   /** Which epic is open, or null. Null is a real screen here, not an error. */
   epic: string | null
@@ -210,7 +210,7 @@ export interface Roadmap {
 
 export type GotoHandler = NonNullable<HostEvents['onGoto']>
 
-export function useRoadmap(id: string, onGoto: GotoHandler): Roadmap {
+export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
   const [where, setWhere] = useState<Where>('listening')
   const [epic, setEpic] = useState<string | null>(null)
   const [projectPath, setProjectPath] = useState<string | null>(null)

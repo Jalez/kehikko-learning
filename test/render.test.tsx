@@ -292,7 +292,7 @@ describe('the screens that are not errors', () => {
   test('no epic open is a real screen, and it points somewhere', () => {
     render(
       <NoEpic
-        project="roadmap"
+        project="kehikko"
         standings={[{ epic: 'modes-are-modules', questions: 4, answered: 2, right: 1 }]}
       />,
     )

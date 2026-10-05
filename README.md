@@ -113,7 +113,7 @@ user asked for exactly that:
 > transparent etc and easily usable by others in the project."
 
 The folder name, the join and the `.gitignore` text are
-`roadmap-module-protocol`'s (0.10), not this module's, because four modules
+`kehikot-module-protocol`'s (0.10), not this module's, because four modules
 answering "where does my data live" separately is four answers and the
 disagreement has no symptom: every module starts, every module saves, and a
 person finds half their work in one folder and half in another.
@@ -289,7 +289,7 @@ as if nobody had answered anything, so working through a paper can never move it
 
 ## The scope, which is offered to the container's header
 
-A module tells the host what it can be narrowed by over `roadmap.filters`; the
+A module tells the host what it can be narrowed by over `kehikot.filters`; the
 host draws one control in the container header, and the choice comes back in
 `context.filters`. This one offers a **scope**, in the owner's words: "show
 questions related to all files, current file, current page or highlighted
@@ -507,7 +507,7 @@ Two traps worth naming, because both have cost this workspace time:
   join, an order column, and a second place for a partial write to leave an
   inconsistency, in exchange for normalising four strings that are only ever read
   together.
-- **The old `roadmap.learning`** contributed the bounds, the id-is-issued-here
+- **The old `kehikot.learning`** contributed the bounds, the id-is-issued-here
   rule, and the honest treatment of a passage it could not open. It also
   contributed the mistake this module is built around: it sent `questionsFor(slug)`
   to the browser, and that object had `answer` in it.

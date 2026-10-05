@@ -186,7 +186,7 @@
    * know its own size and then re-lay them out because it had changed. So there
    * is no `@height-sm:` variant and this cannot be a class. `src/view/room.ts`
    * decides it off a measured frame and `src/app.tsx` writes the attribute here,
-   * the same way `wire/use-roadmap.ts` writes `.dark` — the document element is
+   * the same way `wire/use-kehikot.ts` writes `.dark` — the document element is
    * the one node above the app that CSS can key on.
    *
    * `proximity`, never `mandatory`. In a container 220 wide a question card is

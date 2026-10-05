@@ -1,4 +1,4 @@
-import type { Passage as Pointing } from 'roadmap-module-protocol'
+import type { Passage as Pointing } from 'kehikot-module-protocol'
 
 import { pointingAt, type Anchored } from '@/wire/pointed.ts'
 
@@ -106,7 +106,7 @@ export const AIM = 'aim'
 export type Aim = 'follow' | 'all'
 
 /** The choice out of `context.filters`, read leniently: anything that is not `all` is following. */
-export function aimOf(chosen: Readonly<Record<string, string>> | null | undefined): Aim {
+export function aimOf(chosen: Readonly<Record<string, string | readonly string[]>> | null | undefined): Aim {
   return chosen && Object.hasOwn(chosen, AIM) && chosen[AIM] === 'all' ? 'all' : 'follow'
 }
 
@@ -276,7 +276,7 @@ export function aimNote(front: InFront, hidden: number): { full: string; brief: 
   }
 }
 
-/** The last word of a module id, which is what the ids look like: `roadmap.journeys` is `journeys`. */
+/** The last word of a module id, which is what the ids look like: `kehikot.journeys` is `journeys`. */
 export function nameOf(module: string): string {
   const cut = module.lastIndexOf('.')
   return cut === -1 ? module : module.slice(cut + 1)
@@ -306,7 +306,7 @@ export function showing<T extends Anchored & { anchor?: 'holds' | 'missing' | 'u
     const mine = pointingAt(projectPath, question.passage)
     if (!mine || seen.has(mine.path)) continue
     seen.add(mine.path)
-    out.push({ path: mine.path, page: null, from: null, to: null, quoted: '' })
+    out.push({ path: mine.path, page: null, section: null, from: null, to: null, quoted: '' })
     if (out.length >= limit) break
   }
   return out

@@ -4,7 +4,7 @@
  *   ./run.sh &                       # 7950
  *   node dev/scope.mjs               # exits non-zero on any finding
  *
- * `roadmap.filters` is a module telling the host what it can be narrowed by, so
+ * `kehikot.filters` is a module telling the host what it can be narrowed by, so
  * the host can draw ONE control in the container header instead of every module
  * drawing its own. The offer goes one way and the choice comes back the other,
  * inside an ordinary context. Neither half can be checked from inside this
@@ -45,7 +45,7 @@ const EXECUTABLE =
   process.env.CHROME
   ?? '/Users/jaakkorajala/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell'
 const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7950'
-const PROJECT = process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/roadmap'
+const PROJECT = process.env.KEHIKOT ?? process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/kehikko'
 /* Its own epic, so this never touches what the other probes assert on. */
 const EPIC = 'scope-probe'
 
@@ -88,7 +88,7 @@ const mcp = (name, args) =>
 /**
  * A host, in one document.
  *
- * It greets on the frame's `load` — never in answer to `roadmap.ready`, which is
+ * It greets on the frame's `load` — never in answer to `kehikot.ready`, which is
  * two programs each waiting for the other — and it records the offers.
  */
 const host = (width, height) => `<!doctype html>
@@ -115,17 +115,17 @@ const host = (width, height) => `<!doctype html>
   addEventListener('message', (event) => {
     if (event.origin !== FROM) return
     const message = event.data
-    if (!message || message.type !== 'roadmap.filters') return
+    if (!message || message.type !== 'kehikot.filters') return
     window.__offers.push(message.groups)
   })
   window.__context = (over) => frame.contentWindow.postMessage(Object.assign({
     /* Flat, not nested under \`context\`: the greeting wraps its context in a
-       field and \`roadmap.context\` IS the context with two envelope fields
+       field and \`kehikot.context\` IS the context with two envelope fields
        added. Assuming symmetry costs an afternoon. */
-    type: 'roadmap.context',
+    type: 'kehikot.context',
     protocol: 2,
     epic: ${JSON.stringify(EPIC)},
-    project: 'roadmap',
+    project: 'kehikko',
     projectPath: ${JSON.stringify(PROJECT)},
     theme: 'light',
     passage: null,
@@ -134,13 +134,13 @@ const host = (width, height) => `<!doctype html>
   }, over || {}), '*')
   frame.addEventListener('load', () => {
     frame.contentWindow.postMessage({
-      type: 'roadmap.hello',
+      type: 'kehikot.hello',
       protocol: 2,
       session: 'scope',
       state: null,
       context: {
         epic: ${JSON.stringify(EPIC)},
-        project: 'roadmap',
+        project: 'kehikko',
         projectPath: ${JSON.stringify(PROJECT)},
         theme: 'light',
         passage: null,

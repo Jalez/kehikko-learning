@@ -13,7 +13,7 @@
  * host sits and count what arrives.
  *
  * So this page IS a host: it frames `/app`, greets it, records every
- * `roadmap.request` the frame sends, and then does the things that must NOT
+ * `kehikot.request` the frame sends, and then does the things that must NOT
  * produce one before doing the one thing that must. The shape is lifted from
  * `kehikko-explorer/dev/pointing.mjs`, which is the same probe for the same
  * capability in a module that reached the same conclusion.
@@ -55,7 +55,7 @@ const EXECUTABLE =
   process.env.CHROME
   ?? '/Users/jaakkorajala/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell'
 const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7950'
-const PROJECT = process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/roadmap'
+const PROJECT = process.env.KEHIKOT ?? process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/kehikko'
 const EPIC = process.env.EPIC ?? 'modes-are-modules'
 
 /* The two container sizes this module is actually given, run one after the
@@ -73,7 +73,7 @@ const SIZES = [
  *
  * ## It greets on `load`, and that order is not interchangeable
  *
- * The obvious version greets when `roadmap.ready` arrives, and it waits
+ * The obvious version greets when `kehikot.ready` arrives, and it waits
  * forever: the client sends `ready` in ANSWER to a greeting, naming the
  * protocol it was greeted with, so a host waiting for one is two programs each
  * waiting for the other. A real host greets on the frame's `load` event.
@@ -118,13 +118,13 @@ const host = (width, height) => `<!doctype html>
   })
   window.__context = (over) => frame.contentWindow.postMessage(Object.assign({
     /* Flat, not nested under \`context\`. The greeting wraps its context in a
-       field and \`roadmap.context\` IS the context with two envelope fields
+       field and \`kehikot.context\` IS the context with two envelope fields
        added, which is a difference that costs an afternoon if you assume
        symmetry. */
-    type: 'roadmap.context',
+    type: 'kehikot.context',
     protocol: 2,
     epic: ${JSON.stringify(EPIC)},
-    project: 'roadmap',
+    project: 'kehikko',
     projectPath: ${JSON.stringify(PROJECT)},
     theme: 'light',
     passage: null,
@@ -132,13 +132,13 @@ const host = (width, height) => `<!doctype html>
   }, over || {}), '*')
   frame.addEventListener('load', () => {
     frame.contentWindow.postMessage({
-      type: 'roadmap.hello',
+      type: 'kehikot.hello',
       protocol: 2,
       session: 'pointing',
       state: null,
       context: {
         epic: ${JSON.stringify(EPIC)},
-        project: 'roadmap',
+        project: 'kehikko',
         projectPath: ${JSON.stringify(PROJECT)},
         theme: 'light',
         passage: null,
@@ -204,7 +204,7 @@ for (const size of SIZES) {
   await frame.locator('[data-question][data-answered="no"]').first().waitFor({ timeout: 15_000 })
 
   const passages = () =>
-    page.evaluate(() => window.__sent.filter((m) => m.type === 'roadmap.request' && m.method === 'passage.set'))
+    page.evaluate(() => window.__sent.filter((m) => m.type === 'kehikot.request' && m.method === 'passage.set'))
   const marked = () =>
     frame.locator('[data-question][data-pointed="yes"]').evaluateAll((nodes) =>
       nodes.map((node) => node.getAttribute('data-question')))
@@ -306,7 +306,7 @@ for (const size of SIZES) {
      that a run of this probe says whether the header had a control on it. */
   const offers = await page.evaluate(() =>
     window.__sent
-      .filter((m) => m.type === 'roadmap.filters')
+      .filter((m) => m.type === 'kehikot.filters')
       .map((m) => m.groups.map((g) => `${g.id}:${g.options.map((o) => o.id).join('/')}`).join(' ') || '(nothing)'))
 
   /* Put the store back, so the next size — and the next run — start clean. */

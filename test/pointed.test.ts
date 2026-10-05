@@ -28,7 +28,7 @@ describe('the passage a press publishes', () => {
   test('joins the project root onto the path the question was written with', () => {
     expect(pointingAt(PROJECT, anchored('chapters/agents.tex', 8140, 8402, 'A mode is a module.'))).toEqual({
       path: '/Users/somebody/Projects/thesis/chapters/agents.tex',
-      page: null,
+      page: null, section: null,
       from: 8140,
       to: 8402,
       quoted: 'A mode is a module.',
@@ -73,7 +73,7 @@ describe('the question the canvas is pointed at', () => {
 
   const arriving = (path: string, from: number | null, to: number | null, quoted = 'the words') => ({
     path,
-    page: null,
+    page: null, section: null,
     from,
     to,
     quoted,

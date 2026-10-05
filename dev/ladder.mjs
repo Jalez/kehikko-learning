@@ -88,7 +88,7 @@ const EXECUTABLE =
   ?? '/Users/jaakkorajala/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell'
 
 const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7950'
-const ROADMAP = process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/roadmap'
+const KEHIKOT = process.env.KEHIKOT ?? process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/kehikko'
 /* Its own epic, so this never touches what the other two probes assert on. */
 const EPIC = 'ladder-probe'
 
@@ -183,7 +183,7 @@ const SEED = [
     quote: QUOTE,
   },
 ].map((seed, n) => ({
-  project: ROADMAP,
+  project: KEHIKOT,
   epic: EPIC,
   ...seed,
   path: 'data/papers/modes-are-modules/chapters/bridge.tex',
@@ -236,8 +236,8 @@ const HARNESS = (origin, width, height) => `
 
 const ctx = {
   epic: EPIC,
-  project: 'roadmap',
-  projectPath: ROADMAP,
+  project: 'kehikko',
+  projectPath: KEHIKOT,
   theme: 'light',
   selection: [],
   kehikko: { id: 1, name: 'A canvas' },
@@ -271,7 +271,7 @@ async function main() {
       await page.evaluate(
         ([context]) =>
           document.getElementById('frame').contentWindow.postMessage(
-            { type: 'roadmap.hello', protocol: 2, session: 'ladder-probe', context, state: null },
+            { type: 'kehikot.hello', protocol: 2, session: 'ladder-probe', context, state: null },
             '*',
           ),
         [ctx],
@@ -288,7 +288,7 @@ async function main() {
           headers: { 'content-type': 'application/json', 'x-learning-ticket': ticket },
           body: JSON.stringify({ project, epic }),
         })
-      }, [ROADMAP, EPIC])
+      }, [KEHIKOT, EPIC])
       await frame.waitForFunction(
         () => document.querySelectorAll('[data-question][data-answered="yes"]').length === 0,
         null,
@@ -860,7 +860,7 @@ async function main() {
       await page.close()
     }
   } finally {
-    for (const id of ids) await mcp('drop_quiz', { project: ROADMAP, id })
+    for (const id of ids) await mcp('drop_quiz', { project: KEHIKOT, id })
     say(`\ndropped ${ids.length} seeded questions`)
   }
 
