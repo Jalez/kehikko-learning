@@ -250,6 +250,8 @@ export const MANIFEST: Manifest = manifestSchema.parse({
   id: ID,
   name: 'Learning',
   version: VERSION,
+  /* Where a host files this module in its list, most fitting first. */
+  tags: ['reading'],
   summary:
     'Questions anchored to a passage of a paper — the document, the byte range and the quoted source — with the '
     + 'options, and what you answered. An agent writes them; a person answers them.',
