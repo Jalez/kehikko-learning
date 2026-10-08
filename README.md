@@ -2,9 +2,10 @@
 
 A place to be asked questions about what you are reading, and to answer them.
 
-An app first. It holds every question anybody has written about a passage of a
-paper, and every answer anybody has given, in its own store beside the program.
-It has its own page, its own port and its own MCP door. A host may frame it, and
+An app first. Every question anybody has written about a passage of a paper is
+kept in the project it is about, as **one Markdown file per epic that a person
+can open and edit**, with what a reader answered in a file beside it. It has
+its own page, its own port and its own MCP door. A host may frame it, and
 then it learns which project it is standing in and which paper is open.
 
 ```bash
@@ -16,21 +17,77 @@ bun test && bun run typecheck
 
 ## The model, which is three sentences long
 
-A **question is anchored to a passage** — a document, a byte range inside it, and
-the exact source those bytes held. It is **multiple choice**: the options in the
-order they are shown, which one is right, and the explanation its author wrote.
-**Answering is recorded**, per question, so the container can say what you got right
-and what you did not, and so the same question can be asked again later.
+A **question cites a passage** — a document, and the exact words in it. It is
+**multiple choice**: the options in the order they are shown, which one is
+right, and the explanation its author wrote. **Answering is recorded**, per
+question, so the container can say what you got right and what you did not, and
+so the same question can be asked again later.
 
 A question belongs to **one epic** — the one whose paper it was written about —
-and to **one project**. Both of those are keys the store is read by rather than
-labels on a screen.
+and to **one project**. The epic is the name of the file and the project is the
+folder it is in.
+
+## The file
+
+`<project>/.kehikot/learning/<epic>.md`. It works the way a
+[Slides](../kehikko-slides) deck does, so a person who can edit one can edit
+the other, and it can be typed by hand:
+
+```md
+# Anything above the first question is yours, and is kept as it is.
+
+## Which surface does the thesis take as its object of study? [^1]
+<!-- id: b13a66fc -->
+- [x] The structured, graded activity
+- [ ] The open chat surface
+- [ ] Both surfaces equally
+
+Why:
+The introduction narrows the scope to the graded activity, in so many words.
+
+Sources:
+[^1]: chapters/1_introduction.tex | "It is the graded activity that this thesis takes as its object of study."
+```
+
+- A question is a `## ` heading; lines under it, before the options, are part of
+  what is asked.
+- The options are the list under it. **The correct one is the one ticked,
+  `- [x]`.** The others are `- [ ]` or a plain `- `. A question with no tick, or
+  two, is not asked, and both the page and `quizzes` say so.
+- Everything after a line that is exactly `Why:` is the explanation.
+- `[^1]` on the question is the passage it rests on, and `Sources:` lists them in
+  Slides' exact syntax: `[^1]: <project-relative path> | "<exact words>"`. One
+  list at the bottom is how this module writes it; a list after each question
+  reads the same.
+- `<!-- id: … -->` is the name a reader's answers are filed under. A question
+  typed by hand needs none — it is named after its words until an agent next
+  writes the file, which gives it one. So rewording a question that has an id
+  keeps its answers.
+
+**The passage is found by its words, not by byte offsets**, on every read — the
+rule and the code are Slides' (`quiz/cite.ts` is a copy of its `deck/cite.ts`).
+A run of whitespace in the quote matches any run in the file and nothing else is
+forgiven, so each source is one of `holds`, `ambiguous` (the words occur more
+than once), `adrift` (the paper changed under the question) or `unreadable` (the
+file is not in the project). The page draws the source as a press only where
+there is something to point at, and says which of the others it is.
+
+**Answers are not in this file.** They are in `answers.json` beside it, by epic
+and question id, and only answering adds to it: an answer is a record of what a
+person did, not material to edit.
+
+An edit shows within three seconds, because the page asks again that often and
+the server reads the file each time. There is no editor in the page, on purpose
+— see the next section.
 
 ## The one design constraint: where the answer lives
 
-**The correct option is not in this page until you have chosen.** It lives on the
-server, on disk, and it crosses the wire exactly once per question: in the reply
-to the request that submits an answer.
+**The correct option is not in this page until you have chosen.** It lives in
+the Markdown file, on disk, and it crosses the wire exactly once per question:
+in the reply to the request that submits an answer. The page is never sent the
+file, and no door serves it — the tick IS the answer key. That is why the file
+is edited in an editor rather than in this page: a page that could show the
+whole file would be handed every answer in it.
 
 That is not the obvious build. A quiz container could perfectly well be handed the
 whole question — options, key and all — and simply not draw the key until you
@@ -53,11 +110,11 @@ So the mechanism is a **projection, not a filter**:
 
 | | holds the key? | who can get one |
 |---|---|---|
-| `Question` (`quiz/types.ts`) | yes | nothing outside the server process |
+| `Question` (`quiz/format.ts`) | yes | nothing outside the server process |
 | `Asked` (`quiz/types.ts`) | only once there is an attempt | what `/api/questions` sends |
 | `score()` (`quiz/questions.ts`) | returns it | the reply to `POST /api/answer` |
 
-`asked()` is the only function that makes an `Asked`, and it is nine lines. There
+`asked()` is the only function that makes an `Asked`, and it is a dozen lines. There
 is no version of the page, however carelessly edited, that could leak a key it
 was never given — the bytes are not in the browser. Grading happens server-side,
 so the round trip on a press is not a formality that could be short-circuited
@@ -75,7 +132,9 @@ for an author checking their own work, and says in its description when not to
 ask. A question that HAS been answered always prints its key, since the reader
 has already seen it.
 
-**Measured, in a real browser** — `dev/probe.mjs`, against a running `./run.sh`:
+**Measured, in a real browser** — `dev/probe.mjs`, against a running `./run.sh`,
+before the questions became Markdown (the probes under `dev/` have not been run
+since; see the end of this file):
 zero elements carrying `data-correct` before a press, the string `correct`
 absent from every question card, the explanations absent, `/api/questions`
 sending `answer: null, why: null`, and the three option buttons carrying one
@@ -84,28 +143,27 @@ distinct class string between them — so there is no styling channel either.
 ## What it does with nothing else running
 
 - **The questions for whatever paper is open**, each with its options, the
-  document it was written about, and who wrote it.
+  document it was written about.
 - **Every question says where it came from, and pressing it points the canvas
-  there.** The control that opens a question's passage is labelled with the
+  there.** The source is one line under the question, labelled with the
   document — `agents.tex` in a narrow column, the whole project-relative path
-  where there is width for it — and pressing it also publishes that passage to
-  the canvas, so whatever is showing that document highlights the passage the
-  question was derived from. The card the canvas is standing on is marked. That
-  half needs a host; showing the passage here works with nothing else running.
-  Where the box is small enough that the module is showing one question at a
-  time, the passage is already on screen or one chip away, and the control does
-  only the pointing — see the ladder, below.
+  where there is width for it — and pressing it publishes the exact words to
+  the canvas, so whatever is showing that document turns to them. The card the
+  canvas is standing on is marked. The passage itself is not drawn here: it is
+  the line under `Sources:` in the file, and the place to read it is the paper.
+  A source that cannot be found is not a press, and says why.
 - **Answering, and the record.** One press, a verdict, the key, the explanation.
   Answers survive a reload because they are on disk and not in the page.
-- **A store inside the project.** `<project>/.kehikot/learning/questions.json` — plain
-  JSON, beside the work, readable by anybody who has the repository open.
+- **A store inside the project.** `<project>/.kehikot/learning/<epic>.md` — plain
+  Markdown, beside the work, readable and editable by anybody who has the
+  repository open.
 - **Two screens that are not errors.** A canvas standing on no epic, and a host
   that gave no project path. See below.
 
 ## The path is the partition
 
 The host sends `projectPath` in the context (protocol 0.8), and the questions
-are kept **inside that folder**, at `<project>/.kehikot/learning/questions.json`. The
+are kept **inside that folder**, at `<project>/.kehikot/learning/`. The
 user asked for exactly that:
 
 > "Each of the modules should hold their data inside the project itself, mostly
@@ -118,7 +176,7 @@ answering "where does my data live" separately is four answers and the
 disagreement has no symptom: every module starts, every module saves, and a
 person finds half their work in one folder and half in another.
 
-**This replaced a partition rather than adding to one.** `questions.json` used
+**This replaced a partition rather than adding to one.** One `questions.json` used
 to sit beside this program with a `projects` record at the top of it, keyed by
 path. The failure that prevented is real and not hypothetical — slugs are short,
 lower-case and hand-picked, and `bridge`, `wire` and `agents` are all real epic
@@ -146,13 +204,14 @@ how you share it. A project that is not a git repository gets nothing.
 the path is resolved with `realpathSync` and the folder it lands in is checked
 to be under the project it claims to be under — after resolution, because a
 `.kehikot` that is a symlink elsewhere is exactly the case a string comparison
-misses. The file NAME is a constant and never arrives in a request.
+misses. A file's NAME is a constant or an epic slug checked for shape — no
+dot, no slash — and never a filename from a request.
 
 **What was lost, and it is worth naming.** `quizzes` with no project used to
 list every project this app held questions for, which was how a person found the
 bucket theirs had gone into. It cannot: this process is handed one project at a
 time and forgets it. The question it answered is answered better now — the file
-is `.kehikot/learning/questions.json` in the folder you were working in, and `ls` finds
+is `.kehikot/learning/` in the folder you were working in, and `ls` finds
 it.
 
 ## The screens that are not errors
@@ -182,8 +241,8 @@ whole box, and everything below follows from that.
 - **Height cannot be.** `container-type: inline-size` measures one axis on
   purpose and there is no `@height-sm:`. So the frame is measured
   (`src/view/use-frame.ts`) and `src/view/room.ts` turns width and height into
-  six decisions — snap, byline, passage, options, retake note, and how much of
-  the source path the pointing control spells. It is one pure
+  four decisions — snap, options, retake note, and how much of the source path
+  the pointing control spells. It is one pure
   function with its own test file because "what shows at 220×300" should be a
   table somebody can read, not six ternaries spread across two components.
 - **Scrolling snaps below 520px of height, on `proximity`, and only where there
@@ -191,9 +250,8 @@ whole box, and everything below follows from that.
   and a scroller that must come to rest on a snap point cannot hold the bottom of
   one. The heading is a snap point too, or the page loads already scrolled past
   the paper's name.
-- **Nothing folded is unreachable.** The byline becomes the card's `title`, the
-  retake note the button's, the passage an overlay filling the frame, and on an
-  *answered* card the options that were neither chosen nor correct go behind one
+- **Nothing folded is unreachable.** The retake note becomes the button's
+  `title`, and on an *answered* card the options that were neither chosen nor correct go behind one
   press. Nothing folds on an unanswered card: the options are the question.
 
 ### The ladder: one whole question beats two partial ones
@@ -206,8 +264,8 @@ measures the result in a real frame.
 | rung | when | what the reader gets |
 |---|---|---|
 | `list` | two whole cards fit | the list, scrolling, snapping — as it has always been |
-| `one` | one whole question fits | that question entire: its text, every option, and the passage, with nothing to scroll and nothing to press open. A pager moves between questions |
-| `part` | not even one fits | one of `question`, `options`, `passage`, `why` at a time, with the question above it wherever the whole of it fits |
+| `one` | one whole question fits | that question entire: its text, every option, and its source, with nothing to scroll and nothing to press open. A pager moves between questions |
+| `part` | not even one fits | one of `question`, `options`, `why` at a time, with the question above it wherever the whole of it fits |
 
 `list` versus the other two is a fact about the whole list; `one` versus `part`
 is a fact about the question being SHOWN, so a short question shows whole and the
@@ -318,8 +376,8 @@ appears or disappears, and *not* when the passage merely moves.
 
 **There is no `page` rung**, and that is a check rather than an omission.
 `kehikko-paper` really does publish a page number, so the context carries one; a
-question is anchored by a path and a byte range and this module has never opened
-the file, so it cannot say which sheet an offset lands on. The missing half is on
+question cites a path and some words, and this module reads the SOURCE file,
+never the typeset pages, so it cannot say which sheet a sentence lands on. The missing half is on
 this side.
 
 **The count stays in the page.** A host cannot count rows it does not render, in
@@ -382,10 +440,15 @@ Four tools, matching `kehikko-checklist`'s shape:
 
 | tool | what it does |
 |---|---|
-| `quizzes` | every project, or one project's epics, or one epic's questions and how they were answered |
-| `add_quiz` | one question, anchored to a passage: `project`, `epic`, `question`, `options`, `answer`, `why`, `path`, `start`, `end`, `quote` |
-| `reword_quiz` | sharpen one, keeping its id, its passage and every answer given to it |
-| `drop_quiz` | take one away, along with its answers |
+| `quizzes` | one project's epics, or one epic's questions and how they were answered |
+| `add_quiz` | one question, at the end of the epic's file: `project`, `epic`, `question`, `options`, `answer`, `why`, `path`, `quote`. Refused unless the quoted words are in the file exactly once |
+| `reword_quiz` | sharpen one, keeping its id and every answer given to it; `path` and `quote` cite it again |
+| `drop_quiz` | take one out of the file, along with its answers |
+
+They read and write the same Markdown a person edits, so `quizzes` also prints
+whether each source still holds and anything wrong with the file. No byte
+offsets are taken: a caller that still sends `start` and `end` is not refused,
+and they are ignored.
 
 **There is deliberately no tool that answers a question.** The division of labour
 is the module: an agent has just read the chapter and knows what a reader should
@@ -416,8 +479,8 @@ tool's argument validation without a browser.
   ```
 
 - `declares.uses: ['passage:set']`. One capability, and this line used to say
-  `[]`. A question here is *anchored* — a document, a byte range and the source
-  those bytes held — so a question IS a passage, and a container that could name
+  `[]`. A question here *cites its source* — a document and the exact words in
+  it — so a question IS a passage, and a container that could name
   one and not show it would be withholding the fact it exists to hold. Pressing
   the source of a question puts that passage in the canvas's context, and every
   framed module that understands one reacts: a reader turns to it, a notes
@@ -450,28 +513,27 @@ tool's argument validation without a browser.
 ```
 manifest.ts        what a host reads, and the essay on every non-declaration
 doors.ts           /mcp, /healthz and /api, as one function with no socket
-store.ts           <project>/.kehikot/, the fence around it, and the .gitignore
+store.ts           <project>/.kehikot/learning/, the fence around it, and the .gitignore
 quiz/types.ts      the shapes both sides name — NO imports, deliberately
+quiz/format.ts     the Markdown file: the only reader and writer of one
+quiz/cite.ts       a source line, and finding its words again — copied from Slides
 quiz/questions.ts  the store, the rules, asked() and score()
+quiz/migrate.ts    the one move out of the old questions.json
 quiz/projects.ts   what is left of "which project" now the path is the partition
-dev/migrate.ts     the one-off move out of data/questions.json, run by hand
-dev/probe.mjs      a real browser: the key's absence, partitioning, no overflow
-dev/sizes.mjs      a real frame at four container sizes: what fits, and snapping
-dev/ladder.mjs     five sizes and four question shapes: how much you must scroll
-                   to read one question, whether the header is ever half-drawn,
-                   and whether you can answer where you are standing
-dev/pointing.mjs   the one capability, counted from where a host sits
-dev/scope.mjs      the filter offer, from where a host sits: which rungs are
-                   offered when, and what the page says about what it hid
-dev/theme.mjs      the host's light/dark switch, both ways, on both machines
+dev/*.mjs          probes that drive a real browser; see below
 page/document.ts   the document, generated per request so the ticket can reach it
 vite.config.ts     the doors as middleware, and the missing server.cors
 src/               the page: wire/ (pointed.ts, scope.ts), view/ (room.ts,
                    text.ts), store/ask.ts, ui/
-test/              281 tests, no browser
+test/              no browser
 ```
 
 The probes under `dev/` need a running server and a chromium on disk, so
+they are not part of `bun test`. **They predate the Markdown format and have not
+been brought across**: they seed questions with byte ranges and measure the
+passage panel a card no longer has, so read their numbers in this file as
+measurements of the layout before it — the estimates in `view/room.ts` only lost
+terms, but nothing has re-measured them in a browser. They are kept because
 they are not part of `bun test` — a suite that cannot run on a fresh checkout is
 one people learn to skip. They measure the half `bun test` cannot: real layout
 at real sizes, and a DOM a browser actually built.
@@ -496,18 +558,33 @@ Two traps worth naming, because both have cost this workspace time:
   back in at their call site. Measured clean at 220/280/320/400/1200px in both
   themes.
 
-## What was salvaged, and from where
+## Coming from `questions.json`
 
-- **The schema** is the thesis workbench's `quizzes` table, which is the shape
-  that actually worked: a question anchored to a document and a byte range with
-  the quoted source, and the options as a JSON array. That table carried its
-  reasoning as a comment — *SQLite has no list type and a second table for four
-  short strings would cost more to read than it saves* — and the argument
-  survives the change of storage unchanged. An options table here would be a
-  join, an order column, and a second place for a partial write to leave an
-  inconsistency, in exchange for normalising four strings that are only ever read
-  together.
-- **The old `kehikot.learning`** contributed the bounds, the id-is-issued-here
-  rule, and the honest treatment of a passage it could not open. It also
-  contributed the mistake this module is built around: it sent `questionsFor(slug)`
-  to the browser, and that object had `answer` in it.
+Before the Markdown, one project's questions were one JSON file,
+`.kehikot/learning/questions.json`, each carrying its epic, its key, a byte
+range and its attempts. The first time that file is found — on a read as well
+as a write — `quiz/migrate.ts` moves it, once:
+
+- every epic in it becomes `<epic>.md`, its questions in their order with their
+  old ids, and one `Sources:` list at the bottom. **An `<epic>.md` that is
+  already there is left alone**, and that epic's old questions are not merged
+  into it;
+- every attempt is copied into `answers.json` under the same epic and id;
+- `questions.json` is renamed `questions.migrated.json`, byte for byte, so
+  nothing is destroyed and the move does not run again.
+
+What does not come across, and stays readable in the renamed file: who wrote
+each question and when, and the byte range. A quote's line breaks become
+spaces, which is how a source line spells it. A `questions.json` that will not
+parse is not moved and not treated as empty.
+
+## What is shared with Slides, and what is only copied
+
+The format is Slides' on purpose — a heading per unit, `[^n]` markers, a
+`Sources:` list in the same syntax, words rather than offsets, the same four
+statuses, the same press that points the paper. The CODE is a copy:
+`quiz/cite.ts` holds `parseSource`, `serialiseSource`, `uncitable`, `markersIn`,
+`findQuote` and `resolveSource` from Slides' `deck/format.ts` and `deck/cite.ts`,
+and `store.ts` holds its `citedText`. They belong in `kehikot-module-protocol`,
+with the undo trail Slides keeps for agent writes, which this module does not
+have: `drop_quiz` and `reword_quiz` are not undoable from here.

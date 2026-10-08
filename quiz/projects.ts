@@ -17,7 +17,7 @@
  * > "Each of the modules should hold their data inside the project itself,
  * > mostly as text files inside a kehikko-folder (or json)"
  *
- * `<projectPath>/.kehikot/learning/questions.json`. **The path IS the partition now.**
+ * `<projectPath>/.kehikot/learning/<epic>.md`. **The path IS the partition now.**
  * Two projects with an epic called `bridge` do not collide because they are two
  * files in two folders, and there is no longer a shape in which they could — a
  * store that has never heard of a project cannot key by the wrong one. That is
@@ -35,7 +35,7 @@
  * how a person found the bucket their questions had gone into. This app cannot
  * answer it any more, because it no longer holds anybody's questions — they are
  * in the projects. The answer is also no longer needed, which is the good half
- * of the trade: the file is `.kehikot/learning/questions.json` inside the folder you were
+ * of the trade: the file is `.kehikot/learning/` inside the folder you were
  * working in, in plain sight, and `ls` finds it. A module that kept a register of
  * every project it had ever been shown, purely to answer that question, would be
  * reintroducing the central store this change removed.
@@ -119,7 +119,7 @@ export function usablePath(value: unknown): string | null {
  * propose one of them again:
  *
  * - `process.cwd()` is this MODULE's directory, not the caller's. It would write
- *   `.kehikot/learning/questions.json` inside this module's own repository, and
+ *   `.kehikot/learning/` inside this module's own repository, and
  *   no canvas would ever show one of those questions.
  * - "the only project that exists, if there is exactly one" is not even
  *   expressible now. This app holds no register of projects; it is handed one

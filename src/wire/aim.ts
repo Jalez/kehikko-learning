@@ -1,6 +1,6 @@
 import type { Passage as Pointing } from 'kehikot-module-protocol'
 
-import { pointingAt, type Anchored } from '@/wire/pointed.ts'
+import { documentOf, type Anchored } from '@/wire/pointed.ts'
 
 /**
  * Which questions are in front of the reader, once the kehikko can say what
@@ -75,9 +75,9 @@ import { pointingAt, type Anchored } from '@/wire/pointed.ts'
  * "journeys is picked out and shows no document" is a different sentence from
  * "none of these questions is about what paper shows", with a different
  * remedy. And a third absence, which is this module's own: a question whose
- * anchor does not resolve — `quiz/where.ts` — can never be in front of
- * anything, because the places a container shows are real files and its
- * anchor is not one. Those are counted and named too, because otherwise the
+ * source names no readable file — `documentOf` in `wire/pointed.ts` — can
+ * never be in front of anything, because the places a container shows are
+ * real files and its source is not one. Those are counted and named too, because otherwise the
  * eighteen questions this was written against would vanish behind a tick and
  * the sentence would blame the paper.
  *
@@ -165,18 +165,17 @@ export function inFrontOf(input: {
  * project — or whose anchor does not resolve is never in front; the second is
  * counted in `unresolved` so the empty sentence can name it.
  */
-export function inFront<T extends Anchored & { anchor?: 'holds' | 'missing' | 'unchecked' }>(
+export function inFront<T extends Anchored>(
   questions: readonly T[],
   projectPath: string | null,
   front: InFront,
 ): { shown: T[]; unresolved: number } {
-  const unresolved = questions.filter((question) => question.anchor === 'missing').length
+  const unresolved = questions.filter((question) => documentOf(projectPath, question.source) === null).length
   if (front.everything) return { shown: [...questions], unresolved }
   const paths = new Set(front.documents.map((one) => one.path))
   const shown = questions.filter((question) => {
-    if (question.anchor === 'missing') return false
-    const mine = pointingAt(projectPath, question.passage)
-    return mine !== null && paths.has(mine.path)
+    const mine = documentOf(projectPath, question.source)
+    return mine !== null && paths.has(mine)
   })
   return { shown, unresolved }
 }
@@ -215,7 +214,7 @@ export function aimOffer(
  * Three absences, each named, because each has its own remedy: a picked-out
  * container that shows nothing (pick out one that does), a shown document no
  * question is about (write one, or set the aim to everything), and a question
- * whose anchor does not resolve (re-anchor it — `reword_quiz` with `path`).
+ * whose source names no readable file (cite it again — `reword_quiz` with `path`).
  * `held` is how many questions the epic has at all; `unresolved` how many of
  * those cannot be in front of anything.
  */
@@ -230,14 +229,14 @@ export function whyEmpty(front: InFront, held: number, unresolved: number): Empt
   if (front.everything || held === 0) return null
   const rotten =
     unresolved > 0
-      ? ` ${unresolved === held ? (held === 1 ? 'It is' : 'All of them are') : `${unresolved} of them are`} anchored to `
+      ? ` ${unresolved === held ? (held === 1 ? 'It is' : 'All of them are') : `${unresolved} of them are`} about `
         + `${unresolved === 1 ? 'a document that is' : 'documents that are'} not in this project, so ${unresolved === 1 ? 'it' : 'they'} `
-        + 'cannot be in front of anything until re-anchored.'
+        + 'cannot be in front of anything until cited again.'
       : ''
   const off = 'set this container’s aim to everything on this kehikko'
   const remedy =
     unresolved === held
-      ? `An agent re-anchors them with reword_quiz. Until then, ${off} to see them.`
+      ? `An agent cites them again with reword_quiz, or fix the path under Sources: in the file. Until then, ${off} to see them.`
       : front.narrowed
         ? `Untick a container, pick out one that shows a document, or ${off}.`
         : `Open one of their documents on this kehikko, or ${off}.`
@@ -294,7 +293,7 @@ export function nameOf(module: string): string {
  * file that is not there would be a claim every neighbour is entitled to
  * narrow to, made about nothing.
  */
-export function showing<T extends Anchored & { anchor?: 'holds' | 'missing' | 'unchecked' }>(
+export function showing<T extends Anchored>(
   questions: readonly T[],
   projectPath: string | null,
   limit: number,
@@ -302,11 +301,10 @@ export function showing<T extends Anchored & { anchor?: 'holds' | 'missing' | 'u
   const seen = new Set<string>()
   const out: Pointing[] = []
   for (const question of questions) {
-    if (question.anchor === 'missing') continue
-    const mine = pointingAt(projectPath, question.passage)
-    if (!mine || seen.has(mine.path)) continue
-    seen.add(mine.path)
-    out.push({ path: mine.path, page: null, section: null, from: null, to: null, quoted: '' })
+    const mine = documentOf(projectPath, question.source)
+    if (mine === null || seen.has(mine)) continue
+    seen.add(mine)
+    out.push({ path: mine, page: null, section: null, from: null, to: null, quoted: '' })
     if (out.length >= limit) break
   }
   return out

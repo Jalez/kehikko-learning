@@ -31,7 +31,7 @@
 #   - `cd` to this script's own directory, so `node_modules` and the Vite config
 #     are found however the script was invoked. It no longer has anything to do
 #     with where the store is: the questions are not here any more. Each project
-#     keeps its own in `<project>/.kehikot/learning/questions.json`, which is the folder
+#     keeps its own in `<project>/.kehikot/learning/`, which is under the folder
 #     the host names in `kehikot.context`.
 #
 # It does NOT register a module that had none. Registration is a deliberate act
@@ -72,7 +72,7 @@ cd "$(dirname "$0")"
 # could not move.
 #
 # There is nothing left for it to name. The questions are inside the projects
-# they are about, at `<project>/.kehikot/learning/questions.json`, and the project is a
+# they are about, in `<project>/.kehikot/learning/`, and the project is a
 # path the HOST supplies per canvas in `kehikot.context` — one process now serves
 # whichever project is open rather than one directory it was pointed at. A
 # variable that still moved "the store" would be a second answer to a question

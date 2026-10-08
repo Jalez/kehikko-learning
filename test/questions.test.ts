@@ -1,471 +1,352 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { KEHIKOT_DIR } from 'kehikot-module-protocol'
 
-import {
-  MAX_ATTEMPTS,
-  MAX_OPTIONS,
-  MIN_OPTIONS,
-  asked,
-  change,
-  forEpic,
-  questionsFile,
-  score,
-  standings,
-  withKey,
-} from '../quiz/questions.ts'
+import { MAX_ATTEMPTS, MAX_OPTIONS, MIN_OPTIONS, change, forEpic, score, standings, withKey, type Op } from '../quiz/questions.ts'
 
 /**
- * The store, with real files, in real project directories.
- *
- * Not a mock, and now doubly not: the store resolves the project path with
- * `realpathSync` before it writes anything under it, so a project that is merely
- * a plausible-looking string is refused. `A` and `B` are therefore two actual
- * directories, made and removed per test, and every assertion below about "one
- * project's questions are not in another's" is an assertion about two files in
- * two folders rather than two keys in one object.
- *
- * Half of what this file asserts is about what is ON DISK — that a broken file
- * is not written over, that the attempts array is bounded there and not merely
- * in memory — and a fake filesystem would let every one of those pass while the
- * program did the opposite.
+ * The store, with real files, in real project directories. Not a mock: the
+ * store resolves the project path with `realpathSync` before it writes, and
+ * half of what this file asserts is about what is ON DISK — the Markdown a
+ * person edits, the answers kept beside it, a broken file not written over.
  */
 let dir = ''
 let A = ''
 let B = ''
+const EPIC = 'modes-are-modules'
+const PAPER = 'So the manifest is the smallest half of this program, and the only half a host reads.'
 
 beforeEach(() => {
-  /* `realpathSync` because macOS puts the temp directory behind a symlink —
-     `/var` is `/private/var` — and the store resolves before it writes. Taking
-     the resolved form here is the honest thing: it is what the program will
-     use, so it is what the assertions should be about. */
+  /* `realpathSync` because macOS puts the temp directory behind a symlink. */
   dir = realpathSync(mkdtempSync(join(tmpdir(), 'learning-test-')))
   A = join(dir, 'one')
   B = join(dir, 'two')
-  mkdirSync(A)
-  mkdirSync(B)
-  /* The document the fixture questions are anchored to has to EXIST now: the
-     store refuses an anchor whose file is not in the project, because eighteen
-     real questions were once written about a paper that then moved and nothing
-     could say so. See `quiz/where.ts`. */
-  mkdirSync(join(A, 'chapters'))
-  writeFileSync(join(A, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
-  mkdirSync(join(B, 'chapters'))
-  writeFileSync(join(B, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
+  for (const project of [A, B]) {
+    mkdirSync(join(project, 'chapters'), { recursive: true })
+    writeFileSync(join(project, 'chapters', 'bridge.tex'), PAPER)
+  }
 })
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-/** Where one project's questions actually are, for the tests that read the file. */
-function fileFor(project: string): string {
-  const { path } = questionsFile(project)
-  expect(path).not.toBeNull()
-  return path!
-}
+const folder = (project: string) => join(project, KEHIKOT_DIR, 'learning')
+const quizFile = (project: string, epic = EPIC) => join(folder(project), `${epic}.md`)
+const markdown = (project = A, epic = EPIC) => readFileSync(quizFile(project, epic), 'utf8')
 
-function add(over: Partial<Parameters<typeof change>[0] & Record<string, unknown>> = {}) {
+function add(over: Partial<Extract<Op, { op: 'add' }>> = {}) {
   return change({
     op: 'add',
     project: A,
-    epic: 'modes-are-modules',
+    epic: EPIC,
     question: 'What does the manifest settle?',
     options: ['Which tab the page gets', 'What colour the container is', 'Who owns the repository'],
     answer: 0,
     why: 'The manifest is the only half a host reads.',
-    passage: { path: 'chapters/bridge.tex', start: 100, end: 240, quote: 'the manifest is the smallest half' },
-    by: 'claude',
-    viaMcp: true,
-    ...(over as object),
-  } as Parameters<typeof change>[0])
+    path: 'chapters/bridge.tex',
+    quote: 'the manifest is the smallest half',
+    ...over,
+  })
 }
 
+function added(over: Partial<Extract<Op, { op: 'add' }>> = {}): string {
+  const out = add(over)
+  if (!out.ok) throw new Error(out.error)
+  return out.id
+}
+
+/** A quiz a person typed, with no ids and no help from this module. */
+function typed(text: string, project = A, epic = EPIC): void {
+  mkdirSync(folder(project), { recursive: true })
+  writeFileSync(quizFile(project, epic), text)
+}
+
+const BY_HAND = [
+  '# Notes to self: chapter two',
+  '',
+  '## Which half does a host read? [^1]',
+  '- the page',
+  '- [x] the manifest',
+  '- the stylesheet',
+  '',
+  'Why:',
+  'The manifest is the only half a host reads.',
+  '',
+  'Sources:',
+  '[^1]: chapters/bridge.tex | "the only half a host reads"',
+  '',
+].join('\n')
+
 describe('writing a question', () => {
-  test('an added question comes back for its epic, in its project', () => {
-    const out = add()
-    expect(out.ok).toBe(true)
-    const { questions } = forEpic(A, 'modes-are-modules')
+  test('an added question comes back for its epic, with its source found', () => {
+    const id = added()
+    const { questions, trouble, nowhere } = forEpic(A, EPIC)
+    expect(trouble).toBeNull()
+    expect(nowhere).toBe(false)
     expect(questions).toHaveLength(1)
-    expect(questions[0]?.question).toBe('What does the manifest settle?')
-    expect(questions[0]?.passage.start).toBe(100)
-    expect(questions[0]?.passage.quote).toBe('the manifest is the smallest half')
+    expect(questions[0]).toMatchObject({ id, question: 'What does the manifest settle?', attempts: [] })
+    expect(questions[0]?.source).toMatchObject({ label: '1', path: 'chapters/bridge.tex', status: 'holds', at: { from: 3, to: 36, line: 1, endLine: 1 } })
   })
 
-  test('the id is issued here and is not anything a caller sent', () => {
-    const out = add({ id: 'chosen-by-the-caller' } as never)
-    expect(out.ok).toBe(true)
-    if (!out.ok) return
-    expect(out.id).not.toBe('chosen-by-the-caller')
-    expect(out.id).toMatch(/^[0-9a-f]{8}$/)
+  test('it is one Markdown file per epic, and nothing else is in the folder', () => {
+    added()
+    added({ epic: 'another-epic' })
+    expect(readdirSync(folder(A)).sort()).toEqual(['another-epic.md', `${EPIC}.md`])
   })
 
   test('an epic that is not a slug is refused, and nothing is written', () => {
-    const out = add({ epic: 'Modes Are Modules' })
-    expect(out.ok).toBe(false)
-    if (out.ok) return
-    expect(out.error).toContain('is not an epic slug')
-    expect(forEpic(A, 'Modes Are Modules').questions).toHaveLength(0)
+    for (const epic of ['../escape', 'Has Spaces', 'a/b', '']) {
+      const out = add({ epic })
+      expect(out.ok).toBe(false)
+    }
+    expect(existsSync(join(A, KEHIKOT_DIR))).toBe(false)
   })
 
-  test(`fewer than ${MIN_OPTIONS} options is refused`, () => {
-    const out = add({ options: ['only this'], answer: 0 })
-    expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.error).toContain('One option is not a choice')
+  test(`fewer than ${MIN_OPTIONS} or more than ${MAX_OPTIONS} options is refused`, () => {
+    expect(add({ options: ['only one'] }).ok).toBe(false)
+    expect(add({ options: Array.from({ length: MAX_OPTIONS + 1 }, (_, i) => `option ${i}`) }).ok).toBe(false)
   })
 
-  test(`more than ${MAX_OPTIONS} options is refused`, () => {
-    const out = add({ options: Array.from({ length: MAX_OPTIONS + 1 }, (_, i) => `option ${i}`), answer: 0 })
-    expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.error).toContain(`between ${MIN_OPTIONS} and ${MAX_OPTIONS} options`)
-  })
-
-  test('an empty option is refused', () => {
-    const out = add({ options: ['a', '', 'c'], answer: 0 })
-    expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.error).toContain('one of the options is empty')
-  })
-
-  test('two identical options are refused rather than deduplicated', () => {
-    /* Deduplicating would silently move the key: drop option 1 and `answer: 2`
-       now names a different string. */
-    const out = add({ options: ['same', 'same', 'other'], answer: 2 })
+  test('an empty option, or two identical ones, are refused rather than repaired', () => {
+    expect(add({ options: ['a', ''] }).ok).toBe(false)
+    const out = add({ options: ['same', 'same', 'other'] })
     expect(out.ok).toBe(false)
     if (!out.ok) expect(out.error).toContain('two of the options are the same')
   })
 
-  test('an answer outside the options is refused', () => {
-    const out = add({ answer: 3 })
-    expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.error).toContain('between 0 and 2')
+  test('an answer outside the options, or a fractional one, is refused', () => {
+    expect(add({ answer: 3 }).ok).toBe(false)
+    expect(add({ answer: 0.5 }).ok).toBe(false)
   })
 
-  test('a fractional answer is refused', () => {
-    const out = add({ answer: 1.5 })
-    expect(out.ok).toBe(false)
+  test('a question with no document or no words is refused: every question is tied to a passage', () => {
+    expect(add({ path: '' }).ok).toBe(false)
+    expect(add({ quote: '' }).ok).toBe(false)
+    expect(add({ quote: '   \n ' }).ok).toBe(false)
   })
 
-  test('a passage with no document is refused', () => {
-    const out = add({ passage: { path: '', start: 1, end: 2, quote: 'x' } })
-    expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.error).toContain('named no document')
-  })
-
-  test('a passage with no quote is refused', () => {
-    const out = add({ passage: { path: 'a.tex', start: 1, end: 2, quote: '' } })
-    expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.error).toContain('quoted nothing')
-  })
-
-  test('a byte range that does not go forwards is refused', () => {
-    expect(add({ passage: { path: 'a.tex', start: 5, end: 5, quote: 'x' } }).ok).toBe(false)
-    expect(add({ passage: { path: 'a.tex', start: 9, end: 4, quote: 'x' } }).ok).toBe(false)
-    expect(add({ passage: { path: 'a.tex', start: -1, end: 4, quote: 'x' } }).ok).toBe(false)
+  test('a quote with line breaks is one line in the file, and still found', () => {
+    writeFileSync(join(A, 'chapters', 'bridge.tex'), 'So the manifest\n   is the smallest\nhalf of this program.')
+    added({ quote: 'the manifest is\nthe smallest half' })
+    expect(markdown()).toContain('[^1]: chapters/bridge.tex | "the manifest is the smallest half"')
+    expect(forEpic(A, EPIC).questions[0]?.source).toMatchObject({ status: 'holds', at: { line: 1, endLine: 3 } })
   })
 })
 
 describe('the partition by project', () => {
-  test('a question written for one project is not in another', () => {
-    add({ project: A })
-    add({ project: B, question: 'A different question entirely' })
-
-    expect(forEpic(A, 'modes-are-modules').questions).toHaveLength(1)
-    expect(forEpic(B, 'modes-are-modules').questions).toHaveLength(1)
-    expect(forEpic(A, 'modes-are-modules').questions[0]?.question).toBe('What does the manifest settle?')
-    expect(forEpic(B, 'modes-are-modules').questions[0]?.question).toBe('A different question entirely')
-  })
-
-  test('the SAME epic slug in two projects is two sets of questions', () => {
-    /* The collision this partition exists for. `bridge` is a real epic slug and
-       exactly the kind of word two unrelated projects both use. */
-    add({ project: A, epic: 'bridge', question: 'Project one’s bridge question' })
-    add({ project: B, epic: 'bridge', question: 'Project two’s bridge question' })
-    const one = forEpic(A, 'bridge').questions
-    const two = forEpic(B, 'bridge').questions
-    expect(one).toHaveLength(1)
-    expect(two).toHaveLength(1)
-    expect(one[0]?.id).not.toBe(two[0]?.id)
-  })
-
-  test('a question is not addressable from the wrong project', () => {
-    const out = add({ project: A })
-    expect(out.ok).toBe(true)
-    if (!out.ok) return
-    const wrong = change({ op: 'drop', project: B, id: out.id })
-    expect(wrong.ok).toBe(false)
-    if (!wrong.ok) expect(wrong.error).toContain('it is not addressable from this one')
-    /* And it is still there. */
-    expect(forEpic(A, 'modes-are-modules').questions).toHaveLength(1)
+  test('the SAME epic slug in two projects is two files', () => {
+    added({ project: A })
+    added({ project: B, question: 'A different one' })
+    expect(forEpic(A, EPIC).questions.map((q) => q.question)).toEqual(['What does the manifest settle?'])
+    expect(forEpic(B, EPIC).questions.map((q) => q.question)).toEqual(['A different one'])
   })
 
   test('a trailing slash is the same project', () => {
-    add({ project: A })
-    expect(forEpic(A, 'modes-are-modules').questions).toHaveLength(1)
-    add({ project: `${A}/`, question: 'Second question in the same project' })
-    expect(forEpic(A, 'modes-are-modules').questions).toHaveLength(2)
+    added({ project: `${A}/` })
+    expect(forEpic(A, EPIC).questions).toHaveLength(1)
   })
 
-  test('the order on disk IS the order they were written, not an order column', () => {
-    /* Two sources for one fact would let a partial write leave two questions
-       claiming position three. And an id that happens to be all digits would be
-       an integer-like object key, which JavaScript enumerates FIRST — which is
-       why this is an array and not a record. */
-    for (const n of ['first', 'second', 'third']) add({ question: `The ${n} question` })
-    const raw = JSON.parse(readFileSync(fileFor(A), 'utf8')) as { questions: { question: string }[] }
-    expect(raw.questions.map((q) => q.question)).toEqual([
-      'The first question',
-      'The second question',
-      'The third question',
-    ])
-  })
-
-  test('the partition is the PATH, and there is no project key left in the file', () => {
-    /* The shape used to carry the partition: a `projects` record keyed by path.
-       It is the folder now, which is strictly stronger — the file a reader
-       opened cannot name the wrong project because it does not name one at
-       all. */
-    add({ project: A })
-    add({ project: B })
-    expect(fileFor(A)).toBe(join(A, KEHIKOT_DIR, 'learning', 'questions.json'))
-    expect(fileFor(B)).toBe(join(B, KEHIKOT_DIR, 'learning', 'questions.json'))
-    const raw = JSON.parse(readFileSync(fileFor(A), 'utf8')) as Record<string, unknown>
-    expect(Object.keys(raw)).toEqual(['questions'])
-    expect(raw.projects).toBeUndefined()
-  })
-
-  test('a write with no project is refused, and nothing is created anywhere', () => {
+  test('a write with no project is refused, and a read is nowhere rather than empty', () => {
     const out = add({ project: null })
     expect(out.ok).toBe(false)
     if (!out.ok) expect(out.error).toContain('no project is open')
-    if (!out.ok) expect(out.error).toContain('Nothing was recorded')
-    /* Not "somewhere sensible". Nowhere. */
+    expect(forEpic(null, EPIC)).toMatchObject({ questions: [], nowhere: true, trouble: null })
+  })
+
+  test('a project that is not on this machine, or a relative path, is refused with a sentence', () => {
+    expect(forEpic(join(dir, 'nope'), EPIC).trouble).toContain('there is no folder')
+    expect(forEpic('relative/path', EPIC).trouble).toContain('not an absolute path')
+  })
+
+  test('reading creates nothing', () => {
+    forEpic(A, EPIC)
+    standings(A)
     expect(existsSync(join(A, KEHIKOT_DIR))).toBe(false)
-    expect(existsSync(join(B, KEHIKOT_DIR))).toBe(false)
-  })
-
-  test('a project that is not on this machine is refused with a sentence, not a guess', () => {
-    const out = add({ project: join(dir, 'no-such-project') })
-    expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.error).toContain('there is no folder at')
-  })
-
-  test('a relative path is refused, because it would resolve against this app’s cwd', () => {
-    const out = add({ project: 'some/relative/path' })
-    expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.error).toContain('is not an absolute path')
   })
 })
 
-describe('the ordering', () => {
-  test('questions come back in the order they were written', () => {
-    /* An agent that read a chapter top to bottom has already put them in the
-       reader's order; re-sorting would throw that away. */
-    for (const n of [1, 2, 3]) add({ question: `Question ${n}` })
-    const { questions } = forEpic(A, 'modes-are-modules')
-    expect(questions.map((q) => q.question)).toEqual(['Question 1', 'Question 2', 'Question 3'])
+describe('a file a person edits', () => {
+  test('is read as it was typed: no ids, plain options, a heading above', () => {
+    typed(BY_HAND)
+    const { questions, problems } = forEpic(A, EPIC)
+    expect(problems).toEqual([])
+    expect(questions).toHaveLength(1)
+    expect(questions[0]).toMatchObject({ question: 'Which half does a host read?', options: ['the page', 'the manifest', 'the stylesheet'] })
+    expect(questions[0]?.source?.status).toBe('holds')
+  })
+
+  test('an edit shows on the next read, with nothing to restart', () => {
+    typed(BY_HAND)
+    typed(BY_HAND.replace('- the stylesheet', '- the stylesheet\n- the favicon'))
+    expect(forEpic(A, EPIC).questions[0]?.options).toHaveLength(4)
+  })
+
+  test('a question that cannot be asked is left out and named, and the others are still asked', () => {
+    typed(`${BY_HAND}\n## Half-written\n- one\n- two\n`)
+    const { questions, problems } = forEpic(A, EPIC)
+    expect(questions).toHaveLength(1)
+    expect(problems.join('\n')).toContain('Question 2 (“Half-written”) has no option ticked')
+  })
+
+  test('an agent’s write keeps what the person typed, and gives every question a name', () => {
+    typed(BY_HAND)
+    const before = forEpic(A, EPIC).questions[0]!.id
+    added()
+    const text = markdown()
+    expect(text.startsWith('# Notes to self: chapter two\n')).toBe(true)
+    expect(text).toContain(`## Which half does a host read? [^1]\n<!-- id: ${before} -->\n- [ ] the page\n- [x] the manifest`)
+    expect(text).toContain('[^1]: chapters/bridge.tex | "the only half a host reads"')
+    expect(text).toContain('[^2]: chapters/bridge.tex | "the manifest is the smallest half"')
+    expect(forEpic(A, EPIC).questions.map((q) => q.id)[0]).toBe(before)
+  })
+
+  test('rewording by hand keeps the answers of a question that has an id', () => {
+    const id = added()
+    score(A, EPIC, id, 1)
+    typed(markdown().replace('What does the manifest settle?', 'What is it that a manifest settles?'))
+    const [question] = forEpic(A, EPIC).questions
+    expect(question?.question).toBe('What is it that a manifest settles?')
+    expect(question?.attempts).toHaveLength(1)
+  })
+
+  test('moving the tick by hand changes the key the next answer is graded against', () => {
+    const id = added()
+    typed(markdown().replace('- [x] Which tab', '- [ ] Which tab').replace('- [ ] Who owns', '- [x] Who owns'))
+    const out = score(A, EPIC, id, 2)
+    expect('scored' in out && out.scored.right).toBe(true)
   })
 })
 
 describe('rewording and dropping', () => {
-  test('a reword keeps the id, the passage and the attempts', () => {
-    const made = add()
-    expect(made.ok).toBe(true)
-    if (!made.ok) return
-    score(A, made.id, 0)
-    const out = change({ op: 'reword', project: A, id: made.id, question: 'Sharper wording' })
+  test('a reword keeps the id, the source and the attempts', () => {
+    const id = added()
+    score(A, EPIC, id, 1)
+    const out = change({ op: 'reword', project: A, epic: EPIC, id, question: 'What does a manifest decide?', why: '' })
     expect(out.ok).toBe(true)
-    const [question] = withKey(A, 'modes-are-modules').questions
-    expect(question?.id).toBe(made.id)
-    expect(question?.question).toBe('Sharper wording')
-    expect(question?.passage.start).toBe(100)
+    const [question] = withKey(A, EPIC).questions
+    expect(question).toMatchObject({ question: { id, question: 'What does a manifest decide?', why: '' }, key: 0 })
     expect(question?.attempts).toHaveLength(1)
+    expect(question?.source?.status).toBe('holds')
   })
 
-  test('a reword that leaves an answer index pointing past the options is refused', () => {
-    const made = add()
-    if (!made.ok) return
-    const out = change({ op: 'reword', project: A, id: made.id, options: ['only', 'two'] })
-    /* The old key was 0, which is still valid — so this one succeeds. */
+  test('a reword that leaves the key pointing past the options, or blanks the question, is refused', () => {
+    const id = added({ answer: 2 })
+    expect(change({ op: 'reword', project: A, epic: EPIC, id, options: ['only', 'two'] }).ok).toBe(false)
+    expect(change({ op: 'reword', project: A, epic: EPIC, id, question: '' }).ok).toBe(false)
+    expect(withKey(A, EPIC).questions[0]?.question.options).toHaveLength(3)
+  })
+
+  test('a reword can cite other words, and a source shared with another question is left for it', () => {
+    const first = added()
+    const second = added({ question: 'A second question about the same words' })
+    const out = change({ op: 'reword', project: A, epic: EPIC, id: second, quote: 'the only half a host reads' })
     expect(out.ok).toBe(true)
-    const again = change({ op: 'reword', project: A, id: made.id, answer: 5 })
-    expect(again.ok).toBe(false)
-    if (!again.ok) expect(again.error).toContain('between 0 and 1')
+    const sources = withKey(A, EPIC).questions.map((one) => [one.question.id, one.source?.label, one.source?.quote])
+    expect(sources).toEqual([
+      [first, '1', 'the manifest is the smallest half'],
+      [second, '2', 'the only half a host reads'],
+    ])
   })
 
-  test('a reword to an empty question is refused', () => {
-    const made = add()
-    if (!made.ok) return
-    const out = change({ op: 'reword', project: A, id: made.id, question: '' })
-    expect(out.ok).toBe(false)
-  })
-
-  test('a drop takes the attempts with it', () => {
-    const made = add()
-    if (!made.ok) return
-    score(A, made.id, 0)
-    const out = change({ op: 'drop', project: A, id: made.id })
+  test('a drop takes the question, its answers and its source line with it', () => {
+    const id = added()
+    score(A, EPIC, id, 0)
+    const out = change({ op: 'drop', project: A, epic: EPIC, id })
     expect(out.ok).toBe(true)
     if (out.ok) expect(out.said).toContain('1 answer')
-    expect(forEpic(A, 'modes-are-modules').questions).toHaveLength(0)
+    expect(markdown()).toBe('\n')
+    expect(readFileSync(join(folder(A), 'answers.json'), 'utf8')).not.toContain(id)
   })
 
   test('a question that is not here is named rather than shrugged at', () => {
-    const out = change({ op: 'drop', project: A, id: 'deadbeef' })
+    const out = change({ op: 'drop', project: A, epic: EPIC, id: 'nope' })
     expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.error).toContain('there is no question "deadbeef"')
+    if (!out.ok) expect(out.error).toContain('there is no question "nope"')
   })
 })
 
-describe('the standings', () => {
-  test('they count what has been answered and what was right', () => {
-    const one = add({ question: 'One' })
-    const two = add({ question: 'Two' })
-    add({ question: 'Three' })
-    if (!one.ok || !two.ok) return
-    score(A, one.id, 0) // right
-    score(A, two.id, 1) // wrong
-    const { standings: rows } = standings(A)
-    expect(rows).toEqual([{ epic: 'modes-are-modules', questions: 3, answered: 2, right: 1 }])
+describe('answers are kept apart from the material', () => {
+  test('answering writes answers.json and does not touch the Markdown', () => {
+    const id = added()
+    const before = markdown()
+    score(A, EPIC, id, 1)
+    expect(markdown()).toBe(before)
+    expect(JSON.parse(readFileSync(join(folder(A), 'answers.json'), 'utf8'))).toMatchObject({ [EPIC]: { [id]: [{ chose: 1, right: false }] } })
   })
 
-  test('a retake forgets the answers and the questions stay', () => {
-    const one = add()
-    if (!one.ok) return
-    score(A, one.id, 0)
-    const out = change({ op: 'retake', project: A, epic: 'modes-are-modules' })
-    expect(out.ok).toBe(true)
-    if (out.ok) expect(out.said).toContain('1 answer')
-    const { questions } = forEpic(A, 'modes-are-modules')
-    expect(questions).toHaveLength(1)
-    expect(questions[0]?.attempts).toHaveLength(0)
+  test(`only the most recent ${MAX_ATTEMPTS} attempts survive, on disk`, () => {
+    const id = added()
+    for (let i = 0; i < MAX_ATTEMPTS + 3; i += 1) score(A, EPIC, id, i % 3)
+    const kept = JSON.parse(readFileSync(join(folder(A), 'answers.json'), 'utf8'))[EPIC][id]
+    expect(kept).toHaveLength(MAX_ATTEMPTS)
+    expect(kept.at(-1).chose).toBe((MAX_ATTEMPTS + 2) % 3)
   })
-})
 
-describe('a file that will not parse', () => {
-  test('is not treated as an empty store, and is not written over', () => {
-    add()
-    const before = readFileSync(fileFor(A), 'utf8')
-    writeFileSync(fileFor(A), '{ this is not json')
+  test('an answers.json that will not parse is not treated as no answers, and is not written over', () => {
+    const id = added()
+    writeFileSync(join(folder(A), 'answers.json'), '{ not json')
+    expect(forEpic(A, EPIC).trouble).toContain('could not be read')
+    expect(forEpic(A, EPIC).questions).toEqual([])
+    expect('error' in score(A, EPIC, id, 0)).toBe(true)
+    expect(add().ok).toBe(false)
+    expect(readFileSync(join(folder(A), 'answers.json'), 'utf8')).toBe('{ not json')
+  })
 
-    const read = forEpic(A, 'modes-are-modules')
-    expect(read.questions).toHaveLength(0)
-    expect(read.trouble).toContain('could not be read')
-    expect(read.trouble).toContain('recoverable: fix or move it')
-
-    const out = add({ question: 'A question that must not land' })
-    expect(out.ok).toBe(false)
-
-    /* The broken file is still exactly as it was — not repaired, not replaced. */
-    expect(readFileSync(fileFor(A), 'utf8')).toBe('{ this is not json')
-    expect(before).toContain('What does the manifest settle?')
+  test('the standings count what has been answered and what was right', () => {
+    const first = added()
+    added({ question: 'A second' })
+    added({ epic: 'another-epic' })
+    score(A, EPIC, first, 0)
+    expect(standings(A).standings).toEqual([
+      { epic: 'another-epic', questions: 1, answered: 0, right: 0 },
+      { epic: EPIC, questions: 2, answered: 1, right: 1 },
+    ])
   })
 })
 
-describe('attempts are bounded on disk', () => {
-  test(`only the most recent ${MAX_ATTEMPTS} survive`, () => {
-    const made = add()
-    if (!made.ok) return
-    for (let i = 0; i < MAX_ATTEMPTS + 5; i += 1) score(A, made.id, i % 3)
-    const raw = JSON.parse(readFileSync(fileFor(A), 'utf8')) as {
-      questions: { id: string; attempts: unknown[] }[]
-    }
-    expect(raw.questions.find((q) => q.id === made.id)?.attempts).toHaveLength(MAX_ATTEMPTS)
-    /* The most recent, not the first: the last write was `(MAX_ATTEMPTS+4) % 3`. */
-    const kept = forEpic(A, 'modes-are-modules').questions[0]?.attempts.at(-1)
-    expect(kept?.chose).toBe((MAX_ATTEMPTS + 4) % 3)
-  })
-})
-
-describe('asked()', () => {
-  test('withholds the key on a question nobody has answered', () => {
-    const question = withKey(A, null).questions[0]
-    add()
-    const [held] = withKey(A, 'modes-are-modules').questions
-    expect(question).toBeUndefined()
-    expect(held?.answer).toBe(0)
-    const shown = asked(held!, A)
-    expect(shown.answer).toBeNull()
-    expect(shown.why).toBeNull()
-    /* And nothing else about it is missing — this is a projection, not a stub. */
-    expect(shown.options).toEqual(held!.options)
-    expect(shown.passage).toEqual(held!.passage)
+describe('the key is withheld until it is earned', () => {
+  test('a question nobody has answered leaves here with no key and no explanation, under any name', () => {
+    added()
+    typed(`${markdown()}`)
+    const out = forEpic(A, EPIC)
+    expect(out.questions[0]?.answer).toBeNull()
+    expect(out.questions[0]?.why).toBeNull()
+    const sent = JSON.stringify(out)
+    expect(sent).not.toContain('The manifest is the only half a host reads.')
+    expect(sent).not.toContain('[x]')
+    expect(sent).not.toContain('correct')
   })
 
-  test('hands it over once there is an attempt', () => {
-    const made = add()
-    if (!made.ok) return
-    score(A, made.id, 2)
-    const [held] = withKey(A, 'modes-are-modules').questions
-    const shown = asked(held!, A)
-    expect(shown.answer).toBe(0)
-    expect(shown.why).toBe('The manifest is the only half a host reads.')
+  test('what is wrong with a file is said without saying which option is ticked', () => {
+    typed('## Two ticks [^1]\n- [x] the first\n- [x] the second\n- the third\n\nSources:\n[^1]: chapters/bridge.tex | "smallest half"\n')
+    const sent = JSON.stringify(forEpic(A, EPIC))
+    expect(sent).toContain('has 2 options ticked')
+    expect(sent).not.toContain('the first')
   })
 
-  test('a retake puts it back out of reach', () => {
-    const made = add()
-    if (!made.ok) return
-    score(A, made.id, 0)
-    expect(forEpic(A, 'modes-are-modules').questions[0]?.answer).toBe(0)
-    change({ op: 'retake', project: A, epic: 'modes-are-modules' })
-    expect(forEpic(A, 'modes-are-modules').questions[0]?.answer).toBeNull()
-    expect(forEpic(A, 'modes-are-modules').questions[0]?.why).toBeNull()
-  })
-})
-
-describe('scoring', () => {
-  test('the right option is right and a wrong one is wrong', () => {
-    const made = add()
-    if (!made.ok) return
-    const right = score(A, made.id, 0)
-    expect('scored' in right && right.scored.right).toBe(true)
-    const wrong = score(A, made.id, 1)
-    expect('scored' in wrong && wrong.scored.right).toBe(false)
-  })
-
-  test('the reply carries the key and the explanation, and only then', () => {
-    const made = add()
-    if (!made.ok) return
-    const out = score(A, made.id, 1)
-    expect('scored' in out).toBe(true)
-    if (!('scored' in out)) return
-    expect(out.scored.answer).toBe(0)
-    expect(out.scored.why).toBe('The manifest is the only half a host reads.')
+  test('it is handed over once there is an attempt, and a retake puts it back out of reach', () => {
+    const id = added()
+    const out = score(A, EPIC, id, 2)
+    expect(out).toMatchObject({ scored: { right: false, answer: 0, why: 'The manifest is the only half a host reads.', asked: { answer: 0 } } })
+    expect(forEpic(A, EPIC).questions[0]).toMatchObject({ answer: 0, why: 'The manifest is the only half a host reads.' })
+    expect(change({ op: 'retake', project: A, epic: EPIC })).toMatchObject({ ok: true, said: `1 answer forgotten for ${EPIC}` })
+    expect(forEpic(A, EPIC).questions[0]).toMatchObject({ answer: null, why: null, attempts: [] })
   })
 
   test('an option that does not exist is refused, not scored as wrong', () => {
-    const made = add()
-    if (!made.ok) return
-    const out = score(A, made.id, 47)
-    expect('error' in out).toBe(true)
-    if ('error' in out) expect(out.error).toContain('Nothing was recorded')
-    expect(forEpic(A, 'modes-are-modules').questions[0]?.attempts).toHaveLength(0)
+    const id = added()
+    for (const chose of [3, -1, 0.5]) expect('error' in score(A, EPIC, id, chose)).toBe(true)
+    expect(existsSync(join(folder(A), 'answers.json'))).toBe(false)
   })
 
-  test('a fractional index is refused', () => {
-    const made = add()
-    if (!made.ok) return
-    expect('error' in score(A, made.id, 0.5)).toBe(true)
-  })
-
-  test('a question in another project cannot be answered from this one', () => {
-    const made = add({ project: A })
-    if (!made.ok) return
-    const out = score(B, made.id, 0)
-    expect('error' in out).toBe(true)
-    if ('error' in out) expect(out.error).toContain('there is no question')
-  })
-
-  test('answering twice keeps both attempts, newest last', () => {
-    const made = add()
-    if (!made.ok) return
-    score(A, made.id, 1)
-    score(A, made.id, 0)
-    const attempts = forEpic(A, 'modes-are-modules').questions[0]?.attempts ?? []
-    expect(attempts).toHaveLength(2)
-    expect(attempts[0]?.right).toBe(false)
-    expect(attempts[1]?.right).toBe(true)
+  test('a question in another project, or one that cannot be asked, cannot be answered', () => {
+    const id = added()
+    expect('error' in score(B, EPIC, id, 0)).toBe(true)
+    typed(markdown().replace('- [x]', '- [ ]'))
+    expect('error' in score(A, EPIC, id, 0)).toBe(true)
   })
 })

@@ -1,6 +1,6 @@
 import type { FilterChoice, FilterGroup, Passage as Pointing } from 'kehikot-module-protocol'
 
-import { pointingAt, type Anchored } from '@/wire/pointed.ts'
+import { documentOf, type Anchored } from '@/wire/pointed.ts'
 
 /**
  * How narrow the reader likes this container, offered to the host as a filter.
@@ -45,8 +45,8 @@ import { pointingAt, type Anchored } from '@/wire/pointed.ts'
  * `kehikko-paper` does publish a page: `src/use-published-passage.ts` sends
  * `page: sheet.page` on every page turn, so the context genuinely carries one
  * for this material. The half that is missing is on this side. A question is
- * anchored by `path` and a byte range and nothing else — `quiz/types.ts` — and
- * this module has never opened the file, never paginated anything, and has no
+ * found by its `path` and its words, as a byte range of the SOURCE file —
+ * `quiz/types.ts` — and this module has never paginated anything, and has no
  * way to say which sheet a byte offset lands on. `wire/pointed.ts` sends
  * `page: null` for exactly that reason and spends a paragraph on it.
  *
@@ -192,7 +192,7 @@ export function scopeOf(chosen: FilterChoice, reach: Reach): Scope {
  *
  * ## What `section` means, spelled out
  *
- * Overlap, not containment. A question anchored to bytes 1024–1180 is about the
+ * Overlap, not containment. A question whose words were found at bytes 1024–1180 is about the
  * paragraph the reader highlighted if the two ranges touch at all: a person who
  * selects one sentence of a paragraph a question was written about is standing
  * in that question's passage, and demanding their selection contain the whole
@@ -216,10 +216,10 @@ export function narrow<T extends Anchored>(
   const to = passage.to
   const ranged = scope === 'section' && from !== null && to !== null
   return questions.filter((question) => {
-    const mine = pointingAt(projectPath, question.passage)
-    if (!mine || mine.path !== passage.path) return false
+    if (documentOf(projectPath, question.source) !== passage.path) return false
     if (!ranged) return true
-    return question.passage.start < to && question.passage.end > from
+    const at = question.source?.at
+    return !!at && at.from < to && at.to > from
   })
 }
 

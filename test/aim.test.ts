@@ -29,10 +29,9 @@ const container = (module: string, selected: boolean, documents: ReturnType<type
 })
 
 /** The questions, anchored the way the store spells them — relative to the project. */
-const ask = (id: string, path: string, anchor: 'holds' | 'missing' = 'holds') => ({
+const ask = (id: string, path: string, status: 'holds' | 'unreadable' = 'holds') => ({
   id,
-  anchor,
-  passage: { path, start: 10, end: 20, quote: 'words' },
+  source: { label: '1', path, quote: 'words', status, at: status === 'holds' ? { from: 10, to: 20, line: 1, endLine: 1 } : null, count: status === 'holds' ? 1 : 0 },
 })
 const QUESTIONS = [
   ask('q1', '.kehikot/paper/thesis/chapters/1_introduction.tex'),
@@ -223,7 +222,7 @@ describe('this container’s own row', () => {
 })
 
 describe('a question whose anchor does not resolve', () => {
-  const ROTTEN = [ask('r1', 'chapters/1_introduction.tex', 'missing'), ask('r3', 'chapters/3_methods.tex', 'missing')]
+  const ROTTEN = [ask('r1', 'chapters/1_introduction.tex', 'unreadable'), ask('r3', 'chapters/3_methods.tex', 'unreadable')]
 
   test('is reported when everything is in front, and never hidden by the union', () => {
     const front = inFrontOf({ self: SELF, passage: null, containers: [], aim: 'follow' })
@@ -246,10 +245,10 @@ describe('a question whose anchor does not resolve', () => {
     expect(out.unresolved).toBe(2)
     expect(whyEmpty(front, 2, 2)).toEqual({
       said:
-        'paper is picked out; none of the 2 questions here is about what it shows. All of them are anchored to documents '
-        + 'that are not in this project, so they cannot be in front of anything until re-anchored.',
+        'paper is picked out; none of the 2 questions here is about what it shows. All of them are about documents '
+        + 'that are not in this project, so they cannot be in front of anything until cited again.',
       /* The remedy follows the cause: no tick will bring these back. */
-      remedy: 'An agent re-anchors them with reword_quiz. Until then, set this container’s aim to everything on this kehikko to see them.',
+      remedy: 'An agent cites them again with reword_quiz, or fix the path under Sources: in the file. Until then, set this container’s aim to everything on this kehikko to see them.',
     })
   })
 

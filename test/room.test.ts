@@ -39,21 +39,6 @@ describe('what fits', () => {
     expect(room({ width: 200, height: 900 }).snap).toBe(false)
   })
 
-  test('the passage becomes an overlay exactly where a disclosure would not fit', () => {
-    expect(room(SIZES.narrow).passage).toBe('overlay')
-    expect(room(SIZES.letterbox).passage).toBe('overlay')
-    expect(room(SIZES.container).passage).toBe('inline')
-    expect(room(SIZES.large).passage).toBe('inline')
-  })
-
-  test('the byline goes into a title when the box is short OR the column is very narrow', () => {
-    expect(room(SIZES.narrow).byline).toBe('title')
-    expect(room(SIZES.letterbox).byline).toBe('title')
-    expect(room(SIZES.container).byline).toBe('row')
-    /* Tall but 240 wide: "written by claude, over MCP" is three lines there. */
-    expect(room({ width: 240, height: 900 }).byline).toBe('title')
-  })
-
   test('options are folded only where height is scarce, never merely because it is narrow', () => {
     expect(room(SIZES.narrow).others).toBe('folded')
     expect(room({ width: 200, height: 900 }).others).toBe('shown')
@@ -93,8 +78,6 @@ describe('an unmeasured frame', () => {
   test('shows everything and does not snap', () => {
     expect(room({ width: 0, height: 0 })).toEqual({
       snap: false,
-      byline: 'row',
-      passage: 'inline',
       others: 'shown',
       retakeNote: 'paragraph',
       source: 'path',
@@ -104,7 +87,7 @@ describe('an unmeasured frame', () => {
   test('a measured width with no height is still treated as unmeasured', () => {
     /* The width can be known before the height in a document that has not been
        laid out yet, and a page that folded on that would fold on every mount. */
-    expect(room({ width: 220, height: 0 }).passage).toBe('inline')
+    expect(room({ width: 220, height: 0 }).others).toBe('shown')
   })
 })
 
@@ -140,14 +123,12 @@ const card = (over: Partial<Card> = {}): Card => ({
   question: 'What does the wire settle?',
   options: ['The host', 'The module'],
   source: 'bridge.tex',
-  path: 'data/papers/modes-are-modules/chapters/bridge.tex',
-  quote: 'A wire is two programs agreeing on one sentence.',
   why: null,
   answered: false,
   ...over,
 })
 
-/** Two options, one line of question, one line of quote. */
+/** Two options and one line of question. */
 const SHORT = card()
 
 /** What an agent actually writes: a sentence, three clauses, a paragraph quoted. */
@@ -158,9 +139,6 @@ const MEDIUM = card({
     'Which tab the module gets, and what it would like to be allowed to ask for',
     'Nothing at all — it is a comment with a file extension',
   ],
-  quote:
-    'The manifest is the smallest half of this program and the only half a host ever reads, which is why it '
-    + 'is the half that has to be true.',
 })
 
 /** Five lines of question and eight options. The case a single rung gets wrong. */
@@ -178,9 +156,6 @@ const LONG = card({
     'Treat it as granted, on the grounds that a module would not ask idly',
     'Nothing at all — it is a comment with a file extension',
   ],
-  quote:
-    'The manifest is the smallest half of this program and the only half a host ever reads, which is why it '
-    + 'is the half that has to be true, and why it is the half that is checked, every time, by a probe.',
 })
 
 const climb = (frame: Frame, cards: Card[], shown = 0) =>
@@ -215,8 +190,13 @@ describe('the ladder', () => {
     expect(climb(SIZES.narrow, [SHORT, MEDIUM, LONG], 2).rung).toBe('part')
   })
 
-  test('a letterbox 200 tall cannot hold even the shortest question whole', () => {
-    expect(climb(SIZES.letterbox, [SHORT, MEDIUM, LONG], 0).rung).toBe('part')
+  test('a letterbox 200 tall holds the shortest question whole, now that its passage is not drawn — and no taller one', () => {
+    /* The quote used to be a part of the card and cost this box its whole
+       question. It is a line under Sources: in the file now, and a press away
+       in the paper. */
+    expect(climb(SIZES.letterbox, [SHORT, MEDIUM, LONG], 0).rung).toBe('one')
+    expect(climb(SIZES.letterbox, [SHORT, MEDIUM, LONG], 1).rung).toBe('part')
+    expect(climb({ width: 320, height: 180 }, [SHORT, MEDIUM, LONG], 0).rung).toBe('part')
   })
 
   test('one question on its own is still a whole question, or still splits', () => {
@@ -412,10 +392,9 @@ describe('the header above a part', () => {
   })
 
   test('a one-line question keeps its header in a letterbox, because it fits and still leaves an option', () => {
-    /* 320×200 is the tightest box this module is measured in, and the point of
-       the floor is that it does not take the header away from a reader who had
-       room for it. */
-    expect(climb(SIZES.letterbox, [SHORT, MEDIUM, LONG], 0).header).toBe(1)
+    /* A box too short for even the shortest question whole: the floor does not
+       take the header away from a reader who had room for it. */
+    expect(climb({ width: 320, height: 180 }, [SHORT, MEDIUM, LONG], 0).header).toBe(1)
   })
 
   test('and loses it when what is left would not hold one whole option', () => {
@@ -438,8 +417,8 @@ describe('which parts a question splits into', () => {
   test('a question standing whole above the options does not get a chip leading to itself', () => {
     /* A chip that leads to a screen the reader is already looking at is a chip
        they press once and distrust afterwards. */
-    expect(partsOf(SHORT, 1)).toEqual(['options', 'quote'])
-    expect(partsOf(MEDIUM, 2)).toEqual(['options', 'quote'])
+    expect(partsOf(SHORT, 1)).toEqual(['options'])
+    expect(partsOf(MEDIUM, 2)).toEqual(['options'])
   })
 
   test('a question with no header gets one, which is what makes dropping the header honest', () => {
@@ -449,8 +428,8 @@ describe('which parts a question splits into', () => {
      * from the same number, so they cannot drift apart. It holds for both reasons
      * a header goes away: a question too long for it, and a box too short.
      */
-    expect(partsOf(LONG, 0)).toEqual(['question', 'options', 'quote'])
-    expect(partsOf(SHORT, 0)).toEqual(['question', 'options', 'quote'])
+    expect(partsOf(LONG, 0)).toEqual(['question', 'options'])
+    expect(partsOf(SHORT, 0)).toEqual(['question', 'options'])
   })
 
   test('an answered question does NOT get one for the verdict, which is drawn with the options', () => {
@@ -460,7 +439,7 @@ describe('which parts a question splits into', () => {
      * what was chosen; a chip leading to a judgement of a press the reader made
      * on another screen is a chip that tells them what they already did.
      */
-    expect(partsOf(card({ answered: true, why: null }), 2)).toEqual(['options', 'quote'])
+    expect(partsOf(card({ answered: true, why: null }), 2)).toEqual(['options'])
   })
 
   test('an explanation gets a part of its own, and only once there is one to read', () => {
@@ -476,18 +455,18 @@ describe('which parts a question splits into', () => {
      * obliges an author to explain.
      */
     const why = 'Because the manifest is the only half a host ever reads, and it is read every time.'
-    expect(partsOf(card({ answered: true, why }), 2)).toEqual(['options', 'quote', 'why'])
-    expect(partsOf(card({ answered: false, why }), 2)).toEqual(['options', 'quote'])
+    expect(partsOf(card({ answered: true, why }), 2)).toEqual(['options', 'why'])
+    expect(partsOf(card({ answered: false, why }), 2)).toEqual(['options'])
     expect(partsOf(card({ answered: true, why: null }), 2)).not.toContain('why')
     expect(partsOf(card({ answered: true, why: '' }), 2)).not.toContain('why')
   })
 
-  test('the new chip is last, so earning it does not shuffle the three already there', () => {
+  test('the new chip is last, so earning it does not shuffle the ones already there', () => {
     /* `why` is the only part that comes into existence mid-session. Appending it
        means the press that earns it does not move three controls under the
        reader's finger. */
     const why = 'Because the wire is the manifest and the messages, and nothing else.'
-    expect(partsOf(card({ answered: true, why }), 0)).toEqual(['question', 'options', 'quote', 'why'])
+    expect(partsOf(card({ answered: true, why }), 0)).toEqual(['question', 'options', 'why'])
   })
 
   test('the same question is a different number of lines in a narrower column', () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 
 import type { Asked } from '@/store/ask.ts'
 import type { Ladder, Part, Room } from '@/view/room.ts'
@@ -9,77 +9,12 @@ import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button.tsx'
 
 /**
- * The passage, given the whole frame.
- *
- * ## Why this stopped being a `<details>` in a short container
- *
- * It still is one where there is room — see `QuestionCard`. What it cannot be in
- * a box 300 pixels tall is a disclosure that grows in place: the passage is a
- * paragraph of somebody's LaTeX, so opening it inline pushes the options the
- * reader was looking at off the top of a box that only held one card to begin
- * with, and closing it drops them somewhere they did not ask to be. The gesture
- * costs the reader their place both ways.
- *
- * `position: fixed` inside a frame IS the frame, so this fills exactly the box
- * the canvas gave the module and nothing outside it. The card underneath does
- * not move, so closing puts the reader back where they were, to the pixel.
- *
- * What is genuinely lost: a `<details>` is one node in the accessibility tree
- * and needs no JavaScript, and this is a dialog that needs both. That is paid
- * for deliberately, and only where the geometry demands it — `room()` returns
- * `passage: 'inline'` the moment there is height for the honest version.
- */
-function PassagePanel({ question, onClose }: { question: Asked; onClose: () => void }) {
-  const close = useRef<HTMLButtonElement | null>(null)
-
-  useEffect(() => {
-    close.current?.focus()
-    const key = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
-  }, [onClose])
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="the passage this question is about"
-      data-passage-panel="open"
-      className="fixed inset-0 z-50 flex min-w-0 flex-col gap-1.5 overflow-y-auto bg-background p-2 @sm/container:p-3"
-    >
-      <div className="flex min-w-0 items-start justify-between gap-2">
-        <p className="min-w-0 text-[0.65rem] leading-4 text-muted-foreground">
-          <code className="[overflow-wrap:anywhere]">{question.passage.path}</code>
-          {' · bytes '}
-          {question.passage.start}–{question.passage.end}
-        </p>
-        <Button
-          ref={close}
-          type="button"
-          size="container"
-          variant="outline"
-          className="shrink-0 whitespace-nowrap"
-          onClick={onClose}
-        >
-          Close
-        </Button>
-      </div>
-      <blockquote className="min-w-0 border-l-2 border-quote/50 pl-2 text-[0.72rem] leading-5 text-quote [overflow-wrap:anywhere]">
-        {question.passage.quote}
-      </blockquote>
-    </div>
-  )
-}
-
-/**
  * One question, and the whole of the answer-visibility decision as it appears on
  * screen.
  *
  * ## What is in the DOM before the reader has chosen
  *
- * The question, the options, and the passage. **Nothing else.** There is no
+ * The question, the options, and the name of its source. **Nothing else.** There is no
  * hidden element, no `data-correct` attribute, no class that differs between the
  * right option and the wrong ones, and no ordering that gives it away — the
  * options are drawn in the order the author wrote them, which is the order they
@@ -101,11 +36,9 @@ function PassagePanel({ question, onClose }: { question: Asked; onClose: () => v
  *
  * ## What folds away when the box is short
  *
- * Three things, decided in `view/room.ts` rather than here, and all of them
- * still reachable: the byline moves into the card's `title`, the passage becomes
- * an overlay instead of a disclosure that grows in place, and on an ALREADY
- * ANSWERED card the options that were neither chosen nor correct go behind one
- * press. Nothing folds on a card nobody has answered — the options ARE the
+ * One thing, decided in `view/room.ts` rather than here, and still reachable:
+ * on an ALREADY ANSWERED card the options that were neither chosen nor correct
+ * go behind one press. Nothing folds on a card nobody has answered — the options ARE the
  * question, and a question you have to unfold to read is not a shorter card, it
  * is a broken one.
  *
@@ -114,15 +47,13 @@ function PassagePanel({ question, onClose }: { question: Asked; onClose: () => v
  * `view.rung` comes from `ladder()` in `view/room.ts` and this component draws
  * one of three things:
  *
- * - `list` — the card as it has always been: bordered, padded, one of several,
- *   with the passage behind a disclosure.
- * - `one` — the same question with **no card chrome at all** and the passage
- *   OPEN. It is the only thing on screen, so a border around it would be a card
+ * - `list` — the card as it has always been: bordered, padded, one of several.
+ * - `one` — the same question with **no card chrome at all**. It is the only thing on screen, so a border around it would be a card
  *   inside the container the host already draws — which is the owner's
  *   complaint, and none of the sibling modules do it. Dropping the border and
  *   the padding returns 18 pixels in each axis, and 18 pixels of width at 220 is
  *   a wrapped line back in every option.
- * - `part` — one of `question`, `options` and `quote`, chosen by the switcher in
+ * - `part` — one of `question`, `options` and `why`, chosen by the switcher in
  *   the row below, with the question above it as a header where there is room
  *   for the whole of it and nowhere else.
  *
@@ -147,8 +78,7 @@ function PassagePanel({ question, onClose }: { question: Asked; onClose: () => v
  *
  * ### And the press that points the canvas survives the split
  *
- * The source control is drawn on EVERY part, not only on the one that shows the
- * quote. It is one 16-pixel line and it is the only element on this card that
+ * The source control is drawn on EVERY part. It is one 16-pixel line and it is the only element on this card that
  * publishes anything, so putting it behind a chip would mean the reader had to
  * navigate to a part in order to reach a control that moves the whole canvas.
  * Switching parts publishes nothing — the chips are in `QuizView` and call
@@ -162,7 +92,7 @@ function PassagePanel({ question, onClose }: { question: Asked; onClose: () => v
  * somebody presses a button.
  *
  * That shape cannot be borrowed here. This card is almost entirely controls:
- * between two and eight answer buttons, an unfold, a passage disclosure. A
+ * between two and eight answer buttons and an unfold. A
  * pressable card would mean a person choosing an option was one mis-aimed pixel
  * away from moving every other container on the canvas, and the mis-aim would be
  * silent — the option would simply not register and the paper would jump. So the
@@ -170,21 +100,12 @@ function PassagePanel({ question, onClose }: { question: Asked; onClose: () => v
  * cannot be mistaken for asking to be shown the source because they are
  * different elements with different labels.
  *
- * That control is the passage affordance that was already on the card, relabelled
- * with the source it leads to. It was a summary reading "the passage this is
- * about", which is a description of a mechanism rather than a fact about this
- * question — every card said the same words. It now says the document, so the
- * card tells a reader where it came from, and pressing it does the two things
- * that phrase always meant: show the passage here, and point the canvas at it so
- * whatever is reading that document shows it there.
- *
- * A separate "show it in the paper" button was the alternative and was not
- * taken. It would be a second row of chrome about the passage, in a module whose
- * normal container is 220 pixels wide, for a distinction — "show me here" versus
- * "show me there" — that a reader pressing the name of a document is not making.
- * What it costs is that a person who wants to point again at an already-open
- * passage has to close it first. That is a real cost and a small one, and it is
- * paid to keep one control where two would fit badly.
+ * That control says the document the question came from, and pressing it
+ * points the canvas at the exact words — whatever is reading that document
+ * shows them there. The passage is no longer drawn HERE: it is one line under
+ * `Sources:` in the quiz's Markdown file, the way a slide cites, and the place
+ * to read it is the paper. Its path, lines and words are in the control's
+ * `title`.
  */
 export function QuestionCard({
   question,
@@ -246,7 +167,6 @@ export function QuestionCard({
    */
   estimate?: number
 }) {
-  const [open, setOpen] = useState(false)
   const [others, setOthers] = useState(false)
   const last = question.attempts.at(-1)
   const answered = last !== undefined
@@ -256,27 +176,23 @@ export function QuestionCard({
      and drawing the card as unanswered is the safe way to be wrong about it. */
   const key = answered && question.answer !== null ? question.answer : null
 
-  const wrote = `written by ${question.by}${question.viaMcp ? ', over MCP' : ''}`
-
   /* The document this question came from, at the length the box has room for —
      decided in `view/room.ts`, spelled in `wire/pointed.ts`. The full path is in
      the control's title at every size, so the short form defers it rather than
      hiding it. */
-  const source = sourceLabel(question.passage.path, room.source)
+  const cited = question.source
+  const source = cited ? sourceLabel(cited.path, room.source) : 'no source'
 
   /*
    * Which pieces this rendering draws.
    *
-   * `paged` is `one` or `part` — the two rungs where this card is the only one
-   * on screen, and therefore the two where it carries no border, no background
-   * and no padding of its own. `part === null` means the whole question, which
-   * is true at `list` and at `one` alike; the difference between those two is
-   * the chrome and whether the passage is behind a disclosure.
+   * `part === null` means the whole question, which is true at `list` and at
+   * `one` alike; the difference between those two is the chrome. At `one` and
+   * `part` this card is the only one on screen, and carries no border, no
+   * background and no padding of its own.
    */
-  const paged = rung !== 'list'
   const whole = part === null
   const showOptions = whole || part === 'options'
-  const showQuote = paged && (whole || part === 'quote')
   /*
    * Whether this drawing of the question is a HEADER above another part rather
    * than the question itself — and, if it is, whether there was room for one.
@@ -308,34 +224,40 @@ export function QuestionCard({
    * is sized by nothing but itself.
    *
    * Whole, both are simply drawn: there are no parts at `list` or `one`, and the
-   * card reads question, options, verdict, explanation, passage, top to bottom.
+   * card reads question, options, verdict, explanation, source, top to bottom.
    */
   const showVerdict = answered && (whole || part === 'options')
   const showWhy = answered && question.why !== null && (whole || part === 'why')
 
   /*
-   * Whether there is anything to point at.
+   * The source, as it was found on this read — and whether there is anything
+   * to point at.
    *
-   * A question whose document is not in the project — `quiz/where.ts`, and
-   * the eighteen real questions it was written against — used to be drawn
-   * with the same press as every other card, and the press pointed the canvas
-   * at a file that does not exist. Nothing reacted, and nothing said why. So
-   * a missing anchor is not a button: it is the same label, with the sentence
-   * that explains it in its title and beside it, and no handler. The path is
-   * still on `data-source`, because it is still a fact about the question.
+   * The file says which words of which document the question rests on
+   * (`[^1]` and its line under `Sources:`), and the server looks for them
+   * again every time, the way Slides resolves a citation. Found, the label is
+   * a press that turns the canvas to exactly those words. Not found — the
+   * paper changed under the question, the file is gone, or the question names
+   * no source — it is not a button: the same label, with the sentence that
+   * explains it beside it and in its title, and no handler. A press that
+   * pointed at nothing would say nothing about why.
    */
-  const missing = question.anchor === 'missing'
-
-  const about = missing
-    ? `${question.passage.path} is not in this project — the anchor does not resolve, so there is nothing to point `
-      + 'the canvas at. An agent re-anchors it with reword_quiz.'
-    : pointed
-      ? `the canvas is pointed at this passage of ${question.passage.path}`
-      : paged
-        ? `${question.passage.path}, bytes ${question.passage.start}–${question.passage.end} — point the canvas `
-          + 'at it, wherever this document is open'
-        : `${question.passage.path}, bytes ${question.passage.start}–${question.passage.end} — show it, here and wherever `
-          + 'this document is open on the canvas'
+  const pointable = !!cited?.at
+  const where = cited?.at
+    ? `${cited.path}, ${cited.at.line === cited.at.endLine ? `line ${cited.at.line}` : `lines ${cited.at.line}–${cited.at.endLine}`}`
+    : (cited?.path ?? '')
+  const words = cited ? `“${cited.quote.length > 160 ? `${cited.quote.slice(0, 157)}…` : cited.quote}”` : ''
+  const about = !cited
+    ? 'This question names no source in its file: put a [^n] on it and its line under Sources:.'
+    : cited.status === 'unreadable'
+      ? `${cited.path} cannot be read inside this project, so there is nothing to point the canvas at.\n${words}`
+      : cited.status === 'adrift'
+        ? `${cited.path} no longer has these words: the paper changed under this question.\n${words}`
+        : cited.status === 'ambiguous'
+          ? `${where} — these words occur ${cited.count} times; quote more.\n${words}`
+          : pointed
+            ? `the canvas is pointed at ${where}\n${words}`
+            : `${where}\n${words}\nPress to show it, wherever this document is open on the canvas.`
 
   /* Only ever true on an answered card in the LIST, and only for options that
      are neither the key nor the one that was pressed. Paged, the options are
@@ -363,20 +285,12 @@ export function QuestionCard({
    * Above the part it costs nothing: it is one 16-pixel line either way, and the
    * order reads as a caption on the question rather than a footer on the card.
    */
-  const sourceControl = missing ? (
-    <span
-      data-passage="missing"
-      data-source={question.passage.path}
-      title={about}
-      className="mt-1.5 block min-w-0 text-[0.65rem] text-wrong [overflow-wrap:anywhere]"
-    >
-      {source} — not in this project
-    </span>
-  ) : (
+  const sourceControl = pointable ? (
     <button
       type="button"
       data-passage="button"
-      data-source={question.passage.path}
+      data-status={cited?.status}
+      data-source={cited?.path}
       title={about}
       onClick={onPoint}
       className={
@@ -386,7 +300,19 @@ export function QuestionCard({
       }
     >
       {source}
+      {cited?.status === 'ambiguous' ? ' — quoted more than once' : null}
     </button>
+  ) : (
+    <span
+      data-passage="missing"
+      data-status={cited?.status ?? 'none'}
+      data-source={cited?.path}
+      title={about}
+      className="mt-1.5 block min-w-0 text-[0.65rem] text-wrong [overflow-wrap:anywhere]"
+    >
+      {source}
+      {!cited ? null : cited.status === 'adrift' ? ' — the paper changed' : ' — not in this project'}
+    </span>
   )
 
   return (
@@ -410,7 +336,6 @@ export function QuestionCard({
       data-rung={rung}
       data-estimate={estimate}
       aria-current={pointed ? 'location' : undefined}
-      title={paged || room.byline === 'title' ? wrote : undefined}
       className={
         /*
           Paged, there is no card: no border, no background, no radius and no
@@ -537,169 +462,9 @@ export function QuestionCard({
         </p>
       ) : null}
 
-      {/*
-        The passage, two ways, and the choice is geometry rather than taste.
-
-        Open by default it would be the largest thing on the card and would push
-        the options off the first screen of a 220px container; absent it would be
-        the module's whole claim left unshown. A disclosure is the honest middle,
-        and where there is height for it this is still a real `<details>` — one
-        element in the accessibility tree, working with no JavaScript at all.
-
-        In a box too short to hold one card, a disclosure that grows in place
-        costs the reader their scroll position twice. There it becomes a press
-        that fills the frame instead. See `PassagePanel`.
-
-        Both spellings now also POINT, and the two do it at slightly different
-        moments for one reason. The overlay is a button that only ever opens —
-        `Close` is a separate control inside the panel — so its press is
-        unambiguously "show me this". The disclosure toggles, and closing it is
-        not a request to be shown anything, so the publish hangs off the
-        summary's own click and only in the direction that opens.
-
-        Deliberately NOT `onToggle`: a `<details>` can be opened by something
-        other than a press. Chrome expands a closed one when find-in-page
-        matches text inside it, and a browser searching a page is not a person
-        asking every container on the canvas to move. `passage:set` was declared
-        under a bound that says a person presses; a handler that fires on a
-        find would be that bound quietly broken, and broken in a way nothing on
-        screen would show.
-      */}
-      {paged ? (
-        /*
-          Paged, there is no disclosure and no overlay: either the quote is
-          already on screen (`one`, and the `quote` part) or it is one chip away,
-          and a press that opened a panel over a card the reader is looking at
-          would be a third way of showing one paragraph.
-
-          So this control does exactly one thing — it points the canvas — and it
-          is drawn on EVERY part rather than only on the one that shows the
-          quote. It is the only element on this card that publishes anything,
-          and a publish behind a navigation is a publish a reader has to hunt
-          for. Sixteen pixels, on every screen, deliberately.
-        */
-        <>
-          {/* At `part` it was already drawn, above the part — see `sourceControl`. */}
-          {rung === 'part' ? null : sourceControl}
-          {showQuote ? (
-            <>
-              {/*
-                The byte range, and NOT the path — which is the difference from
-                the disclosure below, and it is two decisions rather than one.
-
-                The first is space. Repeating a 48-character path here inside a
-                `<code>` costs three lines of grey monospace at 220 wide and two
-                at 260, above the quote the reader pressed to see, on the two
-                rungs where every row is contested. The path is on the control
-                immediately above this — whole where there is width for it, as a
-                file name where there is not — and that control's `title` carries
-                all of it at every size. So this is a deferral by one hover,
-                which is the same trade the short source label already makes.
-
-                The second is that the path made `ladder()` unpredictable. A path
-                is one long token in a monospace face and the browser breaks it
-                at slashes, at hyphens, and mid-word as it sees fit: measured
-                three lines in a 244-pixel column where char-filling,
-                slash-breaking and hyphen-breaking models every one said two.
-                That was the single largest error in the estimate this whole
-                layout hangs off, and it is the only element on the card whose
-                height this file could not predict. `bytes 1024–1180` is fifteen
-                characters of the body face and is one line in every box this
-                module is ever given.
-              */}
-              <p className="mt-1 text-[0.65rem] leading-4 text-muted-foreground">
-                {'bytes '}
-                {question.passage.start}–{question.passage.end}
-              </p>
-              <blockquote className="mt-1 border-l-2 border-quote/50 pl-2 text-[0.7rem] leading-4 text-quote [overflow-wrap:anywhere]">
-                {question.passage.quote}
-              </blockquote>
-            </>
-          ) : null}
-        </>
-      ) : room.passage === 'overlay' ? (
-        <>
-          <button
-            type="button"
-            data-passage={missing ? 'missing' : 'button'}
-            data-source={question.passage.path}
-            title={about}
-            onClick={() => {
-              setOpen(true)
-              /* The quote is still worth reading — it is what the question is
-                 about — but there is nothing to point the canvas at. */
-              if (!missing) onPoint()
-            }}
-            className={
-              missing
-                ? 'mt-1.5 block min-w-0 text-[0.65rem] text-wrong underline-offset-2 [overflow-wrap:anywhere] hover:underline'
-                : pointed
-                  ? 'mt-1.5 block min-w-0 text-[0.65rem] font-medium text-foreground underline underline-offset-2 [overflow-wrap:anywhere]'
-                  : 'mt-1.5 block min-w-0 text-[0.65rem] text-muted-foreground underline-offset-2 [overflow-wrap:anywhere] hover:underline'
-            }
-          >
-            {source}
-            {missing ? ' — not in this project' : null}
-          </button>
-          {open ? <PassagePanel question={question} onClose={() => setOpen(false)} /> : null}
-        </>
-      ) : (
-        <details
-          open={open}
-          onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
-          className="mt-1.5 min-w-0"
-        >
-          <summary
-            data-passage={missing ? 'missing' : 'summary'}
-            data-source={question.passage.path}
-            title={about}
-            onClick={() => {
-              /* The state before the browser toggles it, so this is "about to
-                 open". Closing publishes nothing, and neither does a document
-                 that is not there. */
-              if (!open && !missing) onPoint()
-            }}
-            className={
-              missing
-                ? 'min-w-0 cursor-pointer text-[0.65rem] text-wrong [overflow-wrap:anywhere]'
-                : pointed
-                  ? 'min-w-0 cursor-pointer text-[0.65rem] font-medium text-foreground [overflow-wrap:anywhere]'
-                  : 'min-w-0 cursor-pointer text-[0.65rem] text-muted-foreground [overflow-wrap:anywhere]'
-            }
-          >
-            {source}
-            {missing ? ' — not in this project' : null}
-          </summary>
-          {/*
-            The path is only repeated here where the summary above did not say
-            it. At the widths that get the whole path, printing it twice inside
-            one card is 48 characters of grey said again for no reader's
-            benefit; at the widths that get only the file name, this is where
-            the rest of it lives, which is what makes the short label a deferral
-            rather than a loss.
-          */}
-          <p className="mt-1 text-[0.65rem] leading-4 text-muted-foreground">
-            {room.source === 'path' ? null : (
-              <>
-                <code className="[overflow-wrap:anywhere]">{question.passage.path}</code>
-                {' · '}
-              </>
-            )}
-            {'bytes '}
-            {question.passage.start}–{question.passage.end}
-          </p>
-          <blockquote className="mt-1 border-l-2 border-quote/50 pl-2 text-[0.7rem] leading-4 text-quote [overflow-wrap:anywhere]">
-            {question.passage.quote}
-          </blockquote>
-        </details>
-      )}
-
-      {/* Paged, the byline is always the element's `title`: it is a fact almost
-          nobody is looking for, and the two rungs that page are the two where
-          every row is contested. */}
-      {!paged && room.byline === 'row' ? (
-        <p className="mt-1 text-[0.6rem] leading-3 text-muted-foreground">{wrote}</p>
-      ) : null}
+      {/* At `list` and `one` the source sits at the foot of the card; at `part`
+          it is drawn above the part instead — see `sourceControl`. */}
+      {rung === 'part' ? null : sourceControl}
     </li>
   )
 }
@@ -744,6 +509,7 @@ export function QuestionCard({
  */
 export function QuizView({
   epic,
+  file = null,
   questions,
   hiding = null,
   aimed = null,
@@ -758,13 +524,19 @@ export function QuizView({
      caller with no ladder is a caller that has measured nothing, and the list is
      what this view has always drawn. */
   ladder = { rung: 'list', available: 0, heights: [], snap: false, header: 0 },
-  parts = ['options', 'quote'],
+  parts = ['options'],
   shown = 0,
   onShow = () => {},
   part = 'options',
   onPart = () => {},
 }: {
   epic: string
+  /**
+   * The Markdown file these questions are, relative to the project. Named so a
+   * person knows what to open to change them — never read by this page, which
+   * is not sent it: the file holds the answers.
+   */
+  file?: string | null
   questions: Asked[]
   /**
    * What the scope is hiding, already worded — `3 more questions about other
@@ -850,7 +622,14 @@ export function QuizView({
           </p>
         ) : (
           <p className="text-[0.7rem] leading-4 text-muted-foreground">
-            Nothing has been asked about this paper yet. An agent writes the questions, with <code>add_quiz</code>.
+            Nothing has been asked about this paper yet. An agent writes the questions, with <code>add_quiz</code>
+            {file ? (
+              <>
+                {' '}
+                — or type them into <code className="[overflow-wrap:anywhere]">{file}</code>
+              </>
+            ) : null}
+            .
           </p>
         )}
       </section>
@@ -989,7 +768,7 @@ export function QuizView({
         */}
         <div
           data-controls={ladder.rung}
-          title={`${epic} — ${score}`}
+          title={`${epic} — ${score}${file ? ` — edit these in ${file}` : ''}`}
           className="flex min-w-0 flex-wrap items-center gap-1"
         >
           {questions.length > 1 ? (
@@ -1025,7 +804,7 @@ export function QuizView({
           ) : null}
 
           {ladder.rung === 'part'
-            ? parts.map((each) => (
+            ? (parts.length > 1 ? parts : []).map((each) => (
                 <button
                   key={each}
                   type="button"
@@ -1171,6 +950,11 @@ export function QuizView({
             <p className="mt-0.5 text-[0.6rem] leading-3 text-muted-foreground">{note}</p>
           ) : null}
         </div>
+      ) : null}
+      {file ? (
+        <p data-file="quiz" className="text-[0.6rem] leading-3 text-muted-foreground">
+          Edit these in <code className="[overflow-wrap:anywhere]">{file}</code>
+        </p>
       ) : null}
     </section>
   )

@@ -20,7 +20,7 @@ const AGENTS = 'data/papers/modes-are-modules/chapters/agents.tex'
 
 const ask = (id: string, path: string, start: number, end: number): Anchored => ({
   id,
-  passage: { path, start, end, quote: 'whatever it happened to say' },
+  source: { label: '1', path, quote: 'whatever it happened to say', status: 'holds', at: { from: start, to: end, line: 1, endLine: 1 }, count: 1 },
 })
 
 const QUESTIONS = [
@@ -99,8 +99,8 @@ describe('what can be narrowed by, given where the canvas is standing', () => {
 
   test('there is no page rung, and the absence is the decision', () => {
     /* `kehikko-paper` does publish a page and this module cannot honour one: a
-       question is anchored by a path and a byte range, and nothing here has ever
-       opened the file. See the essay in `wire/scope.ts`. */
+       question is found by a path and its words in the source file, and nothing here has ever
+       paginated one. See the essay in `wire/scope.ts`. */
     const ids = offer(reachOf(PROJECT, at(BRIDGE, 1050, 1100)))![0]?.options.map((option) => option.id) ?? []
     expect(ids).not.toContain('page')
   })

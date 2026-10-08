@@ -65,7 +65,7 @@ export function NoEpic({ project, standings }: { project: string | null; standin
  * the project's name and has no folder to point at, and a page opened directly
  * has no canvas at all — and this page must not guess. Guessing is not a display
  * mistake here: questions are kept INSIDE the project, at
- * `.kehikot/learning/questions.json`, so a guessed path is somebody's questions written
+ * `.kehikot/learning/`, so a guessed path is somebody's questions written
  * into a folder they will never open, under a container that said they were saved.
  *
  * ## Why there is no longer a list of projects on this screen
@@ -79,7 +79,7 @@ export function NoEpic({ project, standings }: { project: string | null; standin
  * The store moved into the projects, so there is nothing left to enumerate: this
  * process is handed one project at a time and forgets it. The receipt is gone
  * and the question it answered is answered better — the file is
- * `.kehikot/learning/questions.json` in the folder you were working in, and `ls` finds it
+ * `.kehikot/learning/` in the folder you were working in, and `ls` finds it
  * without asking anybody.
  */
 export function NoProject({ unhosted }: { unhosted: boolean }) {
@@ -97,7 +97,7 @@ export function NoProject({ unhosted }: { unhosted: boolean }) {
       </p>
       <p className="text-[0.65rem] leading-4 text-muted-foreground">
         Each project keeps its own in{' '}
-        <code className="[overflow-wrap:anywhere]">.kehikot/learning/questions.json</code>.
+        <code className="[overflow-wrap:anywhere]">.kehikot/learning/</code>.
       </p>
     </section>
   )

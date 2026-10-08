@@ -212,7 +212,7 @@ async function body(request: IncomingMessage): Promise<Record<string, unknown> |
  * `manifest.ts`, and it is FIRST in the plugin list because it has to claim one
  * before anything else in this config asks. A free 7950 is taken in silence;
  * this module already answering there ends the start cleanly rather than making
- * a second writer on one `questions.json`; anything else is a loud move to the
+ * a second writer on one project’s files; anything else is a loud move to the
  * next free port with the registration rewritten to the port the server ACTUALLY
  * bound, read off `httpServer.address()` after `listening` rather than off what
  * was asked for.

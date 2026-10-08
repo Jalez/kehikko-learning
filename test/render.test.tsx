@@ -37,28 +37,27 @@ const WHY = 'Because the manifest is the only half a host reads.'
 /** A question as the server would send it BEFORE the reader has answered. */
 const unanswered: Asked = {
   id: 'a1b2c3d4',
-  epic: 'modes-are-modules',
   question: 'What does a module’s manifest settle?',
   options: [
     'What colour the container is painted',
     'Who owns the repository the module lives in',
     'Which tab the page gets, and what the module would like to be allowed to ask',
   ],
-  anchor: 'holds',
-  passage: {
+  source: {
+    label: '1',
     path: 'data/papers/modes-are-modules/chapters/bridge.tex',
-    start: 1024,
-    end: 1180,
     quote: 'The manifest is the smallest half of this program and the only half a host ever reads.',
+    status: 'holds',
+    at: { from: 1024, to: 1180, line: 31, endLine: 33 },
+    count: 1,
   },
-  by: 'claude',
-  viaMcp: true,
-  at: '2026-08-30T10:00:00.000Z',
   attempts: [],
   /* Null, because the server did not send them. This is the whole mechanism. */
   answer: null,
   why: null,
 }
+
+const SOURCE = unanswered.source!
 
 /** The same question after the reader chose wrongly. The key has now been earned. */
 const answered: Asked = {
@@ -87,7 +86,7 @@ describe('the answer is not in the page before it is asked for', () => {
     /* And the classes on the three options are identical, so there is no
        styling channel giving it away either. A test that only checked
        attributes would pass on a version that coloured the right one green. */
-    const buttons = [...container.querySelectorAll('button')]
+    const buttons = [...container.querySelectorAll('button[data-slot="button"]')]
     expect(buttons).toHaveLength(3)
     const classes = new Set(buttons.map((button) => button.className))
     expect(classes.size).toBe(1)
@@ -128,17 +127,18 @@ describe('the answer is not in the page before it is asked for', () => {
   })
 })
 
-describe('the passage', () => {
-  test('is shown, since it is the module’s whole claim', () => {
-    render(<QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />)
-    expect(screen.getByText(unanswered.passage.path)).toBeTruthy()
-    expect(screen.getByText(unanswered.passage.quote)).toBeTruthy()
-    expect(screen.getByText(/bytes/)).toBeTruthy()
-  })
-
-  test('says who wrote the question and that it came through the door', () => {
-    render(<QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />)
-    expect(screen.getByText(/written by claude, over MCP/)).toBeTruthy()
+describe('the source', () => {
+  test('is named on the card, and its passage is NOT drawn there: it is a line in the file and a press away in the paper', () => {
+    const { container } = render(
+      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />,
+    )
+    expect(screen.getByText(SOURCE.path)).toBeTruthy()
+    expect(container.textContent).not.toContain(SOURCE.quote)
+    expect(container.querySelector('details, blockquote, [role="dialog"]')).toBeNull()
+    /* Where it is and what it says are one hover away, the way a slide's marker says them. */
+    const title = container.querySelector('[data-passage]')?.getAttribute('title')
+    expect(title).toContain(`${SOURCE.path}, lines 31–33`)
+    expect(title).toContain(SOURCE.quote)
   })
 })
 
@@ -160,16 +160,16 @@ describe('what points the canvas at a passage', () => {
     )
     const control = container.querySelector('[data-passage]')
     expect(control?.textContent).toBe('bridge.tex')
-    expect(control?.getAttribute('data-source')).toBe(unanswered.passage.path)
+    expect(control?.getAttribute('data-source')).toBe(SOURCE.path)
     /* And the whole path is one hover away at the size that shortened it. */
-    expect(control?.getAttribute('title')).toContain(unanswered.passage.path)
+    expect(control?.getAttribute('title')).toContain(SOURCE.path)
   })
 
   test('the whole path where there is width for it', () => {
     const { container } = render(
       <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />,
     )
-    expect(container.querySelector('[data-passage]')?.textContent).toBe(unanswered.passage.path)
+    expect(container.querySelector('[data-passage]')?.textContent).toBe(SOURCE.path)
   })
 
   test('pressing the source points, once', () => {
@@ -206,26 +206,17 @@ describe('what points the canvas at a passage', () => {
     expect(pointed).toBe(0)
   })
 
-  test('closing the disclosure points at nothing — only the press that asks to be shown does', () => {
-    /* A `<details>` toggles in both directions and closing one is not a request
-       to be shown anything. This is also why the handler is on the summary's
-       click rather than on `onToggle`: a browser expanding a details to show a
-       find-in-page match is not a person pressing it. */
-    let pointed = 0
-    const { container } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => (pointed += 1)} pointed={false} busy={false} room={ROOMY} />,
-    )
-    const details = container.querySelector('details')!
-    const summary = container.querySelector('[data-passage="summary"]')!
-    fireEvent.click(summary)
-    expect(pointed).toBe(1)
-    /* happy-dom does not toggle a details from a synthetic summary click, so the
-       open state is driven the way a browser would drive it before the second
-       press is made. */
-    details.setAttribute('open', '')
-    fireEvent(details, new Event('toggle'))
-    fireEvent.click(summary)
-    expect(pointed).toBe(1)
+  test('the source is a press at every size, and each press points once', () => {
+    for (const room of [ROOMY, TIGHT]) {
+      let pointed = 0
+      const { container, unmount } = render(
+        <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => (pointed += 1)} pointed={false} busy={false} room={room} />,
+      )
+      fireEvent.click(container.querySelector('[data-passage="button"]')!)
+      fireEvent.click(container.querySelector('[data-passage="button"]')!)
+      expect(pointed).toBe(2)
+      unmount()
+    }
   })
 
   test('the card the canvas is pointed at is marked, and says so without relying on colour', () => {
@@ -317,7 +308,7 @@ describe('the screens that are not errors', () => {
        cannot know. */
     const { container } = render(<NoProject unhosted={false} />)
     expect(screen.getByText('This canvas did not say where it is')).toBeTruthy()
-    expect(screen.getByText('.kehikot/learning/questions.json')).toBeTruthy()
+    expect(screen.getByText('.kehikot/learning/')).toBeTruthy()
     expect(container.querySelectorAll('button')).toHaveLength(0)
   })
 
@@ -358,8 +349,8 @@ describe('the layout at 220 pixels', () => {
     const long = [
       unanswered.question,
       ...unanswered.options,
-      unanswered.passage.path,
-      unanswered.passage.quote,
+      SOURCE.path,
+      SOURCE.quote,
       WHY,
     ]
     for (const element of container.querySelectorAll('*')) {
@@ -386,48 +377,6 @@ describe('what folds away when the box is short', () => {
    * everything folded is still reachable. A fold that loses a fact is not a
    * smaller card, it is a card missing a fact.
    */
-
-  test('the byline stops being a row and becomes the card’s title', () => {
-    const { container: roomy } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />,
-    )
-    expect(roomy.textContent).toContain('written by claude, over MCP')
-    cleanup()
-
-    const { container: tight } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={TIGHT} />,
-    )
-    expect(tight.textContent).not.toContain('written by claude')
-    expect(tight.querySelector('[data-question]')?.getAttribute('title')).toBe('written by claude, over MCP')
-  })
-
-  test('the passage becomes a press that fills the frame, and the quote is still reachable', () => {
-    const { container } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={TIGHT} />,
-    )
-    /* Closed, the quote is not in the document at all — which is the point: the
-       card is genuinely shorter, not merely clipped. */
-    expect(container.querySelector('details')).toBeNull()
-    expect(container.textContent).not.toContain(unanswered.passage.quote)
-
-    fireEvent.click(screen.getByText('bridge.tex'))
-    const panel = document.querySelector('[data-passage-panel="open"]')
-    expect(panel).toBeTruthy()
-    expect(panel?.getAttribute('role')).toBe('dialog')
-    expect(panel?.textContent).toContain(unanswered.passage.quote)
-    expect(panel?.textContent).toContain(unanswered.passage.path)
-
-    fireEvent.click(screen.getByText('Close'))
-    expect(document.querySelector('[data-passage-panel="open"]')).toBeNull()
-  })
-
-  test('where there is height, the passage is still a real details element', () => {
-    const { container } = render(
-      <QuestionCard question={unanswered} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />,
-    )
-    expect(container.querySelector('details')).toBeTruthy()
-    expect(container.querySelector('[data-passage-panel]')).toBeNull()
-  })
 
   test('an UNanswered card never folds an option — the options ARE the question', () => {
     const { container } = render(
@@ -745,45 +694,62 @@ describe('the count the host cannot draw', () => {
   })
 })
 
-describe('a question whose document is not in the project', () => {
-  /* The eighteen. Their paper moved inside the project an hour after they were
-     written, and the card used to draw the same press as every other — a press
-     that pointed the canvas at a file that does not exist, with nothing on
-     screen saying why nothing reacted. See `quiz/where.ts`. */
-  const missing: Asked = { ...unanswered, id: 'e5f6a7b8', anchor: 'missing' }
+describe('a question whose source cannot be found', () => {
+  /* Its file moved, or the paper was edited under it, or it names no source.
+     The card used to draw the same press as every other — a press that pointed
+     the canvas at nothing, with nothing on screen saying why nothing reacted. */
+  const missing: Asked = { ...unanswered, id: 'e5f6a7b8', source: { ...SOURCE, status: 'unreadable', at: null, count: 0 } }
+  const adrift: Asked = { ...unanswered, id: 'e5f6a7b9', source: { ...SOURCE, status: 'adrift', at: null, count: 0 } }
 
   test('says so on the card, in words, and pressing it points at nothing — at every rung', () => {
-    /* Three drawings of the source, and every one of them has to say it: the
-       overlay press in a tight list, the details summary in a roomy one, and
-       the caption at the paged rungs. The quote stays reachable where it was —
-       it is what the question is about — but no press leaves the frame. */
-    for (const [room, extra] of [
-      [TIGHT, {}],
-      [ROOMY, {}],
-      [TIGHT, { rung: 'part' as const, part: 'options' as const, header: 2 }],
+    for (const [question, said, why] of [
+      [missing, 'not in this project', 'cannot be read inside this project'],
+      [adrift, 'the paper changed', 'no longer has these words'],
     ] as const) {
-      let pointed = 0
-      const { container } = render(
-        <QuestionCard
-          question={missing}
-          onAnswer={() => {}}
-          onPoint={() => (pointed += 1)}
-          pointed={false}
-          busy={false}
-          room={room}
-          {...extra}
-        />,
-      )
-      const control = container.querySelector('[data-passage]')
-      expect(control?.getAttribute('data-passage')).toBe('missing')
-      expect(control?.textContent).toContain('not in this project')
-      expect(control?.getAttribute('title')).toContain('the anchor does not resolve')
-      /* The path is still a fact about the question, and still on the element. */
-      expect(control?.getAttribute('data-source')).toBe(missing.passage.path)
-      fireEvent.click(control!)
-      expect(pointed).toBe(0)
-      cleanup()
+      for (const [room, extra] of [
+        [TIGHT, {}],
+        [ROOMY, {}],
+        [TIGHT, { rung: 'part' as const, part: 'options' as const, header: 2 }],
+      ] as const) {
+        let pointed = 0
+        const { container } = render(
+          <QuestionCard question={question} onAnswer={() => {}} onPoint={() => (pointed += 1)} pointed={false} busy={false} room={room} {...extra} />,
+        )
+        const control = container.querySelector('[data-passage]')
+        expect(control?.getAttribute('data-passage')).toBe('missing')
+        expect(control?.getAttribute('data-status')).toBe(question.source!.status)
+        expect(control?.textContent).toContain(said)
+        expect(control?.getAttribute('title')).toContain(why)
+        /* The path is still a fact about the question, and still on the element. */
+        expect(control?.getAttribute('data-source')).toBe(SOURCE.path)
+        fireEvent.click(control!)
+        expect(pointed).toBe(0)
+        cleanup()
+      }
     }
+  })
+
+  test('a question that names no source says that, and is not a press either', () => {
+    const { container } = render(
+      <QuestionCard question={{ ...unanswered, source: null }} onAnswer={() => {}} onPoint={() => {}} pointed={false} busy={false} room={ROOMY} />,
+    )
+    const control = container.querySelector('[data-passage]')
+    expect(control?.tagName).toBe('SPAN')
+    expect(control?.textContent).toBe('no source')
+    expect(control?.getAttribute('title')).toContain('names no source')
+  })
+
+  test('words found more than once still point — at the first — and say so', () => {
+    let pointed = 0
+    const twice: Asked = { ...unanswered, source: { ...SOURCE, status: 'ambiguous', count: 3 } }
+    const { container } = render(
+      <QuestionCard question={twice} onAnswer={() => {}} onPoint={() => (pointed += 1)} pointed={false} busy={false} room={ROOMY} />,
+    )
+    const control = container.querySelector('[data-passage="button"]')!
+    expect(control.textContent).toContain('quoted more than once')
+    expect(control.getAttribute('title')).toContain('occur 3 times')
+    fireEvent.click(control)
+    expect(pointed).toBe(1)
   })
 
   test('is still listed, still answerable, and never hidden', () => {
@@ -824,7 +790,7 @@ describe('the count the host cannot draw, at the paged rungs', () => {
         busy={false}
         room={TIGHT}
         ladder={{ rung: 'part', available: 200, heights: [200], snap: false, header: 0 }}
-        parts={['question', 'options', 'quote']}
+        parts={['question', 'options']}
         part="options"
       />,
     )

@@ -1,6 +1,6 @@
 import type { Passage as Pointing } from 'kehikot-module-protocol'
 
-import type { Passage } from '../../quiz/types.ts'
+import type { Cited } from '../../quiz/types.ts'
 
 /**
  * A question's anchor, in the spelling the canvas uses — and the reverse, which
@@ -88,11 +88,23 @@ import type { Passage } from '../../quiz/types.ts'
  * If those two numbers ever part, the fix is at the store, where the side that
  * knows it shortened something is the side that can say so.
  */
-export function pointingAt(projectPath: string | null, passage: Passage): Pointing | null {
-  if (!projectPath) return null
+export function pointingAt(projectPath: string | null, source: Cited | null): Pointing | null {
+  const path = documentOf(projectPath, source)
+  if (path === null || !source?.at) return null
+  return { path, page: null, section: null, from: source.at.from, to: source.at.to, quoted: source.quote.slice(0, 2000) }
+}
+
+/**
+ * The document a question is about, in the canvas's spelling — whether or not
+ * its words were found there. Null with no project, no source, or a file that
+ * cannot be read inside the project: a question about a paper that has since
+ * been edited is still about that paper, and one about a file that is gone is
+ * about nothing a canvas can show.
+ */
+export function documentOf(projectPath: string | null, source: Cited | null): string | null {
+  if (!projectPath || !source || source.status === 'unreadable') return null
   const root = projectPath.endsWith('/') ? projectPath.slice(0, -1) : projectPath
-  const path = passage.path.startsWith('/') ? passage.path : `${root}/${passage.path}`
-  return { path, page: null, section: null, from: passage.start, to: passage.end, quoted: passage.quote }
+  return `${root}/${source.path}`
 }
 
 /**
@@ -112,7 +124,7 @@ export function keyOf(pointing: Pick<Pointing, 'path' | 'page' | 'from' | 'to'>)
 /** As much of a question as says where it came from. */
 export interface Anchored {
   id: string
-  passage: Passage
+  source: Cited | null
 }
 
 /**
@@ -168,7 +180,7 @@ export function pointedQuestion(
   if (!live) return null
   const where = keyOf(live)
   for (const question of questions) {
-    const mine = pointingAt(projectPath, question.passage)
+    const mine = pointingAt(projectPath, question.source)
     if (mine && keyOf(mine) === where) return question.id
   }
   return null

@@ -43,7 +43,7 @@ export const PREFERRED_PORT = 7950
  * - **`storage: true` — declared.** A host
  *   frames a module WITHOUT `allow-same-origin` unless its manifest declares
  *   storage, which puts the page on an opaque origin. This module owns data and
- *   takes writes: the questions, the passages they are anchored to, and every
+ *   takes writes: the questions, the passages they cite, and every
  *   answer somebody gave. Opaque, that combination has a hole in it — an opaque
  *   page's fetches to its own `/api` are cross-origin, so the server would have
  *   to answer every origin with permissive CORS, and permissive CORS means any
@@ -75,11 +75,11 @@ export const PREFERRED_PORT = 7950
  *
  *   It is a sentence this module cannot answer no to, because the fact it asks
  *   for is one this module already holds and nothing else does. Every question
- *   here is ANCHORED — a document, a byte range, and the source those bytes
- *   held — and `add_quiz` refuses one that is not. That anchor IS a passage.
- *   Refusing the capability would leave a container that can tell you a question
- *   was written about `chapters/agents.tex` at bytes 8140–8402, and cannot show
- *   you the sentence.
+ *   here CITES ITS SOURCE — a document and the exact words in it, found again
+ *   on every read the way a slide's citation is — and `add_quiz` refuses one
+ *   that does not. That source IS a passage. Refusing the capability would
+ *   leave a container that can tell you a question was written about lines
+ *   31–33 of `chapters/agents.tex`, and cannot show you the sentence.
  *
  *   The sibling notes module reached the same conclusion from the same place,
  *   and its manifest carries the longer version of the argument. What both keep
@@ -164,7 +164,7 @@ export const PREFERRED_PORT = 7950
  *     container answers that it has nothing to walk to, because a question is
  *     not a place. Walking a READER to a question's passage is what somebody
  *     wants from this module, and `view.goto` cannot carry it: it names an epic,
- *     a step or a tracker ref, and a question is anchored to a byte range in a
+ *     a step or a tracker ref, and a question rests on some words in a
  *     document. The capability that could not carry the ask is not declared for
  *     the feature it could not have delivered. `passage:set` is what carried it.
  *   - **`stage:report` — no.** Saying where work stands belongs to whoever is
@@ -253,8 +253,8 @@ export const MANIFEST: Manifest = manifestSchema.parse({
   /* Where a host files this module in its list, most fitting first. */
   tags: ['reading'],
   summary:
-    'Questions anchored to a passage of a paper — the document, the byte range and the quoted source — with the '
-    + 'options, and what you answered. An agent writes them; a person answers them.',
+    'Questions about passages of a paper, each citing the exact words, kept as one Markdown file per epic that you '
+    + 'can edit. An agent writes them; a person answers them.',
   /**
    * What an agent should do about this module, given that it is here.
    *
@@ -272,7 +272,7 @@ export const MANIFEST: Manifest = manifestSchema.parse({
   guidance:
     'If you have just explained something from a paper on this canvas, the questions that would check whether it '
     + 'landed belong here — write them with `add_quiz` before you move on, while you still have the passage open. '
-    + 'Every question is anchored: give the document path, the byte range and the exact quoted source, so that what '
+    + 'Every question cites its source: give the document path and the exact quoted words, so that what '
     + 'the question is about is a fact and not a claim. Give the options and which one is right, and say in the '
     + 'explanation why the others are wrong. `quizzes` shows what has already been asked about an epic and how it '
     + 'was answered — read it first, because asking the same thing twice teaches nothing, and read it afterwards, '

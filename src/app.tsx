@@ -48,6 +48,7 @@ export function App() {
   const [questions, setQuestions] = useState<Asked[]>([])
   const [standings, setStandings] = useState<Standing[]>([])
   const [trouble, setTrouble] = useState<string | null>(null)
+  const [file, setFile] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   /*
@@ -289,10 +290,7 @@ export function App() {
       visible.map((question) => ({
         question: question.question,
         options: question.options,
-        source: sourceLabel(question.passage.path, fits.source),
-        path: question.passage.path,
-        anchor: question.anchor,
-        quote: question.passage.quote,
+        source: question.source ? sourceLabel(question.source.path, fits.source) : 'no source',
         why: question.why,
         answered: question.attempts.length > 0,
       })),
@@ -349,6 +347,7 @@ export function App() {
     if (standing.current.project !== where_ || standing.current.epic !== which) return
     setStandings(opened.standings)
     setQuestions(opened.questions)
+    setFile(opened.file)
     setTrouble(opened.trouble)
   }, [])
 
@@ -378,11 +377,11 @@ export function App() {
    */
   const onAnswer = useCallback(
     async (id: string, chose: number) => {
-      if (!projectPath) return
+      if (!projectPath || !epic) return
       setBusy(true)
       writing.current = true
       try {
-        const out = await answer(projectPath, id, chose)
+        const out = await answer(projectPath, epic, id, chose)
         if ('error' in out) {
           setTrouble(out.error)
           return
@@ -412,7 +411,7 @@ export function App() {
         void refresh()
       }
     },
-    [projectPath, refresh],
+    [projectPath, epic, refresh],
   )
 
   /**
@@ -440,8 +439,7 @@ export function App() {
       /* A missing document is not pointed at. The card draws no press for it
          — `view/quiz.tsx` — and this is the same rule from the other side,
          because "unreachable" is a property of a layout somebody may change. */
-      if (question.anchor === 'missing') return
-      const where_ = pointingAt(projectPath, question.passage)
+      const where_ = pointingAt(projectPath, question.source)
       if (!where_) return
       point(where_)
     },
@@ -580,6 +578,7 @@ export function App() {
     ) : (
       <QuizView
         epic={epic}
+        file={file}
         questions={visible}
         /* What the narrowing hid, in this module's own words. Drawn in the page
            because the host cannot count rows it does not render. */
