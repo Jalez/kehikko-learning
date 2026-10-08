@@ -1,137 +1,59 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
 
-import { kehikotDir, moduleDir, moduleFile, withKehikotIgnored, within } from 'kehikot-module-protocol'
+import { kehikotDir, moduleDir, withKehikotIgnored, within } from 'kehikot-module-protocol'
 
 import { ID } from './manifest.ts'
 
 /**
- * Where this app keeps what is its own — which is inside the project, now, and
- * not beside this program.
- *
- * ## What moved, and why the user asked for it
- *
- * There used to be a `data/` directory next to this app holding one
- * `questions.json` for every project at once, keyed by project path. The user's
- * sentence retired it:
- *
- * > "Each of the modules should hold their data inside the project itself,
- * > mostly as text files inside a kehikko-folder (or json) … That way
- * > everything is transparent etc and easily usable by others in the project."
- *
- * and a second one gave it its shape:
- *
- * > "I think it'd be best if each module has their own folder inside the
- * > .kehikot folder."
- *
- * So: `<projectPath>/.kehikot/learning/questions.json`. The folder name, the
- * derivation of `learning` from this module's id, and the join are all
- * `kehikot-module-protocol`'s, deliberately, because four modules answering
- * "where does my data live" separately is four answers and the disagreement has
- * no symptom — every module starts, every module saves, and a person finds half
- * their work in one folder and half in another. Nothing in this file spells
- * either folder: `moduleDir` is imported, and this module's id comes from
- * `manifest.ts` rather than being written out a second time.
- *
- * A folder of this app's own rather than a file among everybody else's, because
- * it means the next file this module needs does not have to invent a name that
- * says whose it is, and because `rm -r .kehikot/learning` is a sentence a person
- * can say about their own project.
- *
- * ## The path is the partition, so nothing here is keyed by project
- *
- * The store this opens is already one project's. That REPLACES the outer
- * `projects` record that used to sit at the top of `questions.json` rather than
- * sitting on top of it, and the shape it leaves behind is smaller: a store that
- * has never heard of a project has no way to show one project's questions under
- * another's name. The failure the old nesting existed to prevent — two projects
- * both having an epic called `bridge`, which is the expected collision and not a
- * hypothetical one — is now prevented by the file being somewhere else entirely.
- *
- * The cost is named rather than hidden: this app can no longer enumerate the
- * projects it holds questions for, because it holds none of them. `quizzes` used
- * to answer "which projects hold questions" and cannot any more. That answer is
- * also no longer needed, which is the good half of the trade — the questions are
- * in the project, in a folder called `.kehikot/learning`, in plain sight, and a
- * person looking for them can use `ls`.
+ * Where this app keeps what is its own: inside the project it is about, in
+ * `<project>/.kehikot/learning/`. One Markdown file per epic holds that epic's
+ * questions (`<epic>.md`, see `quiz/format.ts`), and `answers.json` beside them
+ * holds what a reader answered. The folder name and the join are
+ * `kehikot-module-protocol`'s, so every module answers "where does my data
+ * live" the same way.
  *
  * ## Null is a place a person can be, and never a guess
  *
- * `projectPath` is nullable on the wire — no project open, or a host older than
- * protocol 0.8, or a host with no filesystem of its own that knows a project's
- * name and has no folder to point at. This answers `null` for it and every
- * caller has to say so on screen.
+ * `projectPath` is nullable on the wire. This answers `null` for it and every
+ * caller says so on screen. It does not fall back to `process.cwd()` or to this
+ * app's own folder: a silently wrong location is worse than a loud absent one.
  *
- * It does not fall back to `process.cwd()`, to this app's own folder, or to
- * anything else, and the reason is recorded in this file's own history. The
- * version this replaces resolved its directory with `import.meta.dir`, which
- * inside a bundled Vite config is `node_modules/.vite-temp/` — and under Node is
- * `undefined`. Had it merely been the wrong string rather than a throw, this app
- * would have started cleanly, found no `questions.json`, reported that nobody
- * had written a question, and put a new store into a directory Vite deletes.
- * That is every question and every answer gone, with a page that looked fine. A
- * silently wrong location is worse than a loud absent one, and `LEARNING_DATA`
- * is gone with the directory it named: a variable that moves the store would now
- * be a second answer to a question the host already answers.
+ * ## The fence
  *
- * ## The fence, which matters more here than it did before
- *
- * This app is about to write files into a path it was handed OVER THE WIRE — by
- * a host through `kehikot.context`, or by an agent through the MCP door. So the
- * path is resolved with `realpathSync` and the folder it lands in is checked to
- * be under the project it claims to be under, AFTER resolution, because a
- * `.kehikot` that is a symlink to somewhere else is exactly the case a string
- * comparison misses. Resolving this module's own folder covers the whole chain:
- * a link at either level lands outside the project and is refused. `within()` is
- * the comparison and not the check; see its note in the protocol package.
- *
- * The file NAME is a constant in this file and never a string from a request.
- * There is no door here that takes a filename, and `moduleFile` throws rather
- * than returns null if one ever tries.
+ * The path arrives over the wire — from a host, or from an agent through the
+ * MCP door — so it is resolved with `realpathSync` and every level under it is
+ * checked to be inside the project AFTER resolution: a `.kehikot` that is a
+ * symlink to somewhere else is exactly the case a string comparison misses.
+ * A file's name is a constant or an epic slug that has been checked for shape;
+ * no door here takes a filename.
  */
-
-/** This app's own file, inside this app's own folder. A constant, never an argument. */
-export const FILE = 'questions'
 
 /**
- * The one file, or a sentence about why there is not one.
+ * One file in this module's folder, or a sentence about why there is not one.
  *
- * Three answers, and they are three because they mean three different things:
- *
- * - `{ path, trouble: null }` — here it is.
- * - `{ path: null, trouble: null }` — there is no project open. An ordinary
- *   state and not a fault; the page says so and nothing is written.
- * - `{ path: null, trouble }` — a project was named and this app will not write
- *   under it. The sentence is for a person, and it says what was refused.
- *
- * Collapsing the middle two would be the bug worth guarding against: an empty
- * store returned for a project that could not be opened is a store the next
- * write flattens a real file with.
+ * - `{ path, trouble: null }` — here it is (it may not exist yet).
+ * - `{ path: null, trouble: null }` — there is no project open. Not a fault.
+ * - `{ path: null, trouble }` — a project was named and this app will not
+ *   read or write under it. The sentence is for a person.
  *
  * Reading does not create anything. `makeDir()` is what creates, and it is
- * called on the write path only, so opening a container against a project never
- * leaves a folder in somebody's repository they did not ask for.
+ * called on the write path only.
  */
-export function dataFile(projectPath: string | null | undefined): { path: string | null; trouble: string | null } {
+export function dataFile(projectPath: string | null | undefined, name: string): { path: string | null; trouble: string | null } {
   const root = projectRoot(projectPath)
   if (root === null) return { path: null, trouble: null }
   if ('trouble' in root) return { path: null, trouble: root.trouble }
 
-  /* Both levels, and both are checked because either can be the link.
-     `.kehikot` may point out of the project while this module's folder inside it
-     does not exist yet, in which case resolving only the inner one finds nothing
-     to resolve and answers as if all were well. Only what exists can be resolved
-     and only what exists can escape, so each is checked if it is there — and
-     `makeDir` checks again AFTER creating, because a folder that was not there a
-     moment ago can be a symlink by the time it is. */
-  for (const level of [kehikotDir(root.path), moduleDir(root.path, ID)]) {
+  /* Every level, because any of them can be the link. Only what exists can be
+     resolved and only what exists can escape; `makeDir` checks again AFTER
+     creating. */
+  const dir = moduleDir(root.path, ID)
+  if (dir === null) return { path: null, trouble: null }
+  const path = join(dir, name)
+  for (const level of [kehikotDir(root.path), dir, path]) {
     if (level === null || !existsSync(level)) continue
     const escaped = escapes(root.path, level)
-    if (escaped) return { path: null, trouble: escaped }
-  }
-  const path = moduleFile(root.path, ID, FILE)
-  if (path !== null && existsSync(path)) {
-    const escaped = escapes(root.path, path)
     if (escaped) return { path: null, trouble: escaped }
   }
   return { path, trouble: null }
@@ -139,11 +61,8 @@ export function dataFile(projectPath: string | null | undefined): { path: string
 
 /**
  * Make this module's folder, and tell the project's `.gitignore` about it —
- * once.
- *
- * Called before a write and not before a read, so that looking at a project
- * never changes it. A reader who opens a container against a repository and writes
- * nothing leaves no trace of having done so.
+ * once. Called before a write and not before a read, so that looking at a
+ * project never changes it.
  */
 export function makeDir(projectPath: string | null | undefined): { dir: string | null; trouble: string | null } {
   const root = projectRoot(projectPath)
@@ -154,61 +73,64 @@ export function makeDir(projectPath: string | null | undefined): { dir: string |
   if (dir === null) return { dir: null, trouble: null }
   const fresh = !existsSync(dir)
   mkdirSync(dir, { recursive: true })
-  /* After the mkdir as well as before it. `existsSync` said nothing was there
-     and `mkdirSync` is happy to have followed a symlink somebody put there in
-     between; the only honest moment to ask where a directory actually is, is
-     once it is there. */
+  /* After the mkdir as well as before it: the only honest moment to ask where
+     a directory actually is, is once it is there. */
   const escaped = escapes(root.path, dir)
   if (escaped) return { dir: null, trouble: escaped }
 
   /* Only on the run that created it. A project that has removed the ignore rule
-     has said something, and a program that re-added it on every save would be
-     overruling them every few seconds. */
+     has said something, and re-adding it on every save would overrule them. */
   if (fresh) ignore(root.path)
   return { dir, trouble: null }
+}
+
+/** Written to a temporary file and renamed, so a crash never leaves half a file. */
+export function put(file: string, text: string): void {
+  const temporary = `${file}.${process.pid}.tmp`
+  writeFileSync(temporary, text)
+  renameSync(temporary, file)
+}
+
+/** The largest file a quote is looked for in. A paper's chapter is far smaller. */
+const MAX_CITED_BYTES = 5_000_000
+
+/**
+ * A project file's text, for finding a quote in, or null when it cannot be
+ * read: missing, not a file, too large, or resolving outside the project. The
+ * path is a quiz file's, so it is a stranger's string: confined like our own.
+ * (Slides' `citedText`, copied.)
+ */
+export function citedText(root: string, path: string): string | null {
+  if (!path || isAbsolute(path) || path.replace(/\\/g, '/').split('/').includes('..')) return null
+  const file = join(root, path)
+  try {
+    if (escapes(root, file)) return null
+    const stat = statSync(file)
+    if (!stat.isFile() || stat.size > MAX_CITED_BYTES) return null
+    return readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
 }
 
 /**
  * Append the ignore rule to the project's `.gitignore`, if the project is under
  * version control at all.
  *
- * ## Why it looks UP for the `.git`, and still writes at the project root
+ * It looks UP for the `.git` — a project several directories inside a
+ * repository is still under version control — and still writes at the project
+ * root, because git honours a `.gitignore` in any directory and the rule
+ * belongs beside the folder it is about. A project with no `.git` anywhere
+ * above it gets nothing.
  *
- * The first version of this asked whether `<project>/.git` existed and did
- * nothing otherwise. A real project broke it: the thesis at
- * `…/CS-DEGREE/05_drafts/thesis_latex` has no `.git` of its own and sits several
- * directories inside the CS-DEGREE repository. Under that rule it got no ignore
- * line at all, and a `.kehikot/` full of somebody's questions would have turned
- * up in their next `git status` with nothing there to explain it.
- *
- * So the search walks up. What it does NOT do is write at the repository root:
- * git honours a `.gitignore` in any directory, applied to that directory's
- * subtree, so the rule belongs beside the folder it is about. Writing at the
- * repository root would put a line concerning `05_drafts/thesis_latex` into a
- * file shared by everything else in that repository — a bigger edit to somebody
- * else's project to achieve the same thing.
- *
- * A project with no `.git` anywhere above it gets nothing. Creating an ignore
- * file where there is nothing to ignore for would be this program deciding how
- * somebody keeps their folder.
- *
- * The text and the idempotence are `withKehikotIgnored`'s — append-only, never a
- * rewrite, because this file is in the user's own repository and shows up in
- * their next diff under their name. The rule covers the whole `.kehikot/` rather
- * than this module's folder inside it: the modules are all the same program's
- * working material, and a per-module rule would need a new line every time a
- * module was added, which is a rule that goes quietly stale in somebody else's
- * repository.
- *
- * Every failure here is swallowed on purpose. Not being able to write somebody's
- * `.gitignore` is not a reason to refuse to save their questions.
+ * The text and the idempotence are `withKehikotIgnored`'s: append-only, never a
+ * rewrite. Every failure here is swallowed on purpose — not being able to write
+ * somebody's `.gitignore` is not a reason to refuse to save their questions.
  */
 function ignore(root: string): void {
   try {
     if (!underGit(root)) return
     const path = join(root, '.gitignore')
-    /* A project with no `.gitignore` of its own gets one holding only this,
-       which is not editing somebody's file. */
     const before = existsSync(path) ? readFileSync(path, 'utf8') : ''
     const after = withKehikotIgnored(before)
     if (after !== before) writeFileSync(path, after)
@@ -219,15 +141,8 @@ function ignore(root: string): void {
 
 /**
  * Is this folder inside a git repository — here, or anywhere above it?
- *
- * `.git` is tested with `existsSync` rather than as a directory because a git
- * worktree's `.git` is a FILE pointing at the real one, and a check that
- * insisted on a directory would decide every worktree in this workspace was not
- * under version control.
- *
- * The walk stops at the filesystem root, which `dirname` reports by returning
- * its argument unchanged. That is the termination condition rather than a depth
- * count, because a count is a guess about how deep somebody's directories go.
+ * `existsSync` rather than a directory test, because a worktree's `.git` is a
+ * FILE pointing at the real one.
  */
 function underGit(from: string): boolean {
   let at = from
@@ -241,14 +156,8 @@ function underGit(from: string): boolean {
 
 /**
  * The project root as this program uses it — resolved, a real directory — or
- * null when there is no project or the path was refused.
- *
- * The refusal itself is `dataFile`'s to report; this is for the callers that
- * already have the store open and need the root for one more thing, which is
- * saying where a question's document is. `quiz/where.ts` joins stored paths
- * onto it and checks them against the disk, and it has to be THIS spelling —
- * the resolved one — because that is the spelling every path under it was
- * relativised against on the way in.
+ * null when there is no project or the path was refused. It is the spelling
+ * every path in a quiz file is relative to.
  */
 export function rootOf(projectPath: string | null | undefined): string | null {
   const root = projectRoot(projectPath)

@@ -82,26 +82,6 @@ export interface Room {
    */
   snap: boolean
   /**
-   * Who wrote the question, and whether it came through the MCP door.
-   *
-   * A whole row, at the bottom of every card, for a fact almost nobody is
-   * looking for. Folded into the card's `title` when rows are scarce: still in
-   * the document, still readable on hover, no longer costing 16 pixels twelve
-   * times over.
-   */
-  byline: 'row' | 'title'
-  /**
-   * The passage a question is anchored to.
-   *
-   * Inline it is a `<details>` that pushes the rest of the card down when opened
-   * — fine when three cards fit on screen, useless in a 300-tall box where
-   * opening it scrolls the options you were reading off the top and leaves you
-   * somewhere you did not ask to be. `overlay` gives it the whole frame instead:
-   * one paragraph of somebody's LaTeX, at the width the frame has, and a press
-   * to put it back.
-   */
-  passage: 'inline' | 'overlay'
-  /**
    * On an answered card, the options that were neither chosen nor correct.
    *
    * They are why the question was hard and they are worth keeping — but on a
@@ -119,12 +99,12 @@ export interface Room {
    * press it, so this is never absent — the only choice is how long a name it
    * gets. `path` is the whole project-relative path; `file` is the last segment
    * of it, which is never wrong and is one line at every width this module is
-   * given. The full path is in the control's `title` and inside the passage
-   * either way, so `file` hides nothing — it defers it by one hover.
+   * given. The full path is in the control's `title` either way, with the
+   * lines and the quoted words, so `file` hides nothing — it defers it by one
+   * hover.
    *
    * Width and not height, unlike everything above it: this costs no row that was
-   * not already there. The control it labels used to read "the passage this is
-   * about" and occupied exactly the same line.
+   * not already there.
    */
   source: 'path' | 'file'
 }
@@ -138,12 +118,9 @@ export interface Room {
 const SNAP_BELOW = 520
 
 /**
- * Below this, a card and its opened passage cannot both be on screen at any
- * width this module gets. A card is 204px at 460 wide and 303 at 220; the
- * passage adds roughly 70 more when it is opened. 274 fits in a 360-tall box and
- * 393 does not fit in a 300-tall one, so the line is drawn between them —
- * everything that costs a row and is not the question, the options or the
- * verdict folds below it.
+ * Below this, one card is most of the box at any width this module gets — it
+ * is 204px at 460 wide and 303 at 220 — so everything that costs a row and is
+ * not the question, the options or the verdict folds.
  */
 const TIGHT_BELOW = 340
 
@@ -167,13 +144,11 @@ export function room({ width, height }: Frame): Room {
   /* Not measured yet. Show everything: a card briefly too tall is a smaller
      mistake than a page that folds itself and then unfolds. */
   if (height <= 0) {
-    return { snap: false, byline: 'row', passage: 'inline', others: 'shown', retakeNote: 'paragraph', source: 'path' }
+    return { snap: false, others: 'shown', retakeNote: 'paragraph', source: 'path' }
   }
   const tight = height < TIGHT_BELOW
   return {
     snap: height < SNAP_BELOW,
-    byline: tight || width < NARROW_BELOW ? 'title' : 'row',
-    passage: tight ? 'overlay' : 'inline',
     others: tight ? 'folded' : 'shown',
     retakeNote: tight || width < NARROW_BELOW ? 'title' : 'paragraph',
     /* Width alone. A short box is a reason to fold a row away; it is not a
@@ -242,16 +217,6 @@ export interface Card {
   options: string[]
   /** The label drawn on the source control — `wire/pointed.ts` spells it. */
   source: string
-  /** The project-relative path, printed under the source where the label is short. */
-  path: string
-  /**
-   * Whether the document is there — `quiz/where.ts`. Optional here because
-   * this file is geometry and a missing anchor changes no measurement: the
-   * card draws the same one-line label with a few words after it. It rides
-   * along so that the projection in `app.tsx` is one object and not two.
-   */
-  anchor?: 'holds' | 'missing' | 'unchecked'
-  quote: string
   /** The explanation, once it has been earned. `null` before that. */
   why: string | null
   answered: boolean
@@ -263,7 +228,8 @@ export type Rung = 'list' | 'one' | 'part'
 /**
  * The pieces one question is made of, when it has to be shown in pieces.
  *
- * Four, and the fourth is the owner's: "the 'wrong' explanation should I think
+ * Three now that a question's passage is a source to press rather than a part
+ * to read (it was a fourth, `quote`), and the last is the owner's: "the 'wrong' explanation should I think
  * be a fourth item alongside question, options (and result), and passage — it
  * should not be stuffed there with the question and result on the same page."
  *
@@ -283,7 +249,7 @@ export type Rung = 'list' | 'one' | 'part'
  * `why` and not `explanation`: it is what the store calls the field, it is what
  * the reader is asking, and at 220 pixels the switcher is already three rows.
  */
-export type Part = 'question' | 'options' | 'quote' | 'why'
+export type Part = 'question' | 'options' | 'why'
 
 export interface Ladder {
   /**
@@ -292,7 +258,7 @@ export interface Ladder {
    * - `list` — several whole questions are in view. Scroll between them, as
    *   this module has always worked.
    * - `one` — exactly one question, whole: its text, every option, and the
-   *   passage it came from, all on screen with nothing to scroll and nothing to
+   *   source it rests on, all on screen with nothing to scroll and nothing to
    *   press open. A pager moves between questions.
    * - `part` — not even one whole question fits, so one PART of it shows at a
    *   time and a switcher moves between the parts.
@@ -448,16 +414,12 @@ const HEADING = { narrow: { px: 12.8, line: 19.2 }, wide: { px: 14, line: 20 } }
 const SCORE = { px: 10.4, line: 15.6 }
 /** An option button: `text-xs`, `min-h-7`, `px-2 py-1`, one pixel of border each side. */
 const OPTION = { px: 12, line: 16, chrome: 10, min: 28, gap: 4, pad: 18 }
-/** `text-[0.65rem] leading-4` — the source label and the byte range under it. */
+/** `text-[0.65rem] leading-4` — the source label. */
 const SMALL = { px: 10.4, line: 16 }
-/** `text-[0.7rem] leading-4` — the quote, and the explanation. Both sit behind `border-l-2 pl-2`. */
+/** `text-[0.7rem] leading-4` — the explanation, behind `border-l-2 pl-2`. */
 const ASIDE = { px: 11.2, line: 16, indent: 10 }
-/** `text-[0.6rem] leading-3` — who wrote it. */
-const BYLINE = { px: 9.6, line: 12 }
 /** `gap-1.5` and `mt-1.5`, which is every gap on a card that is not the options. */
 const GAP = 6
-/** `mt-1` — the tighter one, under the options and above the quote. */
-const TUCK = 4
 /** The verdict row: a badge, `leading-4` with `py-px` and a border. */
 const VERDICT = 20
 /** One row of controls: `h-6`, and `gap-1` when it wraps to a second. */
@@ -478,7 +440,6 @@ const HEADER_MOST = 2
 export const PART_LABEL: Record<Part, string> = {
   question: 'question',
   options: 'options',
-  quote: 'passage',
   why: 'why',
 }
 
@@ -494,7 +455,7 @@ export const PART_LABEL: Record<Part, string> = {
  * This is also what `controlsHeight()` reserves, all four of them, whether or not
  * a given card offers all four. See the essay there.
  */
-const EVERY_PART: Part[] = ['question', 'options', 'quote', 'why']
+const EVERY_PART: Part[] = ['question', 'options', 'why']
 
 interface Metrics {
   pagePad: number
@@ -503,7 +464,7 @@ interface Metrics {
   content: number
   /** The text width inside an option button. */
   option: number
-  /** The text width inside a quote or an explanation, behind its rule. */
+  /** The text width inside an explanation, behind its rule. */
   aside: number
   question: { px: number; line: number }
   heading: { px: number; line: number }
@@ -594,8 +555,7 @@ function verdictHeight(card: Card, m: Metrics, measure: Measure): number {
 }
 
 /**
- * A card in the LIST layout: bordered, padded, and with the passage closed
- * behind its disclosure.
+ * A card in the LIST layout: bordered and padded.
  *
  * ## Measured as if nobody had answered it, deliberately
  *
@@ -609,13 +569,8 @@ function verdictHeight(card: Card, m: Metrics, measure: Measure): number {
  * them the reader has got. What it costs is that a fully answered list scrolls
  * more than an unanswered one, which is what a list does; what it buys is a
  * decision that no press can move.
- *
- * The two folds that DO belong here are the ones `room()` already decided from
- * the frame: whether the byline is a row and whether the passed-over options are
- * folded away. Those are geometry, and they do not change while the reader
- * works.
  */
-function listHeight(card: Card, width: number, fits: Room, measure: Measure): number {
+function listHeight(card: Card, width: number, measure: Measure): number {
   const m = metrics(width, false)
   return Math.ceil(
     2
@@ -624,19 +579,12 @@ function listHeight(card: Card, width: number, fits: Room, measure: Measure): nu
     + GAP
     + optionsHeight(card.options, m, measure)
     + GAP
-    + Math.max(1, lines(card.source, m.content, SMALL.px, measure)) * SMALL.line
-    + (fits.byline === 'row' ? TUCK + BYLINE.line : 0),
+    + Math.max(1, lines(card.source, m.content, SMALL.px, measure)) * SMALL.line,
   )
 }
 
 /**
- * A card in the WHOLE layout: no card chrome at all, and the passage open.
- *
- * The passage is open because that is the rung's whole promise. "Show everything
- * of a single question (question, options, quote) at once" is not satisfied by a
- * disclosure the reader has to press — a question whose source is one press away
- * is the `list` layout with fewer questions in it, which is nobody's idea of a
- * better use of a small box.
+ * A card in the WHOLE layout: no card chrome at all.
  *
  * ## Answered, this one DOES grow, and the page lets it
  *
@@ -657,22 +605,8 @@ function listHeight(card: Card, width: number, fits: Room, measure: Measure): nu
  * screen they are on. The layout moving under a press is a real cost and this is
  * the one place in this file that pays it, in the open.
  */
-function wholeHeight(card: Card, width: number, fits: Room, measure: Measure): number {
+function wholeHeight(card: Card, width: number, measure: Measure): number {
   const m = metrics(width, true)
-  /*
-   * The byte range under the source is ONE line and is not measured, because
-   * the paged rungs print `bytes 1024–1180` and nothing else there.
-   *
-   * The disclosure at `list` repeats the whole document path in a `<code>` when
-   * the label above it is only a file name, and this rung deliberately does not
-   * — see the essay on that element in `view/quiz.tsx`. Half of the reason is
-   * the three lines of grey monospace it costs at 220 wide. The other half is
-   * this file: a path is one long token in a monospace face, and the browser
-   * breaks it at slashes, at hyphens and mid-word by rules that measured three
-   * lines in a 244-pixel column where every model here said two. It was the only
-   * element on a card whose height this file could not predict, and the fix was
-   * to stop drawing it rather than to guess at it better.
-   */
   const height =
     Math.max(1, lines(card.question, m.content, m.question.px, measure, { weight: 500 })) * m.question.line
     + GAP
@@ -680,10 +614,6 @@ function wholeHeight(card: Card, width: number, fits: Room, measure: Measure): n
     + verdictHeight(card, m, measure)
     + GAP
     + Math.max(1, lines(card.source, m.content, SMALL.px, measure)) * SMALL.line
-    + TUCK
-    + SMALL.line
-    + TUCK
-    + Math.max(1, lines(card.quote, m.aside, ASIDE.px, measure)) * ASIDE.line
   return Math.ceil(height)
 }
 
@@ -880,7 +810,7 @@ export function headerOf(card: Card, width: number, available: number, measure: 
  * press once and distrust afterwards — and distrusting the switcher is worse
  * than a missing control, because it is the only way around a split card.
  *
- * - `options` and `quote` always. Every question has both.
+ * - `options` always.
  * - `question` exactly where `headerOf()` drew no header — because the question
  *   is longer than the header's ceiling, or because there was no room for one
  *   above the options. Taking the header rather than measuring the question again
@@ -898,7 +828,7 @@ export function headerOf(card: Card, width: number, available: number, measure: 
 export function partsOf(card: Card, header: number): Part[] {
   const parts: Part[] = []
   if (header === 0) parts.push('question')
-  parts.push('options', 'quote')
+  parts.push('options')
   if (card.answered && card.why) parts.push('why')
   return parts
 }
@@ -943,7 +873,7 @@ export function ladder(input: {
   const forList =
     frame.height - 2 * m.pagePad - headingHeight(epic, cards.length, frame.width, measure) - GAP
 
-  const list = cards.map((card) => listHeight(card, frame.width, fits, measure))
+  const list = cards.map((card) => listHeight(card, frame.width, measure))
   const tall = [...list].sort((a, b) => b - a)
 
   /* Two whole cards in view, or this is not a list — it is a card and a half,
@@ -954,7 +884,7 @@ export function ladder(input: {
     return { rung: 'list', available: forList, heights: list, snap: fits.snap, header: 0 }
   }
 
-  const whole = cards.map((card) => wholeHeight(card, frame.width, fits, measure))
+  const whole = cards.map((card) => wholeHeight(card, frame.width, measure))
   const available = frame.height - 2 * m.pagePad - controlsHeight(cards.length, frame.width, measure, note)
   const at = Math.min(Math.max(shown, 0), cards.length - 1)
   const rung: Rung = (whole[at] ?? 0) <= available ? 'one' : 'part'

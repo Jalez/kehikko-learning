@@ -7,7 +7,7 @@ import { MAX_PROJECT, defaultProject, usablePath } from '../quiz/projects.ts'
  *
  * `usablePath` used to be `projectKey` and used to produce the key a store was
  * nested under. It keys nothing today: the questions live at
- * `<project>/.kehikot/learning/questions.json`, so the path IS the partition, and this is
+ * `<project>/.kehikot/learning/<epic>.md`, so the path IS the partition, and this is
  * the cheap syntactic gate that runs before `store.ts` takes an arbitrary string
  * to `realpathSync`. The tests below are therefore about REFUSING nonsense
  * without touching the filesystem; nothing here asserts anything about what is

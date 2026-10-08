@@ -1,27 +1,28 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { dirname, isAbsolute, relative, sep } from 'node:path'
 
 import { z } from 'zod'
 
-import { dataFile, makeDir, rootOf } from '../store.ts'
-import type { Asked, Attempt, Question, Standing } from './types.ts'
-import { anchorOf, resolved, stored } from './where.ts'
+import { citedText, dataFile, makeDir, put, rootOf } from '../store.ts'
+import { findQuote, normaliseQuote, resolveSource, uncitable } from './cite.ts'
+import { emptyQuiz, keyOf, parseQuiz, quizProblems, serialiseQuiz, writable, type Question, type Quiz } from './format.ts'
+import { migrate, type Answers } from './migrate.ts'
+import type { Asked, Attempt, Cited, Standing } from './types.ts'
 
-/* ------------------------------------------------------------------------ *
- * Bounds
- * ------------------------------------------------------------------------ *
+/**
+ * One project's questions and answers, as two kinds of file in
+ * `<project>/.kehikot/learning/`:
  *
- * Every string that reaches this store comes from outside the process — from a
- * form in a browser, or from an agent over MCP — and every one of them is later
- * written into a page. So each is bounded here, once, and the two doors
- * interpolate these numbers into their own error sentences rather than
- * restating them: a rule that has to be remembered twice is a rule that will be
- * forgotten at one of them.
+ * - `<epic>.md` — that epic's questions, their options, which one is right,
+ *   the explanations and the sources. Written by an agent through the MCP door
+ *   or by a person in any editor; `format.ts` is the only reader and writer.
+ * - `answers.json` — what a reader answered, by epic and question id. Kept out
+ *   of the Markdown on purpose: an answer is a record of what a person did,
+ *   not material to edit, and only `score` adds to it.
  *
- * The numbers are chosen to be far longer than anything a real question needs
- * and far shorter than anything worth carrying around. A question nobody can
- * read on one screen is not a question, and a store that will accept two hundred
- * thousand characters is a store somebody will eventually put two hundred
- * thousand characters in.
+ * Every string that reaches this store comes from outside the process, so each
+ * is bounded, once, by the numbers below; the doors interpolate them into
+ * their own sentences rather than restating them.
  */
 export const MAX_EPIC = 80
 export const MAX_QUESTION = 600
@@ -31,209 +32,110 @@ export const MAX_OPTIONS = 8
 export const MAX_WHY = 1200
 export const MAX_PATH = 480
 export const MAX_QUOTE = 2000
-export const MAX_BY = 80
 export const MAX_ID = 64
-/** Per project. A store that grows without bound is a page that stops loading. */
+/** Per epic. A file that grows without bound is a page that stops loading. */
 export const MAX_QUESTIONS = 2000
-/**
- * How many attempts at one question are kept.
- *
- * Enough to see whether somebody is getting better and few enough that a
- * question answered by a script in a loop cannot grow the file. The OLDEST go,
- * unlike the kept-state map elsewhere in this workspace, because the interesting
- * attempt is the most recent one and the first one — and when only one can be
- * kept it is the most recent, which is what the container shows.
- */
+/** How many attempts at one question are kept. The OLDEST go: the interesting one is the latest. */
 export const MAX_ATTEMPTS = 12
 
 /**
- * What an epic slug is allowed to look like.
- *
- * The same class the host holds a slug to, restated here rather than imported,
- * because this program is meant to be taken away whole and an import into
- * somebody else's repository would not survive being copied out.
- *
- * SHAPE, not membership. There is no character in this class that can leave a
- * directory: no dot, so no `..`; no slash and no backslash, so no path at all.
- * The check does not depend on what is on disk when it runs, so it cannot be
- * weakened by a file appearing under it.
+ * What an epic slug looks like — and so what a quiz file may be called. SHAPE,
+ * not membership: no dot, slash or backslash, so no character in it can leave
+ * the folder.
  */
 const SLUG = /^[a-z0-9-]+$/
 
-/* ------------------------------------------------------------------------ *
- * The file
- * ------------------------------------------------------------------------ */
+const ANSWERS = 'answers.json'
 
-const passageSchema = z.object({
-  path: z.string(),
-  start: z.number().int().nonnegative(),
-  end: z.number().int().nonnegative(),
-  quote: z.string(),
-})
+const answersSchema = z.record(z.record(z.array(z.object({ chose: z.number().int(), right: z.boolean(), at: z.string() }))))
 
-const attemptSchema = z.object({
-  chose: z.number().int(),
-  right: z.boolean(),
-  at: z.string(),
-})
-
-const questionSchema = z.object({
-  id: z.string(),
-  epic: z.string(),
-  question: z.string(),
-  options: z.array(z.string()),
-  answer: z.number().int().nonnegative(),
-  why: z.string().default(''),
-  passage: passageSchema,
-  by: z.string().default('somebody who did not say'),
-  viaMcp: z.boolean().default(false),
-  at: z.string(),
-  attempts: z.array(attemptSchema).default([]),
-})
-
-/**
- * The whole store — one project's — holding an ARRAY.
- *
- * ## Where the project went
- *
- * There used to be a `projects` record above this, keyed by path, and the
- * nesting WAS the partition: a question could not be in two projects because it
- * was not a row with a project column, it was a value under a project key.
- *
- * The partition is still real and is now the path itself. This file lives at
- * `<projectPath>/.kehikot/learning/questions.json`, so the store a reader opened is
- * already that project's and there is nothing left for an outer key to say. That
- * is the same argument taken one step further rather than abandoned — a check
- * can be forgotten at a new call site, a shape cannot, and a file in a different
- * folder cannot even be reached from the wrong place. See `store.ts`.
- *
- * ## Why the questions inside are an array and not a record keyed by id
- *
- * A record was the first shape and it was wrong twice over, and the second way
- * is the interesting one.
- *
- * The obvious reason is ordering. Questions come back in the order they were
- * written, because an agent that read a chapter top to bottom has already put
- * them in the reader's order and re-sorting throws that away. With a record, the
- * order had to be reconstructed from the `at` timestamps — and three questions
- * written by one agent in one loop land in the same millisecond, at which point
- * the tiebreak was the id, which is random. The container showed them shuffled, and
- * only sometimes, which is the worst kind of wrong.
- *
- * The sharper reason is that JavaScript would eventually have reordered them
- * anyway. An object's integer-like string keys are enumerated first, in numeric
- * order, before every other key — and an id here is eight hex characters, so
- * roughly one in ten million is all digits. `"12345678"` is an integer-like key.
- * That question would have silently jumped to the front of its project, on one
- * machine, once, and nothing about the symptom would have pointed at the id.
- *
- * So the order is the array's order, the way `list/checklists.ts` in Checklist
- * argues item order should be: not an `order` column, which is two sources for
- * one fact and lets a partial write leave two questions claiming position three.
- * `test/questions.test.ts` asserts it against the file on disk.
- */
-const storeSchema = z.object({
-  questions: z.array(questionSchema).default([]),
-})
-
-type Store = z.infer<typeof storeSchema>
-
-/** Where one project's questions are, or a sentence, or nowhere. See `store.ts`. */
-export function questionsFile(projectPath: string | null | undefined): { path: string | null; trouble: string | null } {
-  return dataFile(projectPath)
+/** One epic's quiz, open. */
+interface Held {
+  quiz: Quiz
+  /** Every epic's answers, so a write puts the others back untouched. */
+  all: Answers
+  /** The resolved project root: what every source path is relative to. */
+  root: string
 }
 
-const empty = (): Store => storeSchema.parse({})
-
 /**
- * The store for one project — or a sentence about why there is not one, or the
- * plain fact that there is no project.
+ * Three states, and collapsing any two of them destroys something.
  *
- * ## Three states, and why collapsing any two of them destroys something
- *
- * `nowhere` means no project is open: the host had no folder to point at, or
- * nothing is framing this page. It is an ORDINARY state with a screen of its
- * own. It is not an error and it is not an empty store — and that last
- * distinction is the load-bearing one, because a caller handed an empty store
- * for "nowhere" would go on to WRITE it, and a write with no project is a write
- * with nowhere to go or, worse, somewhere guessed.
- *
- * `trouble` is a project that was named and could not be used: it does not
- * exist, it is not a folder, its `.kehikot` resolves outside it, or the file
- * inside will not parse. A file that will not parse is NOT treated as an empty
- * store, and that is the single most important line in this file. Everything
- * here is authored — a person or an agent wrote every question and a person gave
- * every answer — so "there is nothing here" and "this could not be read" must
- * never look the same on screen, and a program that returned empty for a broken
- * file would then WRITE over it on the next `add_quiz` and destroy the
- * recoverable original.
- *
- * So a bad file yields an empty store AND a trouble sentence, and every write
- * path refuses while trouble is set. The file stays exactly as it is, and the
- * sentence says so, because a person who can see the words "recoverable: fix or
- * move it" is a person who does not delete the directory.
+ * `nowhere` is no project open: an ordinary state with a screen of its own,
+ * and NOT an empty store, because a caller handed one would go on to write it.
+ * `trouble` is a project that was named and could not be used, or a file that
+ * will not parse — which is never treated as empty either: everything here was
+ * written by somebody, and a program that read a broken file as "nothing here"
+ * would write over the recoverable original on the next save.
  */
-function read(projectPath: string | null | undefined): {
-  store: Store
+type Opened = { held: Held; trouble: null; nowhere: false } | { held: null; trouble: string | null; nowhere: boolean }
+
+/** What every reader here answers with, beyond its own material. */
+export interface Read {
   trouble: string | null
   nowhere: boolean
-  /** The resolved project root, for saying where each question's document is. Null with `nowhere` or trouble. */
-  root: string | null
-} {
-  const { path, trouble } = dataFile(projectPath)
-  if (trouble) return { store: empty(), trouble, nowhere: false, root: null }
-  if (path === null) return { store: empty(), trouble: null, nowhere: true, root: null }
+}
+
+function open(projectPath: string | null | undefined, epic: string): Opened {
+  const answers = dataFile(projectPath, ANSWERS)
   const root = rootOf(projectPath)
-  /* An absent file in a real project is an empty store and not trouble: it is
-     what a project nobody has written a question about looks like, and it is the
-     ordinary first run. */
-  if (!existsSync(path)) return { store: empty(), trouble: null, nowhere: false, root }
-  try {
-    return { store: storeSchema.parse(JSON.parse(readFileSync(path, 'utf8'))), trouble: null, nowhere: false, root }
-  } catch (e) {
-    return {
-      store: empty(),
-      nowhere: false,
-      root,
-      trouble:
-        `${path} could not be read (${e instanceof Error ? (e.message.split('\n')[0] ?? '') : String(e)}), so no `
-        + 'question is being shown and nothing will be written over it. Every question in that file and every answer '
-        + 'anybody gave is recoverable: fix or move it.',
+  if (answers.path === null || root === null) return { held: null, trouble: answers.trouble, nowhere: answers.trouble === null }
+  const refused = (trouble: string): Opened => ({ held: null, trouble, nowhere: false })
+
+  let all: Answers = {}
+  if (existsSync(answers.path)) {
+    try {
+      all = answersSchema.parse(JSON.parse(readFileSync(answers.path, 'utf8')))
+    } catch (e) {
+      return refused(
+        `${answers.path} could not be read (${e instanceof Error ? (e.message.split('\n')[0] ?? '') : String(e)}), so no `
+        + 'question is being shown and nothing will be written over it. Every answer in that file is recoverable: fix '
+        + 'or move it.',
+      )
     }
   }
+  const unmoved = migrate(projectPath, all, answers.path)
+  if (unmoved) return refused(unmoved)
+
+  /* A file that is not there is an empty quiz and not trouble: it is what an
+     epic nobody has written a question about looks like. */
+  let quiz = emptyQuiz()
+  if (SLUG.test(epic)) {
+    const file = dataFile(projectPath, `${epic}.md`)
+    if (file.trouble) return refused(file.trouble)
+    if (file.path !== null && existsSync(file.path)) quiz = parseQuiz(readFileSync(file.path, 'utf8'))
+  }
+  return { held: { quiz, all, root }, trouble: null, nowhere: false }
 }
 
 /**
- * Write one project's questions, making the folder first.
- *
- * `makeDir` is called here and nowhere on the read path, so that opening a container
- * against a repository leaves no `.kehikot` in it until somebody actually writes
- * something. It is also where the project's `.gitignore` learns about the folder
- * — once, on the run that created it.
- *
- * Returns a sentence rather than throwing when the folder cannot be made or does
- * not stay inside the project, because every caller of this already has a place
- * to put a refusal and none of them has a place to put an exception.
+ * Write one file, making the folder first. `makeDir` is called here and nowhere
+ * on the read path, so opening a container against a repository leaves no
+ * `.kehikot` in it until somebody writes something. A sentence when it could
+ * not be done.
  */
-function save(projectPath: string | null | undefined, store: Store): string | null {
+function save(projectPath: string | null | undefined, name: string, text: string): string | null {
   const { dir, trouble } = makeDir(projectPath)
   if (trouble) return trouble
-  if (dir === null) {
-    return 'no project is open, so there is nowhere to write. Nothing was recorded.'
-  }
-  const { path, trouble: after } = dataFile(projectPath)
+  const { path, trouble: after } = dir === null ? { path: null, trouble: null } : dataFile(projectPath, name)
   if (after) return after
-  if (path === null) return 'no project is open, so there is nowhere to write. Nothing was recorded.'
-  writeFileSync(path, `${JSON.stringify(storeSchema.parse(store), null, 2)}\n`)
+  if (path === null) return NOWHERE
+  put(path, text)
   return null
 }
 
-function newId(): string {
-  return crypto.randomUUID().replace(/-/g, '').slice(0, 8)
-}
+const saveAnswers = (projectPath: string | null | undefined, all: Answers) =>
+  save(projectPath, ANSWERS, `${JSON.stringify(all, null, 1)}\n`)
 
-function now(): string {
-  return new Date().toISOString()
+/** Each question's source, looked for in its file. One read per file. */
+function citer(held: Held): (question: Question) => Cited | null {
+  const files = new Map<string, string | null>()
+  return (question) => {
+    const source = held.quiz.sources.find((one) => one.label === question.label)
+    if (!source) return null
+    if (!files.has(source.path)) files.set(source.path, citedText(held.root, source.path))
+    return resolveSource(source, files.get(source.path) ?? null)
+  }
 }
 
 /* ------------------------------------------------------------------------ *
@@ -243,62 +145,31 @@ function now(): string {
 /**
  * A question, as a page is allowed to know it.
  *
- * ## Where the answer lives, and when it crosses the wire
+ * **The key lives in the Markdown file, on disk, and it crosses the wire
+ * exactly once per question: in the reply to the request that submitted an
+ * answer.** The page is never sent the file. That is not the obvious build — a
+ * quiz could be handed everything and simply not draw the key — and it is
+ * worthless here, because an agent reading the page (which agents in this
+ * workspace do, routinely) would hold the key to every question on screen and
+ * would use it while being helpful.
  *
- * **It lives here, on disk, in this process, and it crosses the wire exactly
- * once per question: in the reply to the request that submitted an answer.**
+ * So this is a projection, not a filter: `answer` and `why` are `null` until
+ * the question has an attempt against it, at which point the key is the
+ * reader's and is shown. `score()` grades server-side, so the browser never
+ * holds the material to grade with.
  *
- * That is the module's one genuine design constraint and it is worth spelling
- * out what the obvious alternative would have been. A quiz container could perfectly
- * well be handed the whole question — options, key and all — and simply not draw
- * the key until you press something. Every browser quiz on the internet works
- * that way. It is also worthless, for two reasons and the second is the one that
- * matters here:
- *
- *  1. Anybody can open the inspector. `document.querySelector` or a glance at
- *     the network tab and the key is there. This is the reason people usually
- *     cite and it is the weaker one, because a person cheating at their own
- *     self-check has only cheated themselves.
- *  2. **An agent reading this page would see it.** That is not a person choosing
- *     to cheat; it is the ordinary operation of the thing that wrote the
- *     question and is now standing next to the reader. An agent that reads the
- *     DOM of a canvas — which agents in this workspace do, with a headless
- *     browser, routinely — would have the answer key to every question on
- *     screen, and would use it while helping. The reader would then be told the
- *     right answer by a helpful assistant and would learn nothing, and neither
- *     of them would have done anything wrong.
- *
- * So `asked()` is a projection, not a filter. `answer` and `why` are `null`
- * until this question has an attempt against it, at which point they are filled
- * in — because once you have chosen, the key is yours, and a container that still hid
- * it would be coy rather than careful.
- *
- * `score()` below does the grading, server-side, and returns the key with the
- * verdict. The browser never holds the material to grade with, so there is no
- * arrangement of DOM inspection, breakpoints or network replay that gets it out
- * early: the bytes are not there.
- *
- * The three-line version, for whoever changes this next: **a `Question` never
- * leaves this process. An `Asked` is what leaves. The only function that makes
- * one is here.**
+ * **A `Question` never leaves this process. An `Asked` is what leaves. The
+ * only function that makes one is here.**
  */
-export function asked(question: Question, root: string | null): Asked {
-  const answered = question.attempts.length > 0
+export function asked(question: Question, attempts: Attempt[], source: Cited | null): Asked {
+  const answered = attempts.length > 0
   return {
     id: question.id,
-    epic: question.epic,
     question: question.question,
     options: question.options,
-    passage: question.passage,
-    /* Decided here, on every read, and never stored: the disk is the thing
-       that moved last time, and a verdict written into the file would have
-       gone on saying `holds` about a document that was no longer there. */
-    anchor: anchorOf(root, question.passage.path),
-    by: question.by,
-    viaMcp: question.viaMcp,
-    at: question.at,
-    attempts: question.attempts,
-    answer: answered ? question.answer : null,
+    source,
+    attempts,
+    answer: answered ? keyOf(question) : null,
     why: answered ? question.why : null,
   }
 }
@@ -308,69 +179,88 @@ export function asked(question: Question, root: string | null): Asked {
  * ------------------------------------------------------------------------ */
 
 /**
- * What every reader here answers with, beyond its own material.
- *
- * `nowhere` is carried out to the callers rather than folded into `trouble`
- * because the two get different screens and different sentences: one says "open
- * a project", the other says what went wrong with the project that was named.
+ * One epic's questions, as a page is allowed to know them, in the order the
+ * file has them. A question that cannot be asked — no option ticked, or two —
+ * is left out, and `problems` says so, in sentences that name no option.
  */
-export interface Read {
-  trouble: string | null
-  nowhere: boolean
+export function forEpic(projectPath: string | null | undefined, epic: string): { questions: Asked[]; problems: string[] } & Read {
+  const { held, trouble, nowhere } = open(projectPath, epic)
+  if (!held) return { questions: [], problems: [], trouble, nowhere }
+  const cite = citer(held)
+  const answers = held.all[epic] ?? {}
+  const questions = held.quiz.questions
+    .filter((question) => keyOf(question) !== null)
+    .map((question) => asked(question, answers[question.id] ?? [], cite(question)))
+  return { questions, problems: quizProblems(held.quiz), trouble, nowhere }
+}
+
+/** Where an epic's questions are, relative to the project root: what a person is told to open. */
+export function fileOf(projectPath: string | null | undefined, epic: string): string {
+  const { path } = dataFile(projectPath, `${epic}.md`)
+  const root = rootOf(projectPath)
+  return path && root ? relative(root, path).split(sep).join('/') : `${epic}.md`
+}
+
+/** The epics that have a quiz file in this project. */
+function epics(projectPath: string | null | undefined): string[] {
+  const { path } = dataFile(projectPath, ANSWERS)
+  if (path === null || !existsSync(dirname(path))) return []
+  return readdirSync(dirname(path))
+    .filter((name) => name.endsWith('.md') && SLUG.test(name.slice(0, -3)))
+    .map((name) => name.slice(0, -3))
+    .sort()
 }
 
 /** What each epic in one project adds up to. The no-epic screen is drawn from this. */
 export function standings(projectPath: string | null | undefined): { standings: Standing[] } & Read {
-  const { store, trouble, nowhere } = read(projectPath)
+  /* Opened once with no epic first, so a project still holding the old
+     `questions.json` is moved before its files are listed. */
+  const { trouble, nowhere } = open(projectPath, '')
   if (trouble || nowhere) return { standings: [], trouble, nowhere }
-  const by = new Map<string, Standing>()
-  for (const question of store.questions) {
-    const row = by.get(question.epic) ?? { epic: question.epic, questions: 0, answered: 0, right: 0 }
-    row.questions += 1
-    const last = question.attempts.at(-1)
-    if (last) {
-      row.answered += 1
-      if (last.right) row.right += 1
-    }
-    by.set(question.epic, row)
+  const rows: Standing[] = []
+  for (const epic of epics(projectPath)) {
+    const { questions } = forEpic(projectPath, epic)
+    if (!questions.length) continue
+    const last = questions.map((question) => question.attempts.at(-1))
+    rows.push({ epic, questions: questions.length, answered: last.filter(Boolean).length, right: last.filter((one) => one?.right).length })
   }
-  return { standings: [...by.values()].sort((a, b) => a.epic.localeCompare(b.epic)), trouble, nowhere }
+  return { standings: rows, trouble, nowhere }
+}
+
+/** One question with everything about it, key included. */
+export interface Keyed {
+  question: Question
+  /** Null for a question that cannot be asked. */
+  key: number | null
+  attempts: Attempt[]
+  source: Cited | null
 }
 
 /**
- * One epic's questions in one project, as a page is allowed to know them.
+ * One epic's questions WITH the key, for the one caller entitled to it.
  *
- * Oldest first, which is the order they were written in — an agent that read a
- * chapter top to bottom and wrote questions as it went has already put them in
- * the reader's order, and re-sorting by anything else would throw that away.
+ * Not reachable from anything the page can call. `doors.ts` uses it for the
+ * MCP `quizzes` tool, which prints the key only under `reveal: true` or once a
+ * reader has answered. A separate function rather than a flag on `forEpic`, so
+ * that `grep -n withKey doors.ts` is the whole audit.
  */
-export function forEpic(projectPath: string | null | undefined, epic: string): { questions: Asked[] } & Read {
-  const { store, trouble, nowhere, root } = read(projectPath)
-  if (trouble || nowhere) return { questions: [], trouble, nowhere }
-  /* No sort. The array's order is the order they were written in. */
-  const questions = store.questions.filter((question) => question.epic === epic).map((question) => asked(question, root))
-  return { questions, trouble, nowhere }
+export function withKey(projectPath: string | null | undefined, epic: string): { questions: Keyed[]; problems: string[] } & Read {
+  const { held, trouble, nowhere } = open(projectPath, epic)
+  if (!held) return { questions: [], problems: [], trouble, nowhere }
+  const cite = citer(held)
+  const answers = held.all[epic] ?? {}
+  const questions = held.quiz.questions.map((question) => ({
+    question,
+    key: keyOf(question),
+    attempts: answers[question.id] ?? [],
+    source: cite(question),
+  }))
+  return { questions, problems: quizProblems(held.quiz), trouble, nowhere }
 }
 
-/**
- * The same, WITH the key, for the one caller entitled to it.
- *
- * Not exported to anything the page can reach. `doors.ts` uses it for the MCP
- * `quizzes` tool under an explicit `reveal: true`, and for nothing else. It is a
- * separate function rather than a flag on `forEpic` so that the call sites are
- * countable: `grep -n 'withKey' doors.ts` is the whole audit.
- */
-export function withKey(
-  projectPath: string | null | undefined,
-  epic: string | null,
-): { questions: Question[]; root: string | null } & Read {
-  const { store, trouble, nowhere, root } = read(projectPath)
-  if (trouble || nowhere) return { questions: [], trouble, nowhere, root: null }
-  const questions = store.questions.filter((question) => epic === null || question.epic === epic)
-  /* The root rides along so the door can say, beside each anchor, whether its
-     document is there — `anchorOf` needs the same resolved spelling every
-     stored path was relativised against. */
-  return { questions, trouble, nowhere, root }
+/** Which epics' files hold a question with this id. An id is unique in a file, not in a project. */
+export function epicsOf(projectPath: string | null | undefined, id: string): string[] {
+  return epics(projectPath).filter((epic) => open(projectPath, epic).held?.quiz.questions.some((one) => one.id === id))
 }
 
 /* ------------------------------------------------------------------------ *
@@ -378,257 +268,195 @@ export function withKey(
  * ------------------------------------------------------------------------ */
 
 /**
- * What a caller may ask this store to do.
- *
- * One discriminated union and one function, rather than five exported verbs,
- * for the reason the checklist module gives: the page and the MCP door are two
- * callers of the same rules, and two entry points would eventually enforce them
- * two slightly different ways. The bounds are applied at the doors, where a
- * string arrives; the RULES are here, where the questions are.
- *
- * `project` is the path of the folder the questions live in, and it is on every
- * variant rather than being a second parameter so that no operation can be
- * constructed without one. A write with no project has nowhere to go, and the
- * type is where that is said first.
+ * What a caller may ask this store to do. One union and one function, so the
+ * page and the MCP door are two callers of the same rules. The bounds are
+ * applied at the doors, where a string arrives; the RULES are here.
  */
 export type Op =
-  | {
-      op: 'add'
-      project: string | null
-      epic: string
-      question: string
-      options: string[]
-      answer: number
-      why: string
-      passage: { path: string; start: number; end: number; quote: string }
-      by: string
-      viaMcp?: boolean
-    }
+  | { op: 'add'; project: string | null; epic: string; question: string; options: string[]; answer: number; why: string; path: string; quote: string }
   | {
       op: 'reword'
       project: string | null
+      epic: string
       id: string
       question?: string
       options?: string[]
       answer?: number
       why?: string
-      /**
-       * The anchor, re-spelled in whole or in part. Any field left out is
-       * kept, so `{ path }` alone moves a question to the same bytes of the
-       * same file under a new name — which is the repair for a document that
-       * moved inside its project. See `quiz/where.ts`.
-       */
-      passage?: { path?: string; start?: number; end?: number; quote?: string }
+      /** A new source, in whole or in part: what is left out is kept. */
+      path?: string
+      quote?: string
     }
-  | { op: 'drop'; project: string | null; id: string }
+  | { op: 'drop'; project: string | null; epic: string; id: string }
   | { op: 'retake'; project: string | null; epic: string }
 
-export type Done =
-  | { ok: true; said: string; id: string }
-  | { ok: false; error: string }
+export type Done = { ok: true; said: string; id: string } | { ok: false; error: string }
 
 const no = (error: string): Done => ({ ok: false, error })
 
-/**
- * The sentence a write gets when there is no project to write into.
- *
- * Written once, here, because all four operations get it and the page and the
- * MCP door both surface it. It says what to do rather than merely refusing:
- * a caller told only "no" writes the question somewhere else, or twice.
- */
 const NOWHERE =
-  'no project is open, so there is nowhere to put this. Questions live inside the project they are about, at '
-  + '.kehikot/learning/questions.json, so this app needs to be told which folder that is before it can write anything. '
+  'no project is open, so there is nowhere to put this. Questions live inside the project they are about, in '
+  + '.kehikot/learning/, so this app needs to be told which folder that is before it can write anything. '
   + 'Nothing was recorded.'
 
-export function change(op: Op): Done {
-  const { store, trouble, nowhere, root } = read(op.project)
-  /* Nothing is written while there is no project, and nothing is written while
-     the file is unreadable. The second is the sharper rule — see `read`. */
-  if (nowhere) return no(NOWHERE)
-  if (trouble) return no(trouble)
-
-  const held = store
-
-  if (op.op === 'add') {
-    if (held.questions.length >= MAX_QUESTIONS) {
-      return no(
-        `there are already ${MAX_QUESTIONS} questions in this project, which is as many as this app holds. Drop some `
-        + 'that are no longer worth asking before writing more.',
-      )
-    }
-    if (!SLUG.test(op.epic)) {
-      return no(
-        `"${op.epic.slice(0, MAX_EPIC)}" is not an epic slug. A slug is lower-case letters, digits and hyphens — it is `
-        + 'what list_epics prints, not the title of the epic.',
-      )
-    }
-    if (op.options.length < MIN_OPTIONS || op.options.length > MAX_OPTIONS) {
-      return no(
-        `a question needs between ${MIN_OPTIONS} and ${MAX_OPTIONS} options and this one has ${op.options.length}. `
-        + 'One option is not a choice, and a reader who cannot be wrong has not been asked anything.',
-      )
-    }
-    if (op.options.some((option) => !option)) {
-      return no('one of the options is empty. An option a reader cannot read is not one they can rule out.')
-    }
-    /* Duplicates are refused rather than deduplicated, because deduplicating
-       would silently move the answer index: drop option 1 and the key still says
-       2, which is now a different string. A caller that wrote the same option
-       twice made a mistake and should be told, not corrected. */
-    if (new Set(op.options).size !== op.options.length) {
-      return no(
-        'two of the options are the same. Whichever the reader picks, one of two identical strings would be marked '
-        + 'wrong, so this question cannot be answered correctly.',
-      )
-    }
-    if (!Number.isInteger(op.answer) || op.answer < 0 || op.answer >= op.options.length) {
-      return no(
-        `the answer must be the index of the correct option, counting from 0, so between 0 and ${op.options.length - 1} `
-        + `for this question. It was ${JSON.stringify(op.answer)}.`,
-      )
-    }
-    if (!op.passage.path) {
-      return no(
-        'a question here is anchored to a passage, and this one named no document. Give the path of the file the '
-        + 'passage is in, as the project spells it.',
-      )
-    }
-    if (!op.passage.quote) {
-      return no(
-        'a question here is anchored to a passage, and this one quoted nothing. The quote is what makes the anchor '
-        + 'checkable when the paper is edited underneath it: paste the source those bytes actually held.',
-      )
-    }
-    if (
-      !Number.isInteger(op.passage.start)
-      || !Number.isInteger(op.passage.end)
-      || op.passage.start < 0
-      || op.passage.end <= op.passage.start
-    ) {
-      return no(
-        'the passage needs a byte range: start, and end one past the last byte, both whole numbers with end greater '
-        + 'than start. If you read the file to write this question you know where in it you were — '
-        + '`head -c N file | wc -c` settles it.',
-      )
-    }
-    const path = stored(root, op.passage.path)
-    const absent = missingAnchor(root, path)
-    if (absent) return no(absent)
-    const id = newId()
-    /* On the end, which is where a new thing belongs. */
-    held.questions.push({
-      id,
-      epic: op.epic,
-      question: op.question,
-      options: op.options,
-      answer: op.answer,
-      why: op.why,
-      passage: { ...op.passage, path },
-      by: op.by,
-      viaMcp: op.viaMcp === true,
-      at: now(),
-      attempts: [],
-    })
-    const wrote = save(op.project, store)
-    if (wrote) return no(wrote)
-    return { ok: true, said: `Question ${id} written about ${op.epic}`, id }
+/** Why these options and this key are not a question, or null when they are. */
+function unaskable(options: string[], answer: number): string | null {
+  if (options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) {
+    return (
+      `a question needs between ${MIN_OPTIONS} and ${MAX_OPTIONS} options and this one has ${options.length}. `
+      + 'One option is not a choice, and a reader who cannot be wrong has not been asked anything.'
+    )
   }
+  if (options.some((option) => !option)) return 'one of the options is empty. An option a reader cannot read is not one they can rule out.'
+  /* Refused rather than deduplicated: dropping one would silently move the key. */
+  if (new Set(options).size !== options.length) {
+    return 'two of the options are the same. Whichever the reader picks, one of two identical strings would be marked wrong.'
+  }
+  if (!Number.isInteger(answer) || answer < 0 || answer >= options.length) {
+    return (
+      `the answer must be the index of the correct option, counting from 0, so between 0 and ${options.length - 1} `
+      + `for this question. It was ${JSON.stringify(answer)}.`
+    )
+  }
+  return null
+}
+
+/** An absolute path under the project, spelled the way a source line spells it. Anything else as it came. */
+function inProject(root: string, path: string): string {
+  if (!isAbsolute(path)) return path
+  const rel = relative(root, path)
+  return !rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel) ? path : rel.split(sep).join('/')
+}
+
+/**
+ * The label of the source for these words in this file, added to the quiz's
+ * `Sources:` when it is not there. Refused unless the words are in the file
+ * exactly once — Slides' rule for `cite_slide` — so a source cannot be written
+ * that already points nowhere.
+ */
+function cite(held: Held, given: string, quoted: string): { label: string } | { error: string } {
+  const path = inProject(held.root, given)
+  const quote = normaliseQuote(quoted)
+  const why = uncitable({ path, quote })
+  if (why) return { error: `${why} Nothing was written.` }
+  const file = citedText(held.root, path)
+  if (file === null) {
+    return {
+      error:
+        `"${path}" is not a readable file inside this project. The path is taken relative to the project root, or `
+        + 'absolute. If you read the file through another module\'s door, that door may have spelled it relative to '
+        + 'something else, such as the paper\'s own folder: give the absolute path instead. Nothing was written.',
+    }
+  }
+  const { count } = findQuote(file, quote)
+  if (count === 0) {
+    return { error: `those words are not in ${path}. Quote the file's own text (LaTeX markup included); only whitespace may differ. Nothing was written.` }
+  }
+  if (count > 1) return { error: `those words occur ${count} times in ${path}. Quote more of the sentence so they occur once. Nothing was written.` }
+  const same = held.quiz.sources.find((one) => one.path === path && normaliseQuote(one.quote) === quote)
+  if (same) return { label: same.label }
+  const label = String(1 + Math.max(0, ...held.quiz.sources.map((one) => Number(one.label)).filter(Number.isFinite)))
+  held.quiz.sources.push({ label, path, quote })
+  return { label }
+}
+
+/** Take a source out of the list once no question names it. */
+function uncite(quiz: Quiz, label: string | null): void {
+  if (label === null || quiz.questions.some((one) => one.label === label)) return
+  quiz.sources = quiz.sources.filter((one) => one.label !== label)
+}
+
+export function change(op: Op): Done {
+  if (!SLUG.test(op.epic)) {
+    return no(
+      `"${op.epic.slice(0, MAX_EPIC)}" is not an epic slug. A slug is lower-case letters, digits and hyphens — it is `
+      + 'what list_epics prints, not the title of the epic.',
+    )
+  }
+  const { held, trouble, nowhere } = open(op.project, op.epic)
+  /* Nothing is written while there is no project, and nothing is written while
+     a file is unreadable. */
+  if (nowhere) return no(NOWHERE)
+  if (!held) return no(trouble ?? NOWHERE)
+  const { quiz, all } = held
 
   if (op.op === 'retake') {
-    const forgotten = held.questions.filter((question) => question.epic === op.epic && question.attempts.length)
-    for (const question of forgotten) question.attempts = []
-    const wrote = save(op.project, store)
+    const forgotten = Object.values(all[op.epic] ?? {}).filter((attempts) => attempts.length).length
+    delete all[op.epic]
+    const wrote = forgotten ? saveAnswers(op.project, all) : null
     if (wrote) return no(wrote)
-    return {
-      ok: true,
-      said: `${forgotten.length} answer${forgotten.length === 1 ? '' : 's'} forgotten for ${op.epic}`,
-      id: op.epic,
-    }
+    return { ok: true, said: `${forgotten} answer${forgotten === 1 ? '' : 's'} forgotten for ${op.epic}`, id: op.epic }
   }
 
-  const question = held.questions.find((held_) => held_.id === op.id)
+  const written = (said: string, id: string): Done => {
+    if (!writable(quiz)) {
+      return no(
+        'that text has a line the quiz file would read as structure: one starting "## " or "- ", or one that is '
+        + 'exactly "Why:", "Sources:" or "---". Reword it. Nothing was written.',
+      )
+    }
+    const wrote = save(op.project, `${op.epic}.md`, serialiseQuiz(quiz))
+    return wrote ? no(wrote) : { ok: true, said, id }
+  }
+
+  if (op.op === 'add') {
+    if (quiz.questions.length >= MAX_QUESTIONS) {
+      return no(`there are already ${MAX_QUESTIONS} questions about ${op.epic}, which is as many as this app holds. Drop some first.`)
+    }
+    if (!op.question) return no('a question needs the thing the reader is actually asked.')
+    const bad = unaskable(op.options, op.answer)
+    if (bad) return no(bad)
+    const source = cite(held, op.path, op.quote)
+    if ('error' in source) return no(source.error)
+    const id = crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+    /* On the end, which is where a new thing belongs. */
+    quiz.questions.push({ id, question: op.question, label: source.label, options: op.options, correct: [op.answer], why: op.why })
+    return written(`Question ${id} written about ${op.epic}`, id)
+  }
+
+  const question = quiz.questions.find((one) => one.id === op.id)
   if (!question) {
     return no(
-      `there is no question "${op.id}" in this project. Questions are addressed by the id the quizzes tool prints `
-      + 'beside each one, and a question written about another project lives in that project’s own file — it is not '
-      + 'addressable from this one.',
+      `there is no question "${op.id}" about ${op.epic} in this project. Questions are addressed by the id the `
+      + 'quizzes tool prints beside each one.',
     )
   }
 
   if (op.op === 'drop') {
-    held.questions = held.questions.filter((held_) => held_.id !== op.id)
-    const wrote = save(op.project, store)
-    if (wrote) return no(wrote)
-    return { ok: true, said: `Question ${op.id} dropped, along with ${question.attempts.length} answer(s) to it`, id: op.id }
+    quiz.questions = quiz.questions.filter((one) => one !== question)
+    uncite(quiz, question.label)
+    const answers = all[op.epic]?.[op.id]?.length ?? 0
+    const done = written(`Question ${op.id} dropped, along with ${answers} answer(s) to it`, op.id)
+    if (done.ok && answers) {
+      delete all[op.epic]![op.id]
+      const wrote = saveAnswers(op.project, all)
+      if (wrote) return no(wrote)
+    }
+    return done
   }
 
-  /* reword. The id, the passage and the attempts survive: this is for sharpening
-     a question somebody wrote in a hurry, and a question that has changed so
-     much that the old answers no longer mean anything is a different question,
-     which is what `add_quiz` is for. */
+  /* reword. The id and the answers survive: this is for sharpening a question,
+     and one changed so much that the old answers mean nothing is a different
+     question, which is what `add` is for. */
   const options = op.options ?? question.options
-  if (options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) {
-    return no(`a question needs between ${MIN_OPTIONS} and ${MAX_OPTIONS} options and this one would have ${options.length}.`)
-  }
-  if (options.some((option) => !option)) return no('one of the options is empty.')
-  if (new Set(options).size !== options.length) return no('two of the options would be the same.')
-  const answer = op.answer ?? question.answer
-  if (!Number.isInteger(answer) || answer < 0 || answer >= options.length) {
-    return no(
-      `the answer must be the index of the correct option, counting from 0, so between 0 and ${options.length - 1} for `
-      + `this question. It was ${JSON.stringify(answer)}.`,
-    )
-  }
+  const bad = unaskable(options, op.answer ?? (question.correct.length === 1 ? question.correct[0]! : Number.NaN))
+  if (bad) return no(bad)
   if (op.question !== undefined && !op.question) return no('a question cannot be reworded to nothing.')
-  /* The anchor, re-spelled. Each field falls back to what is held, so a caller
-     re-spelling only the path keeps the bytes and the quote — and the new
-     anchor is held to the same rules as a fresh one, including that its
-     document is there. A re-anchor that pointed at nothing would be the
-     eighteen again, one call at a time. */
-  const passage = {
-    path: stored(root, op.passage?.path ?? question.passage.path),
-    start: op.passage?.start ?? question.passage.start,
-    end: op.passage?.end ?? question.passage.end,
-    quote: op.passage?.quote ?? question.passage.quote,
+  let moved = ''
+  if (op.path !== undefined || op.quote !== undefined) {
+    const old = quiz.sources.find((one) => one.label === question.label)
+    const source = cite(held, op.path ?? old?.path ?? '', op.quote ?? old?.quote ?? '')
+    if ('error' in source) return no(source.error)
+    const was = question.label
+    question.label = source.label
+    uncite(quiz, was)
+    moved = ` and now cites ${quiz.sources.find((one) => one.label === source.label)?.path}`
   }
-  if (!passage.path) return no('a question cannot be re-anchored to no document. Give the path, or leave it out.')
-  if (!passage.quote) return no('a question cannot be re-anchored to an empty quote. Paste the source those bytes hold.')
-  if (!Number.isInteger(passage.start) || !Number.isInteger(passage.end) || passage.start < 0 || passage.end <= passage.start) {
-    return no('the passage needs a byte range: start, and end one past the last byte, both whole numbers with end greater than start.')
-  }
-  const absent = missingAnchor(root, passage.path)
-  if (absent) return no(absent)
-  const moved = passage.path !== question.passage.path
   question.question = op.question ?? question.question
   question.options = options
-  question.answer = answer
+  question.correct = [op.answer ?? question.correct[0]!]
   question.why = op.why ?? question.why
-  question.passage = passage
-  const wrote = save(op.project, store)
-  if (wrote) return no(wrote)
-  return { ok: true, said: moved ? `Question ${op.id} reworded and re-anchored to ${passage.path}` : `Question ${op.id} reworded`, id: op.id }
-}
-
-/**
- * The refusal for an anchor whose document is not in the project, or null
- * when it is — or when this module cannot look.
- *
- * Refused at the door rather than recorded, because a question that points at
- * nothing is a question a reader will press and get nothing from, and the
- * moment the caller can still do something about it is now. `unchecked` is
- * let through: a document outside the project is not this module's to
- * vouch for either way, and refusing it would be a claim that it does not
- * exist. The sentence names the spelling the other doors on this canvas use —
- * a file name relative to the PAPER is the way these paths go wrong.
- */
-function missingAnchor(root: string | null, path: string): string | null {
-  if (anchorOf(root, path) !== 'missing') return null
-  return (
-    `there is no "${path}" in this project — nothing at ${resolved(root, path)}. The path is taken relative to the `
-    + 'project root, or absolute. If you read the file through another module\'s door, that door may have spelled it '
-    + 'relative to something else, such as the paper\'s own folder: give the absolute path instead. Nothing was written.'
-  )
+  return written(`Question ${op.id} reworded${moved}`, op.id)
 }
 
 /* ------------------------------------------------------------------------ *
@@ -647,29 +475,25 @@ export interface Scored {
 }
 
 /**
- * Grade one answer, here, where the key is.
+ * Grade one answer, here, where the key is, and file it in `answers.json`.
+ * The Markdown is not touched.
  *
- * The whole of the answer-visibility decision is this function existing. The
- * page posts an id and an index; the server compares them and replies with a
- * verdict, the key and the explanation. Nothing the browser held before this
- * request could have produced the verdict, so there is nothing to find early.
- *
- * An index outside the options is refused rather than scored as wrong, because
- * "wrong" is a thing a reader did and `chose: 47` is a thing a program did. A
- * store that recorded the second as the first would put a fictional attempt in
- * somebody's history.
+ * An index outside the options is refused rather than scored as wrong:
+ * "wrong" is a thing a reader did and `chose: 47` is a thing a program did.
  */
 export function score(
   projectPath: string | null | undefined,
+  epic: string,
   id: string,
   chose: number,
 ): { scored: Scored } | { error: string } {
-  const { store, trouble, nowhere, root } = read(projectPath)
+  const { held, trouble, nowhere } = open(projectPath, epic)
   if (nowhere) return { error: NOWHERE }
-  if (trouble) return { error: trouble }
-  const question = store.questions.find((one) => one.id === id)
-  if (!question) {
-    return { error: `there is no question "${id.slice(0, MAX_ID)}" in this project, so there is nothing to answer.` }
+  if (!held) return { error: trouble ?? NOWHERE }
+  const question = held.quiz.questions.find((one) => one.id === id)
+  const key = question ? keyOf(question) : null
+  if (!question || key === null) {
+    return { error: `there is no question "${id.slice(0, MAX_ID)}" to answer about ${epic.slice(0, MAX_EPIC)} in this project.` }
   }
   if (!Number.isInteger(chose) || chose < 0 || chose >= question.options.length) {
     return {
@@ -678,13 +502,10 @@ export function score(
         + `answer given was ${JSON.stringify(chose)}. Nothing was recorded.`,
     }
   }
-  const attempt: Attempt = { chose, right: chose === question.answer, at: now() }
-  question.attempts.push(attempt)
-  /* The oldest go. See MAX_ATTEMPTS. */
-  if (question.attempts.length > MAX_ATTEMPTS) {
-    question.attempts = question.attempts.slice(question.attempts.length - MAX_ATTEMPTS)
-  }
-  const wrote = save(projectPath, store)
+  const attempt: Attempt = { chose, right: chose === key, at: new Date().toISOString() }
+  const mine = (held.all[epic] ??= {})
+  const attempts = (mine[id] = [...(mine[id] ?? []), attempt].slice(-MAX_ATTEMPTS))
+  const wrote = saveAnswers(projectPath, held.all)
   if (wrote) return { error: wrote }
-  return { scored: { right: attempt.right, answer: question.answer, why: question.why, attempt, asked: asked(question, root) } }
+  return { scored: { right: attempt.right, answer: key, why: question.why, attempt, asked: asked(question, attempts, citer(held)(question)) } }
 }

@@ -1,250 +1,178 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { KEHIKOT_DIR, moduleFolder } from 'kehikot-module-protocol'
+import { KEHIKOT_DIR } from 'kehikot-module-protocol'
 
-import { apply, plan } from '../dev/migrate.ts'
-import { ID } from '../manifest.ts'
-import { FILE } from '../store.ts'
+import { change, forEpic, score, standings, withKey } from '../quiz/questions.ts'
 
 /**
- * The one-off move, tested because a migration nobody tested is a migration
- * nobody can rerun.
- *
- * The real file this runs against holds several projects' questions and there is
- * exactly one copy of it. So the order matters more than the mechanics: write,
- * read back, verify the material, and only then rename. Everything below is
- * about that order and about what happens when one row cannot be written — which
- * is the case that decides whether somebody loses work.
+ * The move out of `questions.json` — the one JSON file this module kept before
+ * its questions were Markdown — against a real folder holding a file in the
+ * shape real projects hold.
  */
-let dir = ''
-let one = ''
-let two = ''
-let source = ''
+let project = ''
+let folder = ''
 
-/** A question in the shape the old store actually wrote. */
-const q = (id: string, over: Record<string, unknown> = {}) => ({
+const question = (id: string, epic: string, over: Record<string, unknown> = {}) => ({
   id,
-  epic: 'modes-are-modules',
-  question: `Question ${id}?`,
-  options: ['first', 'second', 'third'],
-  answer: 2,
-  why: 'Because the manifest is the only half a host reads.',
-  passage: { path: 'chapters/bridge.tex', start: 10, end: 40, quote: 'the smallest half' },
-  by: 'claude',
+  epic,
+  question: `What does ${id} ask?`,
+  options: ['the first', 'the second', 'the third'],
+  answer: 1,
+  why: `Because of ${id}.`,
+  passage: { path: 'chapters/1_introduction.tex', start: 10, end: 60, quote: 'It is the graded activity\nthat this thesis takes as its object of study.' },
+  by: 'claude-code',
   viaMcp: true,
-  at: '2026-01-01T00:00:00.000Z',
-  attempts: [{ chose: 1, right: false, at: '2026-01-02T00:00:00.000Z' }],
+  at: '2026-08-31T22:09:26.946Z',
+  attempts: [],
   ...over,
 })
 
-function writeSource(projects: Record<string, { questions: unknown[] }>): void {
-  writeFileSync(source, `${JSON.stringify({ projects }, null, 2)}\n`)
+const OLD = {
+  questions: [
+    question('b13a66fc', 'thesis'),
+    question('6a485eae', 'thesis', { attempts: [{ chose: 0, right: false, at: '2026-09-04T12:06:45.181Z' }] }),
+    question('0c0ffee0', 'thesis', { passage: { path: 'chapters/gone.tex', start: 1, end: 2, quote: 'words in a file that moved' } }),
+    question('aaaa1111', 'bridge', { why: 'Two lines.\n## And a heading, which a file would read as a question' }),
+  ],
 }
 
+const raw = JSON.stringify(OLD, null, 2)
+
 beforeEach(() => {
-  dir = realpathSync(mkdtempSync(join(tmpdir(), 'learning-migrate-')))
-  one = join(dir, 'project-one')
-  two = join(dir, 'project-two')
-  mkdirSync(one)
-  mkdirSync(two)
-  source = join(dir, 'questions.json')
+  project = realpathSync(mkdtempSync(join(tmpdir(), 'learning-migrate-')))
+  folder = join(project, KEHIKOT_DIR, 'learning')
+  mkdirSync(folder, { recursive: true })
+  mkdirSync(join(project, 'chapters'))
+  writeFileSync(join(project, 'chapters', '1_introduction.tex'), 'Intro.\nIt is the graded activity\nthat this thesis takes as its object of study.\n')
+  writeFileSync(join(folder, 'questions.json'), raw)
 })
 
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true })
+  rmSync(project, { recursive: true, force: true })
 })
 
-const MINE = moduleFolder(ID)
-const destination = (project: string) => join(project, KEHIKOT_DIR, MINE, `${FILE}.json`)
+describe('the first time questions.json is found', () => {
+  test('a READ moves it: one Markdown file per epic, the answers beside them, and the old file renamed untouched', () => {
+    const { questions, trouble } = forEpic(project, 'thesis')
+    expect(trouble).toBeNull()
+    expect(questions.map((q) => q.id)).toEqual(['b13a66fc', '6a485eae', '0c0ffee0'])
+    expect(readdirSync(folder).sort()).toEqual(['answers.json', 'bridge.md', 'questions.migrated.json', 'thesis.md'])
+    expect(readFileSync(join(folder, 'questions.migrated.json'), 'utf8')).toBe(raw)
+  })
 
-describe('the split', () => {
-  test('each project’s questions land in that project, and the outer key comes out', () => {
-    writeSource({
-      [one]: { questions: [q('aaaa1111'), q('aaaa2222')] },
-      [two]: { questions: [q('bbbb1111')] },
+  test('the Markdown is the documented shape, with the old ids, the key as a tick, and shared sources listed once', () => {
+    forEpic(project, 'thesis')
+    expect(readFileSync(join(folder, 'thesis.md'), 'utf8')).toBe(
+      [
+        '## What does b13a66fc ask? [^1]',
+        '<!-- id: b13a66fc -->',
+        '- [ ] the first',
+        '- [x] the second',
+        '- [ ] the third',
+        '',
+        'Why:',
+        'Because of b13a66fc.',
+        '',
+        '## What does 6a485eae ask? [^1]',
+        '<!-- id: 6a485eae -->',
+        '- [ ] the first',
+        '- [x] the second',
+        '- [ ] the third',
+        '',
+        'Why:',
+        'Because of 6a485eae.',
+        '',
+        '## What does 0c0ffee0 ask? [^2]',
+        '<!-- id: 0c0ffee0 -->',
+        '- [ ] the first',
+        '- [x] the second',
+        '- [ ] the third',
+        '',
+        'Why:',
+        'Because of 0c0ffee0.',
+        '',
+        'Sources:',
+        '[^1]: chapters/1_introduction.tex | "It is the graded activity that this thesis takes as its object of study."',
+        '[^2]: chapters/gone.tex | "words in a file that moved"',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('every answer comes across under the same id, and keeps the key earned', () => {
+    const { questions } = forEpic(project, 'thesis')
+    expect(questions[1]).toMatchObject({ id: '6a485eae', attempts: [{ chose: 0, right: false, at: '2026-09-04T12:06:45.181Z' }], answer: 1 })
+    expect(questions[0]).toMatchObject({ attempts: [], answer: null, why: null })
+    expect(standings(project).standings).toEqual([
+      { epic: 'bridge', questions: 1, answered: 0, right: 0 },
+      { epic: 'thesis', questions: 3, answered: 1, right: 0 },
+    ])
+  })
+
+  test('the byte range is not carried: the words are found again, and a source that has gone says so', () => {
+    const { questions } = forEpic(project, 'thesis')
+    expect(questions[0]?.source).toMatchObject({ status: 'holds', at: { from: 7, line: 2, endLine: 3 } })
+    expect(questions[2]?.source).toMatchObject({ status: 'unreadable', at: null })
+  })
+
+  test('an explanation the file would read as structure is joined into one line rather than splitting the question', () => {
+    const { questions } = withKey(project, 'bridge')
+    expect(questions).toHaveLength(1)
+    expect(questions[0]).toMatchObject({ key: 1, question: { id: 'aaaa1111', why: 'Two lines. ## And a heading, which a file would read as a question' } })
+  })
+
+  test('it happens once: the moved files are then the truth, and deleting one does not bring it back', () => {
+    forEpic(project, 'thesis')
+    rmSync(join(folder, 'bridge.md'))
+    expect(forEpic(project, 'bridge').questions).toEqual([])
+    expect(existsSync(join(folder, 'bridge.md'))).toBe(false)
+  })
+
+  test('a write finds it too, and adds to what was moved rather than starting an empty file over it', () => {
+    const out = change({
+      op: 'add',
+      project,
+      epic: 'thesis',
+      question: 'A new one',
+      options: ['a', 'b'],
+      answer: 0,
+      why: '',
+      path: 'chapters/1_introduction.tex',
+      quote: 'It is the graded activity',
     })
-
-    const out = apply(source)
-    expect(out.refused).toBeNull()
-    expect(out.left).toEqual([])
-    expect(out.written.map((row) => row.questions).sort()).toEqual([1, 2])
-
-    const first = JSON.parse(readFileSync(destination(one), 'utf8')) as Record<string, unknown>
-    expect(Object.keys(first)).toEqual(['questions'])
-    expect((first.questions as { id: string }[]).map((x) => x.id)).toEqual(['aaaa1111', 'aaaa2222'])
-
-    const second = JSON.parse(readFileSync(destination(two), 'utf8')) as { questions: { id: string }[] }
-    expect(second.questions.map((x) => x.id)).toEqual(['bbbb1111'])
-  })
-
-  test('everything about a question survives, not just its id', () => {
-    /* A count matches when the ids are right and every answer key is zero, which
-       is exactly the corruption worth catching: nobody sees it until they answer
-       one. So the comparison is field by field, and so is this assertion. */
-    const original = q('cccc1111', { answer: 2, attempts: [{ chose: 2, right: true, at: '2026-02-02T00:00:00.000Z' }] })
-    writeSource({ [one]: { questions: [original] } })
-
-    apply(source)
-    const back = JSON.parse(readFileSync(destination(one), 'utf8')) as { questions: unknown[] }
-    expect(back.questions[0]).toEqual(original)
-  })
-
-  test('the order inside a project is kept, because it is the order they were written', () => {
-    writeSource({ [one]: { questions: [q('1111aaaa'), q('2222bbbb'), q('3333cccc')] } })
-    apply(source)
-    const back = JSON.parse(readFileSync(destination(one), 'utf8')) as { questions: { id: string }[] }
-    expect(back.questions.map((x) => x.id)).toEqual(['1111aaaa', '2222bbbb', '3333cccc'])
+    expect(out.ok).toBe(true)
+    expect(forEpic(project, 'thesis').questions).toHaveLength(4)
+    expect('scored' in score(project, 'thesis', 'b13a66fc', 1)).toBe(true)
   })
 })
 
-describe('the source file', () => {
-  test('is renamed and never deleted, and only after every destination verified', () => {
-    writeSource({ [one]: { questions: [q('aaaa1111')] } })
-    const out = apply(source)
-    expect(out.renamedTo).toBe(`${source}.migrated`)
-    expect(existsSync(source)).toBe(false)
-    /* Still on disk under its new name: a migration that went wrong can be
-       looked at rather than reconstructed. */
-    const kept = JSON.parse(readFileSync(`${source}.migrated`, 'utf8')) as { projects: Record<string, unknown> }
-    expect(Object.keys(kept.projects)).toEqual([one])
+describe('what the move will not do', () => {
+  test('write over an <epic>.md that is already there: that epic’s old questions stay in the renamed file only', () => {
+    writeFileSync(join(folder, 'thesis.md'), '## Mine [^1]\n- [x] a\n- b\n')
+    expect(forEpic(project, 'thesis').questions.map((q) => q.question)).toEqual(['Mine'])
+    expect(readFileSync(join(folder, 'thesis.md'), 'utf8')).toBe('## Mine [^1]\n- [x] a\n- b\n')
+    expect(existsSync(join(folder, 'bridge.md'))).toBe(true)
+    expect(readFileSync(join(folder, 'questions.migrated.json'), 'utf8')).toBe(raw)
   })
 
-  test('is left exactly where it is when one project cannot be written', () => {
-    /* The case that decides whether somebody loses work. One project's folder is
-       gone, so the source is the only remaining copy of ITS questions — renaming
-       it would file the evidence away under a name nothing looks for. */
-    const missing = join(dir, 'project-that-moved')
-    writeSource({
-      [one]: { questions: [q('aaaa1111')] },
-      [missing]: { questions: [q('dddd1111'), q('dddd2222')] },
-    })
-
-    const out = apply(source)
-    expect(out.renamedTo).toBeNull()
-    expect(existsSync(source)).toBe(true)
-    expect(out.written.map((row) => row.project)).toEqual([one])
-    expect(out.left).toHaveLength(1)
-    expect(out.left[0]?.project).toBe(missing)
-    expect(out.left[0]?.questions).toBe(2)
-    expect(out.left[0]?.trouble).toContain('there is no folder at')
-    /* Named loudly rather than silently dropped. */
-    expect(out.left[0]?.trouble).toContain('They are NOT lost')
+  test('write over an earlier questions.migrated.json', () => {
+    writeFileSync(join(folder, 'questions.migrated.json'), 'an earlier one')
+    forEpic(project, 'thesis')
+    expect(readFileSync(join(folder, 'questions.migrated.json'), 'utf8')).toBe('an earlier one')
+    expect(readFileSync(join(folder, 'questions.migrated-2.json'), 'utf8')).toBe(raw)
   })
 
-  test('a source that is not there at all is said so, not shrugged at', () => {
-    const out = apply(join(dir, 'nothing-here.json'))
-    expect(out.refused).toContain('there is nothing at')
-    expect(out.written).toEqual([])
-  })
-
-  test('a source that will not parse refuses and touches nothing', () => {
-    writeFileSync(source, '{ this is not json')
-    const out = apply(source)
-    expect(out.refused).toContain('could not be read')
-    expect(readFileSync(source, 'utf8')).toBe('{ this is not json')
-    expect(existsSync(destination(one))).toBe(false)
-  })
-})
-
-describe('a destination that already holds something', () => {
-  test('is refused rather than merged or written over', () => {
-    /* Merging two authored files by guesswork — which id wins, which attempt is
-       newer — is how a person loses an answer they gave. */
-    mkdirSync(join(one, KEHIKOT_DIR, MINE), { recursive: true })
-    const already = `${JSON.stringify({ questions: [q('eeee1111')] }, null, 2)}\n`
-    writeFileSync(destination(one), already)
-    writeSource({ [one]: { questions: [q('aaaa1111')] } })
-
-    const out = apply(source)
-    expect(out.written).toEqual([])
-    expect(out.left[0]?.trouble).toContain('already exists and is not empty')
-    expect(readFileSync(destination(one), 'utf8')).toBe(already)
-    expect(existsSync(source)).toBe(true)
-  })
-
-  test('an empty store there is not "something", and is written into', () => {
-    mkdirSync(join(one, KEHIKOT_DIR, MINE), { recursive: true })
-    writeFileSync(destination(one), `${JSON.stringify({ questions: [] }, null, 2)}\n`)
-    writeSource({ [one]: { questions: [q('aaaa1111')] } })
-
-    const out = apply(source)
-    expect(out.left).toEqual([])
-    const back = JSON.parse(readFileSync(destination(one), 'utf8')) as { questions: { id: string }[] }
-    expect(back.questions.map((x) => x.id)).toEqual(['aaaa1111'])
-  })
-})
-
-describe('running it twice', () => {
-  test('the second run finds nothing to do rather than making a second copy', () => {
-    writeSource({ [one]: { questions: [q('aaaa1111')] } })
-    expect(apply(source).renamedTo).not.toBeNull()
-    const after = readFileSync(destination(one), 'utf8')
-
-    const again = apply(source)
-    expect(again.refused).toContain('there is nothing at')
-    expect(readFileSync(destination(one), 'utf8')).toBe(after)
-  })
-
-  test('a source restored from the renamed copy does not double up either', () => {
-    writeSource({ [one]: { questions: [q('aaaa1111')] } })
-    apply(source)
-    /* Somebody puts the file back, not realising it already ran. */
-    writeSource({ [one]: { questions: [q('aaaa1111')] } })
-    const again = apply(source)
-    expect(again.written).toEqual([])
-    expect(again.left[0]?.trouble).toContain('already exists and is not empty')
-    const back = JSON.parse(readFileSync(destination(one), 'utf8')) as { questions: unknown[] }
-    expect(back.questions).toHaveLength(1)
-  })
-})
-
-describe('the dry run', () => {
-  test('says what would happen and changes nothing', () => {
-    writeSource({ [one]: { questions: [q('aaaa1111'), q('aaaa2222')] }, [two]: { questions: [q('bbbb1111')] } })
-    const { rows, refused } = plan(source)
-    expect(refused).toBeNull()
-    expect(rows).toHaveLength(2)
-    expect(rows.map((row) => row.questions.length)).toEqual([2, 1])
-    expect(rows.every((row) => row.trouble === null)).toBe(true)
-    /* Nothing on disk moved. */
-    expect(existsSync(destination(one))).toBe(false)
-    expect(existsSync(destination(two))).toBe(false)
-    expect(existsSync(source)).toBe(true)
-  })
-
-  test('reports a project that is not on this machine rather than omitting it', () => {
-    const missing = join(dir, 'project-that-moved')
-    writeSource({ [missing]: { questions: [q('dddd1111')] } })
-    const { rows } = plan(source)
-    expect(rows).toHaveLength(1)
-    expect(rows[0]?.destination).toBeNull()
-    expect(rows[0]?.trouble).toContain('there is no folder at')
-    expect(rows[0]?.questions).toHaveLength(1)
-  })
-})
-
-describe('the project’s .gitignore', () => {
-  /* This asked that the migration told the project's `.gitignore` about the
-     folder it made. It does not any more: whether that folder is committed is a
-     checkbox in the host, per project, with one writer — and a migration that
-     quietly added an ignore rule to every project it touched was the fourth
-     program writing that line. */
-  test('is left exactly as it was, even when the migration creates the folder', () => {
-    mkdirSync(join(one, '.git'))
-    writeFileSync(join(one, '.gitignore'), 'node_modules\n')
-    writeSource({ [one]: { questions: [q('aaaa1111')] } })
-
-    apply(source)
-    expect(readFileSync(join(one, '.gitignore'), 'utf8')).toBe('node_modules\n')
-  })
-
-  test('a project that is not a repository gets no .gitignore', () => {
-    writeSource({ [one]: { questions: [q('aaaa1111')] } })
-    apply(source)
-    expect(existsSync(join(one, '.gitignore'))).toBe(false)
-    expect(existsSync(destination(one))).toBe(true)
+  test('treat a questions.json that will not parse as empty: nothing is moved, shown or written', () => {
+    writeFileSync(join(folder, 'questions.json'), '{ "questions": [')
+    const { questions, trouble } = forEpic(project, 'thesis')
+    expect(questions).toEqual([])
+    expect(trouble).toContain('could not be read')
+    expect(trouble).toContain('recoverable')
+    expect(change({ op: 'retake', project, epic: 'thesis' }).ok).toBe(false)
+    expect(readdirSync(folder)).toEqual(['questions.json'])
+    expect(readFileSync(join(folder, 'questions.json'), 'utf8')).toBe('{ "questions": [')
   })
 })

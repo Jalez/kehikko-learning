@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '../src/wire/pointed.ts'
-import type { Passage } from '../quiz/types.ts'
+import { documentOf, keyOf, pointedQuestion, pointingAt, sourceLabel } from '../src/wire/pointed.ts'
+import type { Cited } from '../quiz/types.ts'
 
 /**
  * The two directions of one join, asserted without a browser.
@@ -20,8 +20,9 @@ import type { Passage } from '../quiz/types.ts'
 
 const PROJECT = '/Users/somebody/Projects/thesis'
 
-function anchored(path: string, start: number, end: number, quote = 'the words'): Passage {
-  return { path, start, end, quote }
+/** A source as the store found it: the words, once, at these bytes. */
+function anchored(path: string, from: number, to: number, quote = 'the words'): Cited {
+  return { label: '1', path, quote, status: 'holds', at: { from, to, line: 1, endLine: 1 }, count: 1 }
 }
 
 describe('the passage a press publishes', () => {
@@ -44,12 +45,14 @@ describe('the passage a press publishes', () => {
     )
   })
 
-  test('a path that is already absolute is passed through, not nailed onto the root', () => {
-    /* `add_quiz` asks for a project-relative path and cannot enforce it — it has
-       no filesystem of the project to check against — so an absolute one can be
-       in the store. Concatenating would produce a document identity naming
-       nothing. */
-    expect(pointingAt(PROJECT, anchored('/elsewhere/paper.tex', 3, 9))?.path).toBe('/elsewhere/paper.tex')
+  test('a source that was not found has nothing to point at, and one with no readable file has no document', () => {
+    /* The paper changed under the question: still about that document, with no
+       range to stand on. The file gone: about nothing a canvas can show. */
+    const adrift: Cited = { ...anchored('chapters/agents.tex', 0, 0), status: 'adrift', at: null, count: 0 }
+    expect(pointingAt(PROJECT, adrift)).toBeNull()
+    expect(documentOf(PROJECT, adrift)).toBe(`${PROJECT}/chapters/agents.tex`)
+    expect(documentOf(PROJECT, { ...adrift, status: 'unreadable' })).toBeNull()
+    expect(pointingAt(PROJECT, null)).toBeNull()
   })
 
   test('names no page, because this module has never opened the file', () => {
@@ -67,8 +70,8 @@ describe('the passage a press publishes', () => {
 
 describe('the question the canvas is pointed at', () => {
   const questions = [
-    { id: 'q1', passage: anchored('chapters/agents.tex', 8140, 8402) },
-    { id: 'q2', passage: anchored('chapters/wire.tex', 10, 40) },
+    { id: 'q1', source: anchored('chapters/agents.tex', 8140, 8402) },
+    { id: 'q2', source: anchored('chapters/wire.tex', 10, 40) },
   ]
 
   const arriving = (path: string, from: number | null, to: number | null, quoted = 'the words') => ({
@@ -96,7 +99,7 @@ describe('the question the canvas is pointed at', () => {
      * produce. So this asserts the echo is honoured rather than guarded — a
      * guard would suppress the whole feature.
      */
-    const published = pointingAt(PROJECT, questions[0]!.passage)!
+    const published = pointingAt(PROJECT, questions[0]!.source)!
     expect(pointedQuestion(PROJECT, questions, published)).toBe('q1')
   })
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -32,14 +32,12 @@ beforeEach(() => {
   B = join(dir, 'two')
   mkdirSync(A)
   mkdirSync(B)
-  /* The document the fixture questions are anchored to has to EXIST now: the
-     store refuses an anchor whose file is not in the project, because eighteen
-     real questions were once written about a paper that then moved and nothing
-     could say so. See `quiz/where.ts`. */
+  /* The document the fixture questions cite has to EXIST and hold the quoted
+     words exactly once: the store refuses a source that already points nowhere. */
   mkdirSync(join(A, 'chapters'))
-  writeFileSync(join(A, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
+  writeFileSync(join(A, 'chapters', 'bridge.tex'), 'So the manifest is the smallest half of this program, and the only half a host reads.')
   mkdirSync(join(B, 'chapters'))
-  writeFileSync(join(B, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
+  writeFileSync(join(B, 'chapters', 'bridge.tex'), 'So the manifest is the smallest half of this program, and the only half a host reads.')
   delete process.env.LEARNING_PROJECT
   delete process.env.KEHIKOT_PROJECT
   delete process.env.ROADMAP_PROJECT
@@ -68,10 +66,7 @@ const good = (): Record<string, unknown> => ({
   answer: 0,
   why: 'The manifest is the only half a host reads.',
   path: 'chapters/bridge.tex',
-  start: 100,
-  end: 240,
   quote: 'the manifest is the smallest half of this program',
-  agent: 'claude',
 })
 
 /** Add one question and hand back its id, read off what the tool printed. */
@@ -154,7 +149,7 @@ describe('the project argument', () => {
     const { text, isError } = tool('quizzes')
     expect(isError).toBe(true)
     expect(text).toContain('needs a project')
-    expect(text).toContain('.kehikot/learning/questions.json')
+    expect(text).toContain('.kehikot/learning/')
     expect(text).toContain('no central store')
   })
 
@@ -182,7 +177,7 @@ describe('the project argument', () => {
 
   test('a question written for one project is in that project’s folder and no other', () => {
     added()
-    expect(existsSync(join(A, KEHIKOT_DIR, 'learning', 'questions.json'))).toBe(true)
+    expect(existsSync(join(A, KEHIKOT_DIR, 'learning', 'modes-are-modules.md'))).toBe(true)
     expect(existsSync(join(B, KEHIKOT_DIR))).toBe(false)
   })
 
@@ -239,25 +234,62 @@ describe('add_quiz', () => {
     expect(text).toContain('between 0 and 2')
   })
 
-  test('needs the whole passage, and names all four parts', () => {
-    for (const missing of [{ path: '' }, { quote: '' }, { start: 'x' }, { end: null }]) {
+  test('needs the passage, as a path and the words', () => {
+    for (const missing of [{ path: '' }, { quote: '' }]) {
       const { text, isError } = tool('add_quiz', { ...good(), ...missing })
       expect(isError).toBe(true)
-      expect(text).toContain('path, start, end and quote')
+      expect(text).toContain('path and quote')
       expect(text).toContain('Nothing was written')
     }
   })
 
-  test('refuses a byte range that does not go forwards', () => {
-    const { text, isError } = tool('add_quiz', { ...good(), start: 500, end: 100 })
-    expect(isError).toBe(true)
-    expect(text).toContain('end greater than start')
+  test('takes no byte range: one sent by an older caller is ignored, and the words are what is found', () => {
+    added({ start: 500, end: 100 })
+    expect(tool('quizzes', { project: A, epic: 'modes-are-modules' }).text).toContain('cites chapters/bridge.tex, line 1')
   })
 
-  test('records who wrote it and that it came through this door', () => {
-    added({ agent: 'a particular agent' })
-    const { text } = tool('quizzes', { project: A, epic: 'modes-are-modules' })
-    expect(text).toContain('written by a particular agent, over MCP')
+  test('refuses words that are not in the file, or are in it twice', () => {
+    const adrift = tool('add_quiz', { ...good(), quote: 'the manifest is the larger half' })
+    expect(adrift.isError).toBe(true)
+    expect(adrift.text).toContain('those words are not in chapters/bridge.tex')
+    const twice = tool('add_quiz', { ...good(), quote: 'half' })
+    expect(twice.isError).toBe(true)
+    expect(twice.text).toContain('occur 2 times')
+    expect(existsSync(join(A, KEHIKOT_DIR, 'learning', 'modes-are-modules.md'))).toBe(false)
+  })
+
+  test('refuses text the file would read as structure, rather than writing a broken file', () => {
+    const { text, isError } = tool('add_quiz', { ...good(), why: 'Because.\n## And another thing\n- [x] hidden' })
+    expect(isError).toBe(true)
+    expect(text).toContain('would read as structure')
+  })
+
+  test('writes Markdown a person can read and edit, with the source listed below', () => {
+    const id = added()
+    expect(readFileSync(join(A, KEHIKOT_DIR, 'learning', 'modes-are-modules.md'), 'utf8')).toBe(
+      [
+        '## What does a manifest settle? [^1]',
+        `<!-- id: ${id} -->`,
+        '- [x] Which tab the page gets',
+        '- [ ] What colour the container is',
+        '- [ ] Who owns the repository',
+        '',
+        'Why:',
+        'The manifest is the only half a host reads.',
+        '',
+        'Sources:',
+        '[^1]: chapters/bridge.tex | "the manifest is the smallest half of this program"',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('two questions about the same words share one source line', () => {
+    added()
+    added({ question: 'And what does a host read?' })
+    const text = readFileSync(join(A, KEHIKOT_DIR, 'learning', 'modes-are-modules.md'), 'utf8')
+    expect(text.match(/^\[\^/gm)).toHaveLength(1)
+    expect(text).toContain('## And what does a host read? [^1]')
   })
 
   test('an epic that is not a slug is refused', () => {
@@ -294,17 +326,42 @@ describe('quizzes', () => {
     /* The reader has already been shown it; withholding it from the agent at
        that point protects nothing and makes the tool useless for its job. */
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, id, chose: 1 }, TICKET)
+    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 1 }, TICKET)
     const { text } = tool('quizzes', { project: A, epic: 'modes-are-modules' })
     expect(text).toContain('answer: 0. Which tab the page gets')
     expect(text).toContain('was WRONG')
   })
 
-  test('prints the anchor, which is the module’s whole claim', () => {
+  test('prints the source, which is the module’s whole claim, and where the file is', () => {
     added()
     const { text } = tool('quizzes', { project: A, epic: 'modes-are-modules' })
-    expect(text).toContain('anchored to chapters/bridge.tex bytes 100–240')
-    expect(text).toContain('the manifest is the smallest half of this program')
+    expect(text).toContain('cites chapters/bridge.tex, line 1: “the manifest is the smallest half of this program”')
+    expect(text).toContain(`They are ${KEHIKOT_DIR}/learning/modes-are-modules.md`)
+  })
+
+  test('reads a file a person typed by hand, and says what is wrong with it without giving the key away', () => {
+    mkdirSync(join(A, KEHIKOT_DIR, 'learning'), { recursive: true })
+    writeFileSync(
+      join(A, KEHIKOT_DIR, 'learning', 'by-hand.md'),
+      '## Which half does a host read? [^a]\n- the page\n- [x] the manifest\n\n## Unfinished\n- one\n- two\n\nSources:\n[^a]: chapters/bridge.tex | "the only half a host reads"\n',
+    )
+    const { text } = tool('quizzes', { project: A, epic: 'by-hand' })
+    expect(text).toContain('Which half does a host read?')
+    expect(text).toContain('answer: withheld')
+    expect(text).not.toContain('answer: 1')
+    expect(text).toContain('NOT ASKED')
+    expect(text).toContain('Wrong with the file:')
+    expect(text).toContain('has no option ticked')
+    expect(text).toContain('names no source')
+    /* The page is sent the one that can be asked, and the sentence — never the tick. */
+    const reply = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'by-hand' }), null, null)
+    const body = reply?.body as { questions: { answer: number | null; source: { status: string } }[]; trouble: string; file: string }
+    expect(body.questions).toHaveLength(1)
+    expect(body.questions[0]?.answer).toBeNull()
+    expect(body.questions[0]?.source.status).toBe('holds')
+    expect(body.file).toBe(`${KEHIKOT_DIR}/learning/by-hand.md`)
+    expect(body.trouble).toContain('has no option ticked')
+    expect(JSON.stringify(body.questions)).not.toContain('"answer":1')
   })
 
   test('an epic with nothing in it says so, and says what to do', () => {
@@ -323,43 +380,56 @@ describe('quizzes', () => {
 })
 
 describe('where the document is', () => {
-  test('add_quiz takes the absolute path the other doors on the canvas hand out, and stores it relative', () => {
+  test('add_quiz takes the absolute path the other doors on the canvas hand out, and writes it relative', () => {
     const id = added({ path: join(A, 'chapters', 'bridge.tex') })
     const { text } = tool('quizzes', { project: A, epic: 'modes-are-modules' })
     expect(text).toContain(`${id}`)
-    expect(text).toContain('anchored to chapters/bridge.tex')
-    expect(text).not.toContain(`anchored to ${A}`)
+    expect(text).toContain('cites chapters/bridge.tex')
+    expect(text).not.toContain(`cites ${A}`)
   })
 
-  test('add_quiz refuses an anchor whose document is not in the project, and says what it looked for', () => {
-    /* The spelling that produced the eighteen: a file name relative to the
-       PAPER, handed to a door that reads it relative to the PROJECT. Refused at
-       the moment the caller can still do something about it. */
+  test('add_quiz refuses a source whose document is not in the project', () => {
+    /* A file name relative to the PAPER, handed to a door that reads it
+       relative to the PROJECT. Refused while the caller can still fix it. */
     const { text, isError } = tool('add_quiz', { ...good(), path: 'chapters/agents.tex' })
     expect(isError).toBe(true)
-    expect(text).toContain(`nothing at ${join(A, 'chapters', 'agents.tex')}`)
+    expect(text).toContain('"chapters/agents.tex" is not a readable file inside this project')
     expect(text).toContain('relative to something else')
     expect(text).toContain('Nothing was written')
+    const outside = tool('add_quiz', { ...good(), path: join(B, 'chapters', 'bridge.tex') })
+    expect(outside.isError).toBe(true)
+    expect(outside.text).toContain('not relative to the project and inside it')
   })
 
-  test('quizzes says, beside the anchor, when a document has gone — the agent is the one who can fix it', () => {
+  test('quizzes says, beside the source, when it no longer resolves — the agent is the one who can fix it', () => {
     const id = added()
+    writeFileSync(join(A, 'chapters', 'bridge.tex'), 'The paper was rewritten.')
+    const adrift = tool('quizzes', { project: A, epic: 'modes-are-modules' }).text
+    expect(adrift).toContain(id)
+    expect(adrift).toContain('the source does NOT resolve: chapters/bridge.tex no longer has these words')
     rmSync(join(A, 'chapters', 'bridge.tex'))
-    const { text } = tool('quizzes', { project: A, epic: 'modes-are-modules' })
-    expect(text).toContain(id)
-    expect(text).toContain(`the anchor does NOT resolve: there is no ${join(A, 'chapters', 'bridge.tex')}`)
-    expect(text).toContain('reword_quiz with `path`')
+    const gone = tool('quizzes', { project: A, epic: 'modes-are-modules' }).text
+    expect(gone).toContain('the source does NOT resolve: chapters/bridge.tex is not a readable file')
+    expect(gone).toContain('reword_quiz with path')
   })
 
-  test('the page is told the same thing, on every read', () => {
+  test('the page is told the same thing, on every read: holds, ambiguous, adrift, unreadable', () => {
     const id = added()
-    const before = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
-    const held = (before?.body as { questions: { id: string; anchor: string }[] }).questions.find((q) => q.id === id)
-    expect(held?.anchor).toBe('holds')
+    const status = () => {
+      const reply = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
+      return (reply?.body as { questions: { id: string; source: { status: string; at: { from: number; to: number; line: number } | null; count: number } }[] }).questions.find((q) => q.id === id)?.source
+    }
+    /* Found where the words are: byte offsets, which is what a passage carries. */
+    expect(status()).toMatchObject({ status: 'holds', at: { from: 3, to: 52, line: 1 }, count: 1 })
+    /* An edit ABOVE the passage moves the range with it instead of rotting it. */
+    writeFileSync(join(A, 'chapters', 'bridge.tex'), 'A new opening line.\nSo the manifest is the smallest\nhalf of this program.')
+    expect(status()).toMatchObject({ status: 'holds', at: { from: 23, line: 2 } })
+    writeFileSync(join(A, 'chapters', 'bridge.tex'), 'the manifest is the smallest half of this program, twice: the manifest is the smallest half of this program')
+    expect(status()).toMatchObject({ status: 'ambiguous', count: 2 })
+    writeFileSync(join(A, 'chapters', 'bridge.tex'), 'Rewritten.')
+    expect(status()).toMatchObject({ status: 'adrift', at: null })
     rmSync(join(A, 'chapters', 'bridge.tex'))
-    const after = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
-    const gone = (after?.body as { questions: { id: string; anchor: string }[] }).questions.find((q) => q.id === id)
-    expect(gone?.anchor).toBe('missing')
+    expect(status()).toMatchObject({ status: 'unreadable', at: null })
   })
 })
 
@@ -375,7 +445,7 @@ describe('reword_quiz and drop_quiz', () => {
 
   test('a reword keeps the id and every answer', () => {
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, id, chose: 0 }, TICKET)
+    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0 }, TICKET)
     const { text, isError } = tool('reword_quiz', { project: A, id, question: 'A sharper question' })
     expect(isError).toBe(false)
     expect(text).toContain(`Question ${id} reworded`)
@@ -390,34 +460,34 @@ describe('reword_quiz and drop_quiz', () => {
     expect(text).toContain('not an array')
   })
 
-  test('a reword can re-spell the anchor’s path alone, keeping the bytes and the quote', () => {
-    /* The repair for the which-root bug — `quiz/where.ts`. The document moved
-       inside the project; the question is about the same bytes of the same
-       file under a new name, and the agent gives the absolute path, which is
-       the one spelling it can produce without knowing where the paper module
-       keeps papers. */
+  test('a reword can re-spell the source’s path alone, keeping the quote', () => {
+    /* The document moved inside the project, and the agent gives the absolute
+       path, which is the one spelling it can produce without knowing where the
+       paper module keeps papers. */
     const id = added()
     mkdirSync(join(A, 'moved'))
-    writeFileSync(join(A, 'moved', 'bridge.tex'), 'the manifest is the smallest half')
+    writeFileSync(join(A, 'moved', 'bridge.tex'), 'the manifest is the smallest half of this program')
     const { text, isError } = tool('reword_quiz', { project: A, id, path: join(A, 'moved', 'bridge.tex') })
     expect(isError).toBe(false)
-    expect(text).toContain(`Question ${id} reworded and re-anchored to moved/bridge.tex`)
-    expect(text).toContain('anchored to moved/bridge.tex bytes 100–240')
+    expect(text).toContain(`Question ${id} reworded and now cites moved/bridge.tex`)
+    expect(text).toContain('cites moved/bridge.tex, line 1')
     expect(text).not.toContain('does NOT resolve')
+    /* The line nobody cites any more is gone from the file. */
+    expect(readFileSync(join(A, KEHIKOT_DIR, 'learning', 'modes-are-modules.md'), 'utf8')).not.toContain('chapters/bridge.tex')
   })
 
-  test('a reword cannot re-anchor to a document that is not there', () => {
+  test('a reword cannot cite a document that is not there', () => {
     const id = added()
     const { text, isError } = tool('reword_quiz', { project: A, id, path: 'chapters/gone.tex' })
     expect(isError).toBe(true)
-    expect(text).toContain('there is no "chapters/gone.tex" in this project')
-    /* And the anchor is exactly as it was. */
-    expect(tool('quizzes', { project: A, epic: 'modes-are-modules' }).text).toContain('anchored to chapters/bridge.tex')
+    expect(text).toContain('"chapters/gone.tex" is not a readable file inside this project')
+    /* And the source is exactly as it was. */
+    expect(tool('quizzes', { project: A, epic: 'modes-are-modules' }).text).toContain('cites chapters/bridge.tex')
   })
 
   test('a drop says how many answers went with it', () => {
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, id, chose: 0 }, TICKET)
+    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0 }, TICKET)
     const { text, isError } = tool('drop_quiz', { project: A, id })
     expect(isError).toBe(false)
     expect(text).toContain('1 answer')
@@ -427,7 +497,7 @@ describe('reword_quiz and drop_quiz', () => {
     const id = added({ project: A })
     const { text, isError } = tool('drop_quiz', { project: B, id })
     expect(isError).toBe(true)
-    expect(text).toContain('is not addressable from this one')
+    expect(text).toContain(`there is no question "${id}" in this project`)
   })
 })
 
@@ -462,7 +532,7 @@ describe('/api/questions', () => {
 
   test('carries the key once there is an attempt', () => {
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, id, chose: 2 }, TICKET)
+    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 2 }, TICKET)
     const reply = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
     const body = reply?.body as { questions: { answer: number | null; why: string | null }[] }
     expect(body.questions[0]?.answer).toBe(0)
@@ -488,21 +558,21 @@ describe('/api/questions', () => {
 describe('/api/answer', () => {
   test('is refused without the ticket', () => {
     const id = added()
-    const reply = answer('POST', '/api/answer', nothing, { project: A, id, chose: 0 }, 'a guess')
+    const reply = answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0 }, 'a guess')
     expect(reply?.status).toBe(403)
     expect((reply?.body as { error: string }).error).toContain('did not come from this app')
   })
 
   test('a refused press records nothing', () => {
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, id, chose: 0 }, null)
+    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0 }, null)
     const reply = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
     expect((reply?.body as { questions: { attempts: unknown[] }[] }).questions[0]?.attempts).toHaveLength(0)
   })
 
   test('returns the verdict, the key and the explanation — the one place they cross', () => {
     const id = added()
-    const reply = answer('POST', '/api/answer', nothing, { project: A, id, chose: 1 }, TICKET)
+    const reply = answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 1 }, TICKET)
     const body = reply?.body as { right: boolean; answer: number; why: string; asked: { answer: number | null } }
     expect(body.right).toBe(false)
     expect(body.answer).toBe(0)
@@ -512,13 +582,13 @@ describe('/api/answer', () => {
 
   test('an option that does not exist is refused, not scored as wrong', () => {
     const id = added()
-    const reply = answer('POST', '/api/answer', nothing, { project: A, id, chose: 47 }, TICKET)
+    const reply = answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 47 }, TICKET)
     expect(reply?.status).toBe(400)
     expect((reply?.body as { error: string }).error).toContain('Nothing was recorded')
   })
 
   test('an answer to nothing is refused', () => {
-    const reply = answer('POST', '/api/answer', nothing, { project: A, chose: 0 }, TICKET)
+    const reply = answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', chose: 0 }, TICKET)
     expect(reply?.status).toBe(400)
     expect((reply?.body as { error: string }).error).toContain('did not say which question')
   })
@@ -533,7 +603,7 @@ describe('/api/answer', () => {
 describe('/api/retake', () => {
   test('puts the key back out of reach', () => {
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, id, chose: 0 }, TICKET)
+    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0 }, TICKET)
     const before = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
     expect((before?.body as { questions: { answer: number | null }[] }).questions[0]?.answer).toBe(0)
 
@@ -571,6 +641,19 @@ describe('the other doors', () => {
 
   test('/api/projects is gone, because there is no register of projects to list', () => {
     expect(answer('GET', '/api/projects', nothing, null, null)?.status).toBe(404)
+  })
+
+  test('no door serves the Markdown file: it holds the answers, and only the MCP door can read them', () => {
+    added()
+    const query = new URLSearchParams({ project: A, epic: 'modes-are-modules', slug: 'modes-are-modules' })
+    for (const path of ['/api/quiz', '/api/deck', '/api/file', '/api/source', '/api/questions.md']) {
+      expect(answer('GET', path, query, null, TICKET)?.status).toBe(404)
+    }
+    for (const epic of ['modes-are-modules', 'modes-are-modules.md', '../learning/modes-are-modules']) {
+      const reply = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic }), null, TICKET)
+      expect(JSON.stringify(reply?.body)).not.toContain('[x]')
+      expect(JSON.stringify(reply?.body)).not.toContain('The manifest is the only half a host reads.')
+    }
   })
 
   test('an unknown /api path is ours to refuse, not Vite’s to serve as source', () => {

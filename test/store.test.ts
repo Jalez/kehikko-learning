@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import { KEHIKOT_DIR, moduleFolder } from 'kehikot-module-protocol'
 
 import { ID } from '../manifest.ts'
-import { FILE, dataFile, makeDir } from '../store.ts'
+import { dataFile, makeDir } from '../store.ts'
 import { change, forEpic } from '../quiz/questions.ts'
 
 /**
@@ -32,6 +32,9 @@ let dir = ''
 let project = ''
 let outside = ''
 
+/** The quiz file these tests write: one Markdown file, named after its epic. */
+const FILE = 'modes-are-modules.md'
+
 /** This module's own folder inside `.kehikot`, derived the way the store does. */
 const MINE = moduleFolder(ID)
 /** `<project>/.kehikot/learning`, which is the only directory this app owns. */
@@ -45,10 +48,8 @@ beforeEach(() => {
   outside = join(dir, 'somewhere-else')
   mkdirSync(project)
   mkdirSync(outside)
-  /* The document the fixture questions are anchored to has to EXIST now: the
-     store refuses an anchor whose file is not in the project, because eighteen
-     real questions were once written about a paper that then moved and nothing
-     could say so. See `quiz/where.ts`. */
+  /* The document the fixture questions cite has to EXIST and hold the words:
+     the store refuses a source that already points nowhere. */
   mkdirSync(join(project, 'chapters'))
   writeFileSync(join(project, 'chapters', 'bridge.tex'), 'the manifest is the smallest half')
 })
@@ -66,37 +67,37 @@ const question = (over: Record<string, unknown> = {}) =>
     options: ['Which tab the page gets', 'What colour the container is'],
     answer: 0,
     why: 'The manifest is the only half a host reads.',
-    passage: { path: 'chapters/bridge.tex', start: 100, end: 240, quote: 'the manifest is the smallest half' },
-    by: 'claude',
+    path: 'chapters/bridge.tex',
+    quote: 'the manifest is the smallest half',
     ...over,
   } as Parameters<typeof change>[0])
 
 describe('where the file is', () => {
   test('is this module’s own folder inside .kehikot, inside the project', () => {
-    const { path, trouble } = dataFile(project)
+    const { path, trouble } = dataFile(project, FILE)
     expect(trouble).toBeNull()
-    expect(path).toBe(join(project, KEHIKOT_DIR, 'learning', `${FILE}.json`))
+    expect(path).toBe(join(project, KEHIKOT_DIR, 'learning', FILE))
     /* The folder name is derived from the id with `kehikot.` taken off, and
        nothing here spells either half a second time. */
     expect(MINE).toBe('learning')
-    expect(path).toBe(join(mine(project), `${FILE}.json`))
+    expect(path).toBe(join(mine(project), FILE))
   })
 
   test('a trailing slash does not produce a doubled one', () => {
-    expect(dataFile(`${project}/`).path).toBe(join(mine(project), `${FILE}.json`))
+    expect(dataFile(`${project}/`, FILE).path).toBe(join(mine(project), FILE))
   })
 
   test('reading does not create the folder', () => {
     /* Opening a container against somebody's repository must leave no trace of having
        done so. The folder appears on the first WRITE and not before. */
-    expect(dataFile(project).path).not.toBeNull()
+    expect(dataFile(project, FILE).path).not.toBeNull()
     expect(forEpic(project, 'modes-are-modules').questions).toHaveLength(0)
     expect(existsSync(join(project, KEHIKOT_DIR))).toBe(false)
   })
 
   test('writing creates it', () => {
     expect(question().ok).toBe(true)
-    expect(existsSync(join(mine(project), `${FILE}.json`))).toBe(true)
+    expect(existsSync(join(mine(project), FILE))).toBe(true)
   })
 
   test('this module writes into its own folder and nowhere else in .kehikot', () => {
@@ -104,14 +105,14 @@ describe('where the file is', () => {
        read on its own. Nothing of this module's lands beside somebody else's. */
     expect(question().ok).toBe(true)
     expect(readdirSync(join(project, KEHIKOT_DIR))).toEqual(['learning'])
-    expect(readdirSync(mine(project))).toEqual([`${FILE}.json`])
+    expect(readdirSync(mine(project))).toEqual([FILE])
   })
 })
 
 describe('no project at all', () => {
   test('is not an error and not trouble — it is nowhere', () => {
     for (const nothing of [null, undefined, '', '   ']) {
-      const { path, trouble } = dataFile(nothing)
+      const { path, trouble } = dataFile(nothing, FILE)
       expect(path).toBeNull()
       expect(trouble).toBeNull()
     }
@@ -148,7 +149,7 @@ describe('no project at all', () => {
 
 describe('a project that cannot be used', () => {
   test('one that is not on this machine gets a sentence, not silence', () => {
-    const { path, trouble } = dataFile(join(dir, 'no-such-folder'))
+    const { path, trouble } = dataFile(join(dir, 'no-such-folder'), FILE)
     expect(path).toBeNull()
     expect(trouble).toContain('there is no folder at')
   })
@@ -156,15 +157,15 @@ describe('a project that cannot be used', () => {
   test('a file where a folder should be is refused', () => {
     const file = join(dir, 'a-file')
     writeFileSync(file, 'not a directory')
-    expect(dataFile(file).trouble).toContain('is not a folder')
+    expect(dataFile(file, FILE).trouble).toContain('is not a folder')
   })
 
   test('a relative path is refused, naming the reason', () => {
-    expect(dataFile('some/relative/path').trouble).toContain('is not an absolute path')
+    expect(dataFile('some/relative/path', FILE).trouble).toContain('is not an absolute path')
   })
 
   test('a control character is refused', () => {
-    expect(dataFile('/a/\u0000b').trouble).toContain('control character')
+    expect(dataFile('/a/\u0000b', FILE).trouble).toContain('control character')
   })
 })
 
@@ -178,7 +179,7 @@ describe('the fence', () => {
   test('a .kehikko that resolves outside the project is refused, and nothing is written through it', () => {
     symlinkSync(outside, join(project, KEHIKOT_DIR))
 
-    const { path, trouble } = dataFile(project)
+    const { path, trouble } = dataFile(project, FILE)
     expect(path).toBeNull()
     expect(trouble).toContain('is outside the project it claims to be inside')
 
@@ -187,14 +188,14 @@ describe('the fence', () => {
     if (!out.ok) expect(out.error).toContain('outside the project')
 
     /* The decisive assertion: the directory the link points at is untouched. */
-    expect(existsSync(join(outside, `${FILE}.json`))).toBe(false)
+    expect(existsSync(join(outside, FILE))).toBe(false)
     expect(existsSync(join(outside, MINE))).toBe(false)
   })
 
   test('reading through such a link is refused too, rather than answering with somebody else’s questions', () => {
     symlinkSync(outside, join(project, KEHIKOT_DIR))
     mkdirSync(join(outside, MINE))
-    writeFileSync(join(outside, MINE, `${FILE}.json`), JSON.stringify({ questions: [{ id: 'x' }] }))
+    writeFileSync(join(outside, MINE, FILE), '## Somebody else’s question\n- [x] a\n- b\n')
     const out = forEpic(project, 'modes-are-modules')
     expect(out.questions).toHaveLength(0)
     expect(out.trouble).toContain('outside the project')
@@ -204,9 +205,9 @@ describe('the fence', () => {
     /* The folder is honest and the file is not. Checked separately, because a
        fence that only looked at the directory would follow this one. */
     mkdirSync(mine(project), { recursive: true })
-    symlinkSync(join(outside, 'elsewhere.json'), join(mine(project), `${FILE}.json`))
-    writeFileSync(join(outside, 'elsewhere.json'), '{"questions":[]}')
-    expect(dataFile(project).trouble).toContain('outside the project')
+    symlinkSync(join(outside, 'elsewhere.md'), join(mine(project), FILE))
+    writeFileSync(join(outside, 'elsewhere.md'), '## Somebody else’s question\n- [x] a\n- b\n')
+    expect(dataFile(project, FILE).trouble).toContain('outside the project')
   })
 
   test('a sibling folder whose name merely starts the same is not mistaken for the real one', () => {
@@ -215,7 +216,7 @@ describe('the fence', () => {
     const decoy = join(dir, `${KEHIKOT_DIR}-elsewhere`)
     mkdirSync(decoy)
     symlinkSync(decoy, join(project, KEHIKOT_DIR))
-    expect(dataFile(project).trouble).toContain('outside the project')
+    expect(dataFile(project, FILE).trouble).toContain('outside the project')
   })
 })
 
@@ -294,7 +295,7 @@ describe('the project’s .gitignore', () => {
        precondition. */
     expect(question().ok).toBe(true)
     expect(existsSync(gitignore())).toBe(false)
-    expect(existsSync(join(mine(project), `${FILE}.json`))).toBe(true)
+    expect(existsSync(join(mine(project), FILE))).toBe(true)
   })
 
   test('a .gitignore that already ignores the folder is left byte for byte alone', () => {

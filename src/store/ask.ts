@@ -65,7 +65,7 @@ export type { Asked, Attempt, Standing }
  * It fetched `/api/projects`, which enumerated the projects one central store
  * held questions for, and the container drew that list when the host had given it no
  * path. There is no central store now: every question is inside the project it
- * is about, at `.kehikot/learning/questions.json`, and this app is handed one project at
+ * is about, at `.kehikot/learning/`, and this app is handed one project at
  * a time and forgets it. So the list cannot be built, and — more to the point —
  * it is not needed: the questions are in the folder, in plain sight.
  *
@@ -78,6 +78,8 @@ export interface Opened {
   epic: string | null
   standings: Standing[]
   questions: Asked[]
+  /** Where this epic's questions are, relative to the project: the Markdown file a person edits. */
+  file: string | null
   trouble: string | null
 }
 
@@ -101,6 +103,7 @@ export async function openEpic(project: string, epic: string | null): Promise<Op
       epic,
       standings: Array.isArray(body.standings) ? (body.standings as Standing[]) : [],
       questions: Array.isArray(body.questions) ? (body.questions as Asked[]) : [],
+      file: typeof body.file === 'string' ? body.file : null,
       trouble: typeof body.trouble === 'string' ? body.trouble : null,
     }
   }
@@ -122,8 +125,8 @@ export interface Scored {
  * The page sends an id and an index and gets back a verdict it could not have
  * computed. This is the moment the key crosses the wire, and it is the only one.
  */
-export async function answer(project: string, id: string, chose: number): Promise<Scored | { error: string }> {
-  const body = (await post('/api/answer', { project, id, chose })) as Record<string, unknown>
+export async function answer(project: string, epic: string, id: string, chose: number): Promise<Scored | { error: string }> {
+  const body = (await post('/api/answer', { project, epic, id, chose })) as Record<string, unknown>
   if (body.ok === true && typeof body.answer === 'number') {
     return {
       right: body.right === true,
