@@ -1,4 +1,4 @@
-import type { Asked, Attempt, Standing } from '../../quiz/types.ts'
+import type { Asked, Attempt, HistoryEntry, QuizFile, Standing } from '../../quiz/types.ts'
 
 /**
  * This app's own store, over this app's own origin.
@@ -151,4 +151,63 @@ export async function retake(project: string, epic: string): Promise<{ questions
   const body = (await post('/api/retake', { project, epic })) as Record<string, unknown>
   if (body.ok === true) return { questions: Array.isArray(body.questions) ? (body.questions as Asked[]) : [] }
   return { error: typeof body.error === 'string' ? body.error : 'it did not work, and said nothing about why' }
+}
+
+/* ------------------------------------------------------------------ *
+ * The editor's file
+ * ------------------------------------------------------------------ */
+
+export type { HistoryEntry, QuizFile }
+
+/** What a save came to: written, or refused because the file moved — with what is there now. */
+export type SaveResult = { ok: true; file: QuizFile } | { ok: false; theirs: QuizFile }
+
+/**
+ * An epic's quiz file, as the EDITOR reads and writes it — **the only calls in
+ * this page that are answered with the answers.** Nothing here runs until a
+ * person presses Edit: `view/editor.tsx` is the one caller, and it is mounted
+ * by that press and unmounted by Done, taking the text with it. Every call
+ * carries the page's ticket, reads included, because the reply holds the key.
+ *
+ * An interface, so a test hands the editor a fake.
+ */
+export interface Files {
+  read(project: string, epic: string): Promise<QuizFile>
+  save(project: string, epic: string, text: string, base: string | null, session: string): Promise<SaveResult>
+  history(project: string, epic: string): Promise<HistoryEntry[]>
+  undo(project: string, epic: string, id: string): Promise<QuizFile>
+}
+
+async function reply<T>(response: Response): Promise<T> {
+  const parsed = (await response.json().catch(() => ({}))) as T & { ok?: boolean; error?: string }
+  if (!response.ok || parsed.ok === false) throw new Error(parsed.error ?? `this app answered ${response.status}`)
+  return parsed
+}
+
+const where = (project: string, epic: string) => `project=${encodeURIComponent(project)}&epic=${encodeURIComponent(epic)}`
+const ticketed = { headers: { 'x-learning-ticket': TICKET } }
+const posted = (body: unknown) => ({
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-learning-ticket': TICKET },
+  body: JSON.stringify(body),
+})
+
+export const files: Files = {
+  async read(project, epic) {
+    return (await reply<{ file: QuizFile }>(await fetch(`/api/quiz?${where(project, epic)}`, ticketed))).file
+  },
+  async save(project, epic, text, base, session) {
+    const response = await fetch('/api/quiz', posted({ project, epic, text, base, session }))
+    if (response.status === 409) {
+      const conflict = (await response.json()) as { file?: QuizFile }
+      if (conflict.file) return { ok: false, theirs: conflict.file }
+    }
+    return { ok: true, file: (await reply<{ file: QuizFile }>(response)).file }
+  },
+  async history(project, epic) {
+    return (await reply<{ entries: HistoryEntry[] }>(await fetch(`/api/history?${where(project, epic)}`, ticketed))).entries
+  },
+  async undo(project, epic, id) {
+    return (await reply<{ file: QuizFile }>(await fetch('/api/undo', posted({ project, epic, id })))).file
+  },
 }

@@ -4,8 +4,9 @@ import { LIMITS } from 'kehikot-module-protocol'
 
 import { ID } from '../manifest.ts'
 
-import { answer, openEpic, retake, type Asked, type Standing } from '@/store/ask.ts'
+import { answer, files, openEpic, retake, type Asked, type Standing } from '@/store/ask.ts'
 import { useKehikot, type GotoHandler } from '@/wire/use-kehikot.ts'
+import { QuizEditor } from '@/view/editor.tsx'
 import { QuizView } from '@/view/quiz.tsx'
 import { NoEpic, NoProject } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
@@ -49,6 +50,14 @@ export function App() {
   const [standings, setStandings] = useState<Standing[]>([])
   const [trouble, setTrouble] = useState<string | null>(null)
   const [file, setFile] = useState<string | null>(null)
+  /*
+   * Whether the editor is open — and so whether this page holds the answers.
+   *
+   * False until a person presses Edit, and the file is not asked for before
+   * that: `QuizEditor` is what fetches it, and it is mounted only while this
+   * is true. Leaving the paper closes it.
+   */
+  const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
 
   /*
@@ -317,6 +326,8 @@ export function App() {
   /* Held in a ref as well as in state so the poll can read the current pair
      without being re-created — and therefore re-scheduled — on every context
      change. */
+  useEffect(() => setEditing(false), [projectPath, epic])
+
   const standing = useRef<{ project: string | null; epic: string | null }>({ project: null, epic: null })
   standing.current = { project: projectPath, epic }
 
@@ -514,6 +525,9 @@ export function App() {
   const shell = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const node = shell.current
+    /* The editor is as tall as the frame it is given, so reporting its height
+       back would be asking for the frame's own height plus a little, forever. */
+    if (editing) return
     if (!node || typeof ResizeObserver === 'undefined') return
     const inner = node.querySelector('[data-body="pinned"] > *')
     const tell = () => {
@@ -575,10 +589,22 @@ export function App() {
       <NoProject unhosted={where === 'unhosted'} />
     ) : !epic ? (
       <NoEpic project={project} standings={standings} />
+    ) : editing ? (
+      <QuizEditor
+        files={files}
+        project={projectPath}
+        epic={epic}
+        file={file}
+        onDone={() => {
+          setEditing(false)
+          void refresh()
+        }}
+      />
     ) : (
       <QuizView
         epic={epic}
         file={file}
+        onEdit={() => setEditing(true)}
         questions={visible}
         /* What the narrowing hid, in this module's own words. Drawn in the page
            because the host cannot count rows it does not render. */

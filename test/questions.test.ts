@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { KEHIKOT_DIR } from 'kehikot-module-protocol'
 
-import { MAX_ATTEMPTS, MAX_OPTIONS, MIN_OPTIONS, change, forEpic, score, standings, withKey, type Op } from '../quiz/questions.ts'
+import { MAX_ATTEMPTS, MAX_OPTIONS, MIN_OPTIONS, change, forEpic, quizHistory, readQuiz, score, standings, undoQuiz, withKey, writeQuiz, type Op } from '../quiz/questions.ts'
 
 /**
  * The store, with real files, in real project directories. Not a mock: the
@@ -92,10 +92,10 @@ describe('writing a question', () => {
     expect(questions[0]?.source).toMatchObject({ label: '1', path: 'chapters/bridge.tex', status: 'holds', at: { from: 3, to: 36, line: 1, endLine: 1 } })
   })
 
-  test('it is one Markdown file per epic, and nothing else is in the folder', () => {
+  test('it is one Markdown file per epic, beside the trail of what each held before', () => {
     added()
     added({ epic: 'another-epic' })
-    expect(readdirSync(folder(A)).sort()).toEqual(['another-epic.md', `${EPIC}.md`])
+    expect(readdirSync(folder(A)).sort()).toEqual(['another-epic.md', 'history.json', `${EPIC}.md`])
   })
 
   test('an epic that is not a slug is refused, and nothing is written', () => {
@@ -252,14 +252,15 @@ describe('rewording and dropping', () => {
     ])
   })
 
-  test('a drop takes the question, its answers and its source line with it', () => {
+  test('a drop takes the question and its source line, and leaves its answers for an undo to find', () => {
     const id = added()
     score(A, EPIC, id, 0)
     const out = change({ op: 'drop', project: A, epic: EPIC, id })
     expect(out.ok).toBe(true)
     if (out.ok) expect(out.said).toContain('1 answer')
     expect(markdown()).toBe('\n')
-    expect(readFileSync(join(folder(A), 'answers.json'), 'utf8')).not.toContain(id)
+    expect(forEpic(A, EPIC).questions).toEqual([])
+    expect(readFileSync(join(folder(A), 'answers.json'), 'utf8')).toContain(id)
   })
 
   test('a question that is not here is named rather than shrugged at', () => {
@@ -348,5 +349,186 @@ describe('the key is withheld until it is earned', () => {
     expect('error' in score(B, EPIC, id, 0)).toBe(true)
     typed(markdown().replace('- [x]', '- [ ]'))
     expect('error' in score(A, EPIC, id, 0)).toBe(true)
+  })
+})
+
+describe('an answer is about the question as it was answered', () => {
+  const retick = (text: string) => text.replace('- [x] Which tab', '- [ ] Which tab').replace('- [ ] Who owns', '- [x] Who owns')
+
+  test('rewording the question, its explanation or its source keeps the answer', () => {
+    const id = added()
+    score(A, EPIC, id, 1)
+    typed(markdown().replace('What does the manifest settle?', 'What is settled by a manifest?').replace('only half a host reads.', 'only half a host ever reads.'))
+    expect(forEpic(A, EPIC).questions[0]).toMatchObject({ attempts: [{ chose: 1, right: false }], answer: 0 })
+  })
+
+  test('moving the tick makes it a question nobody has answered: no stale verdict, and the key is withheld again', () => {
+    const id = added()
+    score(A, EPIC, id, 0)
+    expect(forEpic(A, EPIC).questions[0]).toMatchObject({ answer: 0, attempts: [{ right: true }] })
+    typed(retick(markdown()))
+    const [question] = forEpic(A, EPIC).questions
+    expect(question).toMatchObject({ attempts: [], answer: null, why: null })
+    expect(standings(A).standings[0]).toMatchObject({ answered: 0, right: 0 })
+    /* The attempt is still on disk, and counts again when the tick goes back. */
+    typed(retick(markdown()).replace('- [ ] Which tab', '- [x] Which tab').replace('- [x] Who owns', '- [ ] Who owns'))
+    expect(forEpic(A, EPIC).questions[0]?.attempts).toHaveLength(1)
+  })
+
+  test('so does changing, adding or reordering an option', () => {
+    const id = added()
+    score(A, EPIC, id, 1)
+    typed(markdown().replace('What colour the container is', 'What colour the container is painted'))
+    expect(forEpic(A, EPIC).questions[0]?.attempts).toEqual([])
+    expect(change({ op: 'reword', project: A, epic: EPIC, id, options: ['Which tab the page gets', 'What colour the container is', 'Who owns the repository'] }).ok).toBe(true)
+    expect(forEpic(A, EPIC).questions[0]?.attempts).toHaveLength(1)
+  })
+
+  test('what the page is sent says nothing of what an attempt was made against', () => {
+    const id = added()
+    score(A, EPIC, id, 1)
+    expect(Object.keys(forEpic(A, EPIC).questions[0]!.attempts[0]!).sort()).toEqual(['at', 'chose', 'right'])
+  })
+
+  test('an attempt from before this was recorded is kept while it agrees with the key, and not after', () => {
+    const id = added()
+    writeFileSync(join(folder(A), 'answers.json'), JSON.stringify({ [EPIC]: { [id]: [{ chose: 0, right: true, at: '2026-09-04T12:00:00.000Z' }] } }))
+    expect(forEpic(A, EPIC).questions[0]?.attempts).toHaveLength(1)
+    typed(retick(markdown()))
+    expect(forEpic(A, EPIC).questions[0]).toMatchObject({ attempts: [], answer: null })
+  })
+})
+
+describe('the file, for the editor', () => {
+  const file = (out: ReturnType<typeof readQuiz>) => {
+    if (!('file' in out)) throw new Error(out.error)
+    return out.file
+  }
+
+  test('is read whole, with every source looked for, and has no version until it exists', () => {
+    expect(file(readQuiz(A, EPIC))).toEqual({ text: '', version: null, sources: [] })
+    added()
+    const read = file(readQuiz(A, EPIC))
+    expect(read.text).toBe(markdown())
+    expect(read.version).toMatch(/^[0-9a-f]{16}$/)
+    expect(read.sources).toMatchObject([{ label: '1', status: 'holds' }])
+  })
+
+  test('is saved as typed, wrong or not, and the first save makes the file', () => {
+    const typed_ = '## Half a question\n- one\n\nnot markdown this module knows {{{\n'
+    const saved = file(writeQuiz(A, EPIC, typed_, null, 's1'))
+    expect(markdown()).toBe(typed_)
+    expect(saved.version).toBe(file(readQuiz(A, EPIC)).version)
+    expect(forEpic(A, EPIC).problems.join(' ')).toContain('fewer than two options')
+  })
+
+  test('a save against a version that is no longer there is refused, with what is there now, and writes nothing', () => {
+    added()
+    const mine = file(readQuiz(A, EPIC))
+    added({ question: 'Written by an agent while the editor was open' })
+    const theirs = markdown()
+    const out = writeQuiz(A, EPIC, `${mine.text}\nmy edit\n`, mine.version, 's1')
+    expect(out).toMatchObject({ status: 409, theirs: { text: theirs } })
+    expect(markdown()).toBe(theirs)
+    /* Keep mine: the same text against the version that IS there. */
+    const kept = 'theirs' in out ? out.theirs : undefined
+    expect('file' in writeQuiz(A, EPIC, `${mine.text}\nmy edit\n`, kept?.version ?? null, 's1') && markdown()).toBe(`${mine.text}\nmy edit\n`)
+  })
+
+  test('a save with no version is refused once the file exists: an editor that never read it cannot write over it', () => {
+    added()
+    expect(writeQuiz(A, EPIC, 'gone', null, 's1')).toMatchObject({ status: 409 })
+  })
+
+  test('an epic that is not a slug has no file, and names nothing outside the folder', () => {
+    for (const epic of ['../../etc/passwd', 'a/b', 'answers.json', '']) {
+      expect('error' in readQuiz(A, epic)).toBe(true)
+      expect('error' in writeQuiz(A, epic, 'x', null, 's')).toBe(true)
+    }
+  })
+})
+
+describe('every write can be undone', () => {
+  const entries = () => {
+    const out = quizHistory(A, EPIC)
+    if (!('entries' in out)) throw new Error(out.error)
+    return out.entries
+  }
+  const undo = (id: string) => {
+    const out = undoQuiz(A, EPIC, id)
+    if (!('file' in out)) throw new Error(out.error)
+    return out.file
+  }
+
+  test('add, reword and drop are each an entry, newest first, saying who and what — and never the text', () => {
+    const id = added({ agent: 'claude' })
+    change({ op: 'reword', project: A, epic: EPIC, id, question: 'Sharper?', agent: 'claude' })
+    change({ op: 'drop', project: A, epic: EPIC, id })
+    expect(entries().map((one) => [one.agent, one.summary])).toEqual([
+      ['an agent', `Question ${id} (“Sharper?”) dropped, with 0 answer(s) to it`],
+      ['claude', `Question ${id} reworded`],
+      ['claude', `Question ${id} written about ${EPIC}`],
+    ])
+    expect(JSON.stringify(entries())).not.toContain('[x]')
+    expect(Object.keys(entries()[0]!).sort()).toEqual(['agent', 'at', 'epic', 'id', 'summary'])
+  })
+
+  test('undoing a drop brings the question back, with the answers it had', () => {
+    const id = added()
+    score(A, EPIC, id, 1)
+    const before = markdown()
+    change({ op: 'drop', project: A, epic: EPIC, id })
+    undo(entries()[0]!.id)
+    expect(markdown()).toBe(before)
+    expect(forEpic(A, EPIC).questions[0]).toMatchObject({ id, attempts: [{ chose: 1, right: false }] })
+  })
+
+  test('undoing a reword that changed the key brings back the answers given to the old one', () => {
+    const id = added()
+    score(A, EPIC, id, 0)
+    change({ op: 'reword', project: A, epic: EPIC, id, answer: 2 })
+    expect(forEpic(A, EPIC).questions[0]?.attempts).toEqual([])
+    undo(entries()[0]!.id)
+    expect(forEpic(A, EPIC).questions[0]).toMatchObject({ answer: 0, attempts: [{ right: true }] })
+  })
+
+  test('undoing the write that made the file removes it, and an undo can be undone', () => {
+    added()
+    const made = markdown()
+    undo(entries()[0]!.id)
+    expect(existsSync(quizFile(A))).toBe(false)
+    expect(entries()[0]).toMatchObject({ agent: 'person', summary: expect.stringContaining('undo: Question') })
+    undo(entries()[0]!.id)
+    expect(markdown()).toBe(made)
+  })
+
+  test('a sitting at the editor is ONE entry however many times it saved, and undoing it puts back what was there when it began', () => {
+    added()
+    const began = markdown()
+    let read = readQuiz(A, EPIC)
+    for (const more of ['a', 'ab', 'abc']) {
+      if (!('file' in read)) throw new Error(read.error)
+      read = writeQuiz(A, EPIC, `${began}${more}\n`, read.file.version, 'sitting-1')
+    }
+    expect(markdown()).toBe(`${began}abc\n`)
+    expect(entries().map((one) => [one.agent, one.summary])).toEqual([
+      ['person', 'edited in the page'],
+      ['an agent', expect.stringContaining('written about')],
+    ])
+    undo(entries()[0]!.id)
+    expect(markdown()).toBe(began)
+    /* A second sitting is a second entry. */
+    const again = readQuiz(A, EPIC)
+    if ('file' in again) writeQuiz(A, EPIC, `${began}later\n`, again.file.version, 'sitting-2')
+    expect(entries()[0]).toMatchObject({ summary: 'edited in the page' })
+    expect(entries()).toHaveLength(4)
+  })
+
+  test('an entry that is not there is refused, and nothing is touched', () => {
+    added()
+    const before = markdown()
+    expect(undoQuiz(A, EPIC, 'nope')).toMatchObject({ status: 404 })
+    expect(undoQuiz(A, 'another-epic', entries()[0]!.id)).toMatchObject({ status: 404 })
+    expect(markdown()).toBe(before)
   })
 })

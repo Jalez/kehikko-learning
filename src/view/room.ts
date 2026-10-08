@@ -685,6 +685,7 @@ function controlsHeight(count: number, width: number, measure: Measure, note: st
    */
   if (note) items.push(measure(note, SMALL.px))
   items.push(measure('Ask again', OPTION.px) + 16)
+  items.push(measure('Edit', OPTION.px) + 16)
 
   let rows = 1
   let run = 0

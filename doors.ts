@@ -14,9 +14,13 @@ import {
   epicsOf,
   fileOf,
   forEpic,
+  quizHistory,
+  readQuiz,
   score,
   standings,
+  undoQuiz,
   withKey,
+  writeQuiz,
   type Keyed,
 } from './quiz/questions.ts'
 import { MAX_PROJECT, defaultProject, usablePath } from './quiz/projects.ts'
@@ -35,8 +39,10 @@ import { MAX_PROJECT, defaultProject, usablePath } from './quiz/projects.ts'
  * There are two ways out of this file for a question, and they carry different
  * things. `forEpic` produces `Asked`, which has no answer key in it until the
  * reader has answered; `withKey` carries the key. Everything the PAGE can reach
- * uses the first, and no door serves the Markdown file itself, because the
- * file IS the key. The second is reachable only through the MCP door, which
+ * uses the first — with ONE exception, `/api/quiz`, which hands the editor the
+ * Markdown file itself, key and all, behind the page's ticket and only when a
+ * person has pressed Edit (see `readQuiz`). Until that press the page holds no
+ * answer it has not earned. The second is reachable only through the MCP door, which
  * prints the key only under an explicit `reveal: true` or once a reader has
  * answered. See `asked` in `quiz/questions.ts`; `grep -n withKey doors.ts` is
  * meant to stay a short list.
@@ -72,6 +78,9 @@ function whole(value: unknown): number {
  * stray script cannot fill somebody's history with attempts they never made.
  */
 export const TICKET = crypto.randomUUID()
+
+/** What an agent is called when it does not say. */
+const AGENT = process.env.LEARNING_AGENT ?? process.env.KEHIKOT_AGENT ?? 'an agent'
 
 /* ------------------------------------------------------------------ *
  * The agent's door
@@ -173,6 +182,7 @@ function tools() {
               + 'file exactly once, so quote a sentence or two — enough to occur once. No byte offsets: the words are '
               + 'found again on every read, and say so when the paper has changed under them.',
           },
+          agent: { type: 'string', description: 'Your own name, so the history a person undoes from says who wrote this.' },
         },
         required: ['epic', 'question', 'options', 'answer', 'path', 'quote'],
       },
@@ -180,10 +190,12 @@ function tools() {
     {
       name: 'reword_quiz',
       description:
-        'Sharpen a question that already exists, keeping its id and every answer given to it. For fixing wording, a '
+        'Sharpen a question that already exists, keeping its id — and every answer given to it, unless you change '
+        + 'its options or its key, which makes it a question nobody has answered yet. For fixing wording, a '
         + 'misleading option, a key you got wrong — or a source that no longer resolves, which `quizzes` marks: give '
         + '`quote` (and `path` if the file moved) to cite it again. To ask a different thing, write a different '
-        + 'question — one changed enough that the old answers no longer mean anything has rewritten somebody’s history.',
+        + 'question — one changed enough that the old answers no longer mean anything has rewritten somebody’s history. '
+        + 'Recorded in the history, so the person can undo it.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -200,6 +212,7 @@ function tools() {
           why: { type: 'string', description: 'The new explanation. Omit to leave it alone.' },
           path: { type: 'string', description: 'Where the cited file now is — absolute, or relative to the project root. Omit to keep it.' },
           quote: { type: 'string', description: 'The exact words to cite instead, occurring once in the file. Omit to keep the quote.' },
+          agent: { type: 'string', description: 'Your own name, so the history a person undoes from says who wrote this.' },
         },
         required: ['id'],
       },
@@ -207,8 +220,8 @@ function tools() {
     {
       name: 'drop_quiz',
       description:
-        'Take one question out of the file for good, along with every answer anybody gave it. This is not reversible '
-        + 'from here. A question that turned out to be about nothing is dropped; a question somebody keeps getting '
+        'Take one question out of the file. It is recorded in the history, so the person can undo it from the '
+        + 'editor in the page; nothing on this door can. A question that turned out to be about nothing is dropped; a question somebody keeps getting '
         + 'wrong is not — that one is telling you something.',
       inputSchema: {
         type: 'object',
@@ -216,6 +229,7 @@ function tools() {
           ...PROJECT_PROPERTY,
           id: { type: 'string', description: 'The question id' },
           epic: { type: 'string', description: 'The epic the question is about. Needed only when two epics hold the same id.' },
+          agent: { type: 'string', description: 'Your own name, so the history a person undoes from says who wrote this.' },
         },
         required: ['id'],
       },
@@ -328,6 +342,8 @@ function epicText(project: string, epic: string, reveal: boolean): string {
  * cannot tell somebody two different things about the same rule.
  */
 function call(name: string, args: Record<string, unknown>, project: string): string {
+  const agent = str(args.agent, 80) || AGENT
+
   if (name === 'add_quiz') {
     const epic = str(args.epic, MAX_EPIC)
     if (!epic) {
@@ -374,6 +390,7 @@ function call(name: string, args: Record<string, unknown>, project: string): str
       why: str(args.why, MAX_WHY),
       path,
       quote,
+      agent,
     })
     if (!out.ok) throw new Error(out.error)
     return `${out.said}.\n\n${epicText(project, epic, false)}`
@@ -398,7 +415,7 @@ function call(name: string, args: Record<string, unknown>, project: string): str
   const epic = held[0]!
 
   if (name === 'drop_quiz') {
-    const out = change({ op: 'drop', project, epic, id })
+    const out = change({ op: 'drop', project, epic, id, agent })
     if (!out.ok) throw new Error(out.error)
     return `${out.said}.`
   }
@@ -414,6 +431,7 @@ function call(name: string, args: Record<string, unknown>, project: string): str
     project,
     epic,
     id,
+    agent,
     ...(args.question === undefined ? {} : { question: line(args.question, MAX_QUESTION) }),
     ...(args.why === undefined ? {} : { why: str(args.why, MAX_WHY) }),
     ...(args.answer === undefined ? {} : { answer: whole(args.answer) }),
@@ -548,6 +566,39 @@ export function answer(
     const { questions, problems, trouble } = forEpic(project, epic)
     const wrong = problems.length ? `${fileOf(project, epic)}: ${problems.join(' ')}` : null
     return ok({ ok: true, project, epic, file: fileOf(project, epic), standings: rows, questions, trouble: trouble ?? wrong })
+  }
+
+  /*
+   * The editor's doors, and the one place the page is handed the file.
+   *
+   * `GET /api/quiz` answers with an epic's Markdown WHOLE — every tick and every
+   * explanation. It is behind the ticket even though it is a read, because it
+   * is the only read here that carries a key: nothing that is not this app's
+   * own page gets it, and the page asks only when a person presses Edit. While
+   * the editor is open the page does hold the answers; that is the trade, and
+   * the person at the editor is the author. `POST /api/quiz` saves what they
+   * typed (409 with what is there now when the file moved under them),
+   * `/api/history` lists the writes that can be undone and `/api/undo` undoes one.
+   */
+  if (path === '/api/quiz' || path === '/api/history' || path === '/api/undo') {
+    if (ticket !== TICKET) return bad('that did not come from this app’s own page', 403)
+    const from = method === 'GET' ? { project: query.get('project'), epic: query.get('epic') } : (body ?? {})
+    const project = usablePath(from.project)
+    const epic = str(from.epic, MAX_EPIC)
+    if (!project || !epic) return bad('that did not say which project and which epic.')
+    const reads = method === 'GET'
+    const out =
+      path === '/api/quiz' && reads
+        ? readQuiz(project, epic)
+        : path === '/api/quiz' && method === 'POST' && typeof body?.text === 'string'
+          ? writeQuiz(project, epic, body.text, typeof body.base === 'string' ? body.base : null, str(body.session, 64))
+          : path === '/api/history' && reads
+            ? quizHistory(project, epic)
+            : path === '/api/undo' && method === 'POST'
+              ? undoQuiz(project, epic, str(body?.id, MAX_ID))
+              : { error: 'that was not a request this door takes.' }
+    if ('error' in out) return { status: out.status ?? 400, body: { ok: false, error: out.error, ...(out.theirs ? { file: out.theirs } : {}) } }
+    return ok({ ok: true, ...out })
   }
 
   if (method === 'POST' && path.startsWith('/api/')) {

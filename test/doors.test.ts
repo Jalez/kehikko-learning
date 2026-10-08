@@ -625,6 +625,78 @@ describe('/api/retake', () => {
   })
 })
 
+describe('/api/quiz, the editor’s door — the one that carries the file', () => {
+  const where = () => new URLSearchParams({ project: A, epic: 'modes-are-modules' })
+  const read = () => (answer('GET', '/api/quiz', where(), null, TICKET)?.body as { file: { text: string; version: string | null; sources: unknown[] } }).file
+  const save = (text: string, base: string | null, ticket: string | null = TICKET) =>
+    answer('POST', '/api/quiz', nothing, { project: A, epic: 'modes-are-modules', text, base, session: 'sitting' }, ticket)
+
+  test('nothing behind it is answered without the ticket, reads included', () => {
+    const id = added()
+    for (const ticket of [null, '', 'guess']) {
+      for (const [method, path, body] of [
+        ['GET', '/api/quiz', null],
+        ['POST', '/api/quiz', { project: A, epic: 'modes-are-modules', text: 'gone', base: null }],
+        ['GET', '/api/history', null],
+        ['POST', '/api/undo', { project: A, epic: 'modes-are-modules', id }],
+      ] as const) {
+        const reply = answer(method, path, where(), body, ticket)
+        expect(reply?.status).toBe(403)
+        expect(JSON.stringify(reply?.body)).not.toContain('[x]')
+      }
+    }
+    expect(read().text).toContain(`<!-- id: ${id} -->`)
+  })
+
+  test('with it, the file comes whole — and the questions route is exactly as it was', () => {
+    added()
+    const file = read()
+    expect(file.text).toContain('- [x] Which tab the page gets')
+    expect(file.text).toContain('The manifest is the only half a host reads.')
+    expect(file.sources).toMatchObject([{ label: '1', status: 'holds' }])
+    /* Reading the file earns nothing: the page's own route still withholds. */
+    const asked = answer('GET', '/api/questions', where(), null, TICKET)
+    expect(JSON.stringify(asked?.body)).not.toContain('[x]')
+    expect(JSON.stringify(asked?.body)).not.toContain('only half a host reads.')
+    expect((asked?.body as { questions: { answer: number | null }[] }).questions[0]?.answer).toBeNull()
+  })
+
+  test('a save is what was typed; a stale one is a 409 carrying what is there, and writes nothing', () => {
+    added()
+    const mine = read()
+    added({ question: 'An agent wrote this meanwhile' })
+    const stale = save(`${mine.text}mine\n`, mine.version)
+    expect(stale?.status).toBe(409)
+    const theirs = (stale?.body as { file: { text: string; version: string } }).file
+    expect(theirs.text).toContain('An agent wrote this meanwhile')
+    expect(read().text).toBe(theirs.text)
+    const kept = save(`${mine.text}mine\n`, theirs.version)
+    expect(kept?.status).toBe(200)
+    expect(read().text).toBe(`${mine.text}mine\n`)
+  })
+
+  test('needs a project and an epic, and an epic names no path', () => {
+    expect(answer('GET', '/api/quiz', new URLSearchParams({ project: A }), null, TICKET)?.status).toBe(400)
+    expect(answer('GET', '/api/quiz', new URLSearchParams({ project: A, epic: '../learning/modes-are-modules' }), null, TICKET)?.status).toBe(400)
+    expect(save('x', null)?.status).toBe(200)
+    expect(answer('POST', '/api/quiz', nothing, { project: A, epic: 'modes-are-modules', base: null }, TICKET)?.status).toBe(400)
+  })
+
+  test('the history lists agent writes and page edits, and an undo from the page puts one back', () => {
+    const id = added({ agent: 'claude' })
+    const before = read().text
+    expect(tool('drop_quiz', { project: A, id, agent: 'claude' }).isError).toBe(false)
+    const listed = answer('GET', '/api/history', where(), null, TICKET)?.body as { entries: { id: string; agent: string; summary: string }[] }
+    expect(listed.entries.map((one) => one.agent)).toEqual(['claude', 'claude'])
+    expect(listed.entries[0]?.summary).toContain('dropped')
+    expect(JSON.stringify(listed)).not.toContain('[x]')
+    const undone = answer('POST', '/api/undo', nothing, { project: A, epic: 'modes-are-modules', id: listed.entries[0]!.id }, TICKET)
+    expect(undone?.status).toBe(200)
+    expect(read().text).toBe(before)
+    expect(tool('quizzes', { project: A, epic: 'modes-are-modules' }).text).toContain(id)
+  })
+})
+
 describe('the other doors', () => {
   test('/healthz says this process is answering, and deliberately counts nothing', () => {
     /* It used to count the projects held and the questions in them, because
@@ -643,10 +715,10 @@ describe('the other doors', () => {
     expect(answer('GET', '/api/projects', nothing, null, null)?.status).toBe(404)
   })
 
-  test('no door serves the Markdown file: it holds the answers, and only the MCP door can read them', () => {
+  test('no other door serves the Markdown file, whatever it is asked for', () => {
     added()
     const query = new URLSearchParams({ project: A, epic: 'modes-are-modules', slug: 'modes-are-modules' })
-    for (const path of ['/api/quiz', '/api/deck', '/api/file', '/api/source', '/api/questions.md']) {
+    for (const path of ['/api/deck', '/api/file', '/api/source', '/api/questions.md', '/api/quiz.md', '/api/quizzes']) {
       expect(answer('GET', path, query, null, TICKET)?.status).toBe(404)
     }
     for (const epic of ['modes-are-modules', 'modes-are-modules.md', '../learning/modes-are-modules']) {
