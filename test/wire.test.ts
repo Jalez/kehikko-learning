@@ -160,6 +160,16 @@ describe('the editor’s doors', () => {
     expect(JSON.stringify((failed as AskFailed).body)).not.toContain('[x]')
   })
 
+  test('the trail and an undo from such a page are thrown in the sentence the editor has always drawn', async () => {
+    added()
+    forged = null
+    for (const ask of [() => files.history(dir, EPIC), () => files.undo(dir, EPIC, 'no-such-entry')]) {
+      const failed = await ask().catch((caught: unknown) => caught)
+      expect((failed as AskFailed).kind).toBe('stale')
+      expect((failed as AskFailed).message).toBe('This page is older than its server — reloading…')
+    }
+  })
+
   test('a save is sent keepalive, and the file having moved comes back as a conflict, not a failure', async () => {
     added()
     const file = await files.read(dir, EPIC)

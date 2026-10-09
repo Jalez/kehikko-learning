@@ -1,4 +1,4 @@
-import { answered, ask, follow, ticket, type AskFailure, type Attachment } from 'kehikot-module-protocol/client'
+import { PAGE_STALE, answered, ask, follow, ticket, type Asked as Reply, type AskFailure, type Attachment } from 'kehikot-module-protocol/client'
 
 import type { Asked, Attempt, HistoryEntry, QuizChange, QuizFile, Standing } from '../../quiz/types.ts'
 
@@ -172,6 +172,10 @@ export interface Files {
   watch(project: string, onChange: (change: QuizChange) => void, onAttachment?: (attachment: Attachment) => void): () => void
 }
 
+/* The editor draws these two failures as they are thrown. Protocol 1.0.0 shortened a stale one's
+   sentence to `PAGE_OLD`; this keeps the words the line under the editor has always had. */
+const worded = <T>(asked: Reply<T>): Reply<T> => (!asked.ok && asked.kind === 'stale' ? { ...asked, error: PAGE_STALE } : asked)
+
 export const files: Files = {
   async read(project, epic) {
     return answered(await ask<{ file: QuizFile }>('/api/quiz', { query: { project, epic }, ticket: true })).file
@@ -189,10 +193,10 @@ export const files: Files = {
     return { ok: true, file: answered(asked).file }
   },
   async history(project, epic) {
-    return answered(await ask<{ entries: HistoryEntry[] }>('/api/history', { query: { project, epic }, ticket: true })).entries
+    return answered(worded(await ask<{ entries: HistoryEntry[] }>('/api/history', { query: { project, epic }, ticket: true }))).entries
   },
   async undo(project, epic, id) {
-    return answered(await ask<{ file: QuizFile }>('/api/undo', { body: { project, epic, id } })).file
+    return answered(worded(await ask<{ file: QuizFile }>('/api/undo', { body: { project, epic, id } }))).file
   },
   watch(project, onChange, onAttachment) {
     /* An EventSource cannot carry a header, so the ticket rides in the address. `follow`

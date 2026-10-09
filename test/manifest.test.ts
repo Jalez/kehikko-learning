@@ -60,12 +60,11 @@ describe('the manifest', () => {
     const packaged = JSON.parse(
       readFileSync(join(here, 'node_modules/kehikot-module-protocol/package.json'), 'utf8'),
     ) as { version: string }
-    const [major, minor] = packaged.version.split('.').map(Number)
-    expect(major).toBe(0)
+    const [major] = packaged.version.split('.').map(Number)
     /* 0.34 is `useFocus` and the anchor rule, which the parts focus is built on. 0.35 is the
        shared plumbing — `doors()`, `ask()`, `useHost`, `Cover` and the build identity — without
-       which `vite.config.ts` does not load. */
-    expect(minor).toBeGreaterThanOrEqual(35)
+       which `vite.config.ts` does not load. 1.0.0 is all of that without the pre-rename dialect. */
+    expect(major).toBeGreaterThanOrEqual(1)
     /* And the field a stale copy would have stripped is actually there after
        the parse, which is the only check that catches the silent version. */
     expect(MANIFEST.reacts).toEqual(['passage', 'containers', 'parts'])
