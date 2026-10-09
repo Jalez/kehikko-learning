@@ -1,359 +1,157 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 
-import { sameParts, type EpicPart, type FilterChoice, type FilterGroup, type ModuleContext } from 'kehikot-module-protocol'
-
-import { connect, type Connection, type HostEvents } from 'kehikot-module-protocol/client'
+import { sameParts, type EpicPart, type FilterChoice, type FilterGroup, type Passage } from 'kehikot-module-protocol'
+import type { HostEvents } from 'kehikot-module-protocol/client'
+import { useHost, type Host } from 'kehikot-module-protocol/client/react'
 
 /**
- * The context, as React state, and nothing else.
+ * What this page reads off the host: the protocol's `useHost`, and the three things this module
+ * adds on top of it.
  *
- * ## What used to be underneath this
+ * ## What is underneath now
  *
- * `wire/host.ts` and `wire/mailbox.ts` — 418 lines, near-identical to the copy
- * in six sibling modules — are `kehikot-module-protocol/client` now. Nothing
- * this page says on the wire changed: `ready` to every greeting, the `goto`
- * handed straight to the caller's handler, and a backstop of 500ms, which is
- * this module's lineage and the client's default so it needed no option.
+ * The connection, the grace before deciding nobody is there, the theme on `<html>` (both classes
+ * spelled, and remembered for the next load's first paint), the flattened context, `point` and a
+ * stable `request` are `kehikot-module-protocol/client/react`. This file used to be 445 lines that
+ * did all of that by hand; see the protocol's docs/module-plumbing.md.
  *
- * The context was already passed through whole here rather than rebuilt from a
- * list of named fields, so no field starts or stops arriving. What did go is
- * the two-variable box below `connect` that caught an arrival which came too
- * early: the client splits `connect` from `listen()`, so the ordering is three
- * plain lines instead of a workaround for one module's copy of a hazard every
- * module had.
+ * ## What stays here, and why
  *
- * ## Why there is no `state.set` here, where Checklist has one
+ * - **Values that keep their identity when nothing changed.** A context arrives after every change
+ *   anywhere on the canvas, and the host builds a fresh passage, a fresh filter record and a fresh
+ *   parts array each time whatever happened. `useHost` hands those over as they came. Here a new
+ *   identity re-narrows the whole question list and re-decides the ladder, several times a second
+ *   on top of a poll that is already running — so `passage`, `chosen` and `parts` are compared by
+ *   value and the old object is kept when they say the same thing.
+ * - **`containers` as ONE STRING.** For the same reason, and because `wire/aim.ts` reads only the
+ *   module, the flag and each document's path and range: `App` inflates it once with
+ *   `containersFrom`, memoised on the string.
+ * - **`show`**, which says which documents this container is showing (`showing.set`).
  *
- * Checklist keeps a per-kehikko choice through the protocol's kept state,
- * because a person has to PICK which list a container shows and the pick has to
- * stick.
+ * ## Why there is no kept state here
  *
- * There is one pick here now — how narrow the reader likes this container, the
- * scope in `wire/scope.ts` — and it still needs no kept state, because the
- * protocol already remembers it. A filter choice is stored by the host per
- * container and comes back in `context.filters`, so keeping a second copy under
- * `state.set` would be two records of one preference, disagreeing the first time
- * one of them was written and the other was not.
- *
- * Everything else about which questions are shown is decided by two facts that
- * both arrive in the context — the project this canvas is standing in, and the
- * epic that is open. So `state:keep` is still not declared. See `manifest.ts`.
- *
- * ## How long to wait before deciding nobody is there
- *
- * A host greets on the frame's `load`. If nothing has greeted this page within
- * the grace period it is being opened directly, which is a supported way to run
- * this app and gets a different first paragraph rather than an error. The grace
- * exists so that a slow host does not make the page flash "nothing is framing
- * this" and then correct itself.
+ * The one pick a reader makes — how narrow this container is, `wire/scope.ts` — is a filter
+ * choice, which the host already stores per container and hands back in `context.filters`. A
+ * second copy under `state.set` would be two records of one preference. So `state:keep` is still
+ * not declared; see `manifest.ts`.
  */
-const GREETING_GRACE_MS = 700
 
 /** Whether anything is out there, and whether we have stopped waiting to find out. */
-export type Where = 'listening' | 'unhosted' | 'hosted'
+export type Where = Host['where']
 
-/** A passage, as the context carries one and as `passage.set` takes one. */
-export type Passage = NonNullable<ModuleContext['passage']>
+export type { Passage }
 
 export interface Kehikot {
   where: Where
   /** Which epic is open, or null. Null is a real screen here, not an error. */
   epic: string | null
   /**
-   * The folder this canvas is standing in, added by protocol 0.8, or null.
+   * The folder this canvas is standing in, or null.
    *
-   * This is the partition key — see `quiz/projects.ts`. Null is a real state and
-   * not an oversight: a host with no filesystem of its own knows the project's
-   * name and has no folder to point at. A page holding null does NOT fall back
-   * to some other project's questions; it says it was not told where it is and
-   * shows which projects hold questions, because guessing here means showing one
-   * project's questions inside another.
+   * This is the partition key — see `quiz/projects.ts`. Null is a real state and not an
+   * oversight: a host with no filesystem of its own knows the project's name and has no folder to
+   * point at. A page holding null does NOT fall back to some other project's questions, because
+   * guessing here means showing one project's questions inside another.
    */
   projectPath: string | null
   /** The project's name, when the host gave one. A label; `projectPath` is the key. */
   project: string | null
   /**
-   * Where the canvas is pointed, or null.
-   *
-   * ## What this is for here, which is one thing only
-   *
-   * Marking the question whose passage the canvas is standing on. Nothing else
-   * in this app reads it: the questions shown are still decided by the project
-   * and the epic, no fetch is keyed on it, and no screen changes when it
-   * changes. A quiz that re-scoped itself to whatever somebody was pointing at
-   * would be a container that emptied when a reader scrolled past the paragraph
-   * the questions were written about.
-   *
-   * ## It is the host's answer, and never a memory of what this page asked for
-   *
-   * Pressing a question's source asks the host to point the canvas here; this
-   * field is what the host then says about the canvas. They are two variables
-   * deliberately. A host may refuse `passage.set`, may not know the method, or
-   * may never have greeted this page — and then the canvas did not move, so a
-   * card drawn as "where the canvas is pointed" would be a picture of something
-   * that did not happen. Driving the mark off the context makes the refusal
-   * visible for free: nothing moves, and nothing claims to have.
-   *
-   * ## Applied on every context, including a null one
-   *
-   * Never remembered. The protocol makes the field nullable precisely so that
-   * "nothing is pointing at anything" is a state a module can move into, and a
-   * page holding the last passage would go on marking a card about a chapter
-   * the reader closed ten minutes ago — indistinguishable, on screen, from it
-   * still being open.
+   * Where the canvas is pointed, or null — the HOST'S answer, never a memory of what this page
+   * asked for. It marks the question whose passage the canvas is standing on and narrows the
+   * list at a scope; no fetch is keyed on it. Applied on every context, including a null one, and
+   * the same object while it says the same thing.
    */
   passage: Passage | null
   /**
-   * Which of the scopes this page offered is chosen for THIS container.
-   *
-   * `{}` before any host has said anything, and `{}` from a host that has never
-   * heard of filters — the true answer in both cases, which is that nothing is
-   * narrowed. `wire/scope.ts` reads it, and reads it leniently, because the
-   * greeting carries a remembered choice before this page has said what it
-   * offers.
-   *
-   * Compared key by key before it is written, for the same reason `passage` is:
-   * the host builds a fresh record on every context whatever happened, and a new
-   * identity here would re-narrow the whole list several times a second on top of
-   * a poll that is already running.
+   * Which of the scopes this page offered is chosen for THIS container. `{}` before any host has
+   * said anything and from a host that has never heard of filters. The same object while it says
+   * the same thing.
    */
   chosen: FilterChoice
   /**
-   * Every container on the kehikko, whether it is picked out, and what
-   * documents it says it is showing, as the host last said — flattened to ONE
-   * STRING, for the reason the passage is compared field by field: a context
-   * arrives after every change anywhere on the canvas, and a fresh array of
-   * fresh rows each time would re-decide which questions are in front several
-   * times a second. `wire/aim.ts` reads it; `App` inflates it once.
-   *
-   * `''` is no containers: nothing is framing this page, or a host too old to
-   * say. Both are answered the same way — the page shows the epic as it
-   * always did, and offers no control for a narrowing it cannot do.
-   *
-   * Read structurally rather than off `ModuleContext`, so that this page
-   * typechecks against a copy of the protocol from before the field existed
-   * and simply finds nothing there — which is also what the wire does: an
-   * older client strips the field before this page sees it. The sibling
-   * notes module made the same choice for the same reason.
+   * Every container on the kehikko, whether it is picked out, and what documents it says it is
+   * showing — flattened to one string. `''` is no containers: nothing is framing this page, or a
+   * host too old to say. `wire/aim.ts` reads it; `App` inflates it once.
    */
   containers: string
   /**
-   * `context.parts`: every part of the open epic, the ones a person ticked in
-   * the host's bar flagged. `[]` from a host that has never heard of parts and
-   * before any greeting — nothing picked, the whole epic. Kept by value, so a
-   * context that re-states the same parts is the same array.
+   * `context.parts`: every part of the open epic, the ones a person ticked in the host's bar
+   * flagged. `[]` from a host that has never heard of parts and before any greeting. The same
+   * array while it says the same thing.
    */
-  parts: EpicPart[]
+  parts: readonly EpicPart[]
   /** Ask the host to make this container a given height. */
   resize: (height: number) => void
   /**
-   * Say what this container can be narrowed by, so the host can draw the control.
-   *
-   * Fire and forget, like `resize`: the host may draw the offer, may draw part of
-   * it, or may never have heard of the idea. What comes back is not an answer but
-   * a context with `filters` in it.
-   *
-   * Stable across renders, so the effect that sends the offer can depend on the
-   * one thing that makes the offer change — which here is which RUNGS exist, not
-   * which one is chosen. The client replays the last offer after every greeting,
-   * so a reloaded frame is drawn correctly without this page doing anything; a
-   * page whose rungs have changed must send again itself.
+   * Say what this container can be narrowed by, so the host can draw the control. Fire and
+   * forget; stable across renders. The client replays the last offer after every greeting.
    */
   filters: (groups: FilterGroup[]) => void
   /**
-   * Point every container on the canvas at a passage.
+   * Point every container on the canvas at a passage (`passage.set`).
    *
-   * ## The bound, which is the whole of what `passage:set` was declared under
-   *
-   * This is called when a person presses the source of a question, and at no
-   * other time. Not on a load, not on a context, not when the poll brings back
-   * a question an agent has just written, not when somebody answers one, and
-   * not on any conclusion this app reached by itself. `manifest.ts` carries the
-   * argument for why a module that is otherwise a consumer of passages is
-   * allowed to produce one at all; this is the line of code that argument
-   * constrains, and `dev/pointing.mjs` is the probe that counts whether it is
-   * still true.
-   *
-   * ## It goes through the canvas, and there is no other route
-   *
-   * `passage.set` puts a passage in the context and the host broadcasts that to
-   * every framed module. This app therefore does not know, and must not know,
-   * what will react — a paper, a source browser, notes, a diff, or nothing at
-   * all today and something next month. Naming a module here would be a second
-   * system doing what the context already does, and it would break the day
-   * somebody put a question beside a different reader.
-   *
-   * Fire and forget, and every refusal is swallowed. A host that never learned
-   * the method, or has not greeted this page yet, is not a fault in the question
-   * somebody just pressed and not something they can do anything about; what it
-   * must not do is throw a rejection out of a click handler.
+   * Called when a person presses the source of a question, and at no other time — not on a load,
+   * not on a context, not when the poll brings back a question. `manifest.ts` carries the
+   * argument for why a module that is otherwise a consumer of passages may produce one at all,
+   * and `dev/pointing.mjs` is the probe that counts whether it is still true. Fire and forget:
+   * every refusal is swallowed.
    */
   point: (passage: Passage | null) => void
   /**
-   * Say which documents this container is showing, so a neighbour can narrow
-   * to it.
+   * Say which documents this container is showing, so a neighbour can narrow to it
+   * (`showing.set`).
    *
-   * ## The bound, which is different from `point`'s and is stated so it can be checked
-   *
-   * `point` is a person's press and nothing else. This is the opposite kind
-   * of message: it is sent by the PROGRAM, whenever the set of documents on
-   * screen changes — a context that narrowed the list, a poll that brought a
-   * question about a new chapter, an aim turned off — and never by a press.
-   * What it must not do is fire when nothing changed: the caller compares the
-   * set as a string and sends only on a difference, because a message on
-   * every render is a message a second at every host on the canvas.
-   *
-   * It says what is SHOWN, not what is held. A pane narrowed to chapter three
-   * is showing chapter three, and a neighbour that narrows to this pane gets
-   * chapter three — which is the reading a person ticking this container's
-   * box expects. `wire/aim.ts` spells the list.
-   *
-   * Fire and forget, and every refusal is swallowed, for the reason `point`
-   * gives: a host that has not heard of the method is not a fault in this
-   * page and the page must not throw out of an effect over it.
+   * The opposite kind of message from `point`: sent by the PROGRAM whenever the set of documents
+   * on screen changes, and never by a press. What it must not do is fire when nothing changed —
+   * the caller compares the set as a string and sends only on a difference. Fire and forget.
    */
   show: (documents: Passage[]) => void
 }
 
 export type GotoHandler = NonNullable<HostEvents['onGoto']>
 
+/**
+ * `reloadWhenStale: false`, and it is this module's one departure from the hook's defaults.
+ *
+ * A page that is older than its server reloads itself, and by default the hook arranges that
+ * whatever is on screen. Here the screen may be the editor with words in it that have not been
+ * saved — and cannot be, from a page whose ticket the new process refuses. So `App` decides: it
+ * draws the stale `Cover` (which is what reloads) only when nothing unsaved would go with it.
+ * (Vite's dev client reloads the page on its own when its server comes back, which nothing here
+ * can decline; `view/editor.tsx` says what that means for unsaved words.)
+ */
 export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
-  const [where, setWhere] = useState<Where>('listening')
-  const [epic, setEpic] = useState<string | null>(null)
-  const [projectPath, setProjectPath] = useState<string | null>(null)
-  const [project, setProject] = useState<string | null>(null)
-  const [passage, setPassage] = useState<Passage | null>(null)
-  const [chosen, setChosen] = useState<FilterChoice>({})
-  const [containers, setContainers] = useState('')
-  const [parts, setParts] = useState<EpicPart[]>([])
-  const host = useRef<Connection | null>(null)
+  const host = useHost(id, { onGoto }, { reloadWhenStale: false })
 
-  /* The handler is read through a ref so that a caller re-creating it does not
-     tear down the bridge — reconnecting would mean missing the greeting, which
-     is the one message that never comes again. */
-  const goto = useRef(onGoto)
-  goto.current = onGoto
+  const passage = useSame(host.passage, samePassage)
+  const chosen = useSame(host.chosen, agrees)
+  const parts = useSame(host.parts, (a, b) => sameParts(a, b))
+  const containers = useMemo(() => flattenContainers(host.containers), [host.containers])
 
-  useEffect(() => {
-    /* Typed as the protocol's own context rather than as the four fields this
-       page happens to read. It reads six now, and a hand-written shape that has
-       to be widened every time is a shape that will one day be widened wrongly —
-       `passage` is nullable and optional in different senses, and the package
-       says which. */
-    const arrived = (context: ModuleContext) => {
-      /*
-       * The theme comes from the host, and `prefers-color-scheme` is only the
-       * unframed fallback. Both classes are set explicitly rather than one being
-       * left off: `.light` is what lets a host's "light" beat a machine set to
-       * dark, and without it the media query in `index.css` would win.
-       */
-      const root = document.documentElement
-      root.classList.toggle('dark', context.theme === 'dark')
-      root.classList.toggle('light', context.theme === 'light')
-      /*
-       * And the half of the page this module does not paint.
-       *
-       * The scrollbar, the focus ring, the caret and every form control are the
-       * browser's, and what they follow is `color-scheme`, which defaults to the
-       * MACHINE's setting and hears nothing about a class. In a container 220
-       * pixels wide with a permanent scrollbar down the side of it, a host
-       * switched to light on a machine set to dark leaves a dark gutter beside a
-       * white page — which is not a subtle discrepancy, it is the part of the
-       * module a person's eye lands on when they look at whether it changed.
-       *
-       * Set from the host's choice for the same reason the classes are: the
-       * theme a person picked in the host is a decision, and their OS setting is
-       * not that decision.
-       */
-      root.style.colorScheme = context.theme
+  const { request } = host
+  const show = useCallback(
+    (documents: Passage[]) => {
+      /* Refused when nothing is framing the page, by a host that never learned the method, or
+         before the greeting: none of which is a fault in this page, and none may throw out of an
+         effect. */
+      void request('showing.set', { refs: [], documents }).catch(() => {})
+    },
+    [request],
+  )
 
-      setWhere('hosted')
-      setEpic(context.epic)
-      setProjectPath(context.projectPath ?? null)
-      setProject(context.project ?? null)
-      /*
-       * Compared field by field before it is written, because it is an OBJECT.
-       *
-       * A context arrives after every change anywhere on the canvas, and the
-       * host builds a fresh `{path, page, from, to, quoted}` each time whatever
-       * happened. Writing it unconditionally would give every render downstream
-       * a new identity for a value that did not change — here that is the whole
-       * question list re-deciding which card is marked, several times a second,
-       * on top of a poll that is already running. The references cannot be
-       * compared for the same reason, so the fields are.
-       */
-      setPassage((was) => (same(was, context.passage ?? null) ? was : (context.passage ?? null)))
-      /* Compared before it is written, and for the reason directly above: this
-         is a record the host rebuilds on every context whatever happened, and a
-         fresh identity here re-narrows the list and re-decides the ladder for a
-         choice nobody changed. */
-      setChosen((was) => (agrees(was, context.filters ?? {}) ? was : (context.filters ?? {})))
-      /* Flattened to a string on arrival, so the setter is a no-op when the
-         canvas did not move — see `containers` above. */
-      setContainers(flattenContainers((context as { containers?: unknown }).containers))
-      setParts((was) => (sameParts(was, context.parts ?? []) ? was : (context.parts ?? [])))
-    }
-
-    /*
-     * The greeting can arrive before this effect has finished running, so the
-     * connection is stored BEFORE it is told to listen.
-     *
-     * The client's `mailbox` installs its listener at module scope precisely so
-     * that nothing is missed, and it replays what it kept SYNCHRONOUSLY the
-     * moment `listen()` subscribes. Anything a handler reads must therefore be
-     * assigned already. What stood here was two variables holding an early
-     * arrival and delivering it one statement later — a workaround for this
-     * module's copy of a hazard every module in the family had. `connect` and
-     * `listen` are two calls now, so the order is three plain lines that read
-     * in the order they happen.
-     */
-    const live = connect(id, {
-      onHello: (context) => arrived(context),
-      onContext: (context) => arrived(context),
-      onGoto: (message, answer) => goto.current(message, answer),
-    })
-    host.current = live
-    live.listen()
-
-    const grace = setTimeout(() => {
-      setWhere((was) => (was === 'listening' ? 'unhosted' : was))
-    }, GREETING_GRACE_MS)
-
-    return () => {
-      clearTimeout(grace)
-      live.stop()
-      /* Cleared only if it is still ours: under StrictMode the second mount has
-         already assigned its own connection by the time some cleanups run. */
-      if (host.current === live) host.current = null
-    }
-  }, [id])
-
-  const resize = useCallback((height: number) => host.current?.resize(height), [])
-
-  /* Sent unconditionally: a page with no host posts into nothing, which costs
-     nothing, and a page that checked first would have to know whether the
-     greeting has arrived yet — which is exactly the race the client's own replay
-     of the last offer exists to end. */
-  const filters = useCallback((groups: FilterGroup[]) => host.current?.filters(groups), [])
-
-  const point = useCallback((pointed: Passage | null) => {
-    const conversation = host.current
-    /* Unframed, or greeted by nothing. The page still works — that is the whole
-       design — and a press that cannot leave the frame simply does not. */
-    if (!conversation) return
-    void conversation.request('passage.set', { passage: pointed }).catch(() => {})
-  }, [])
-
-  const show = useCallback((documents: Passage[]) => {
-    const conversation = host.current
-    if (!conversation) return
-    void conversation.request('showing.set', { refs: [], documents }).catch(() => {})
-  }, [])
-
+  const { where, epic, projectPath, project, resize, filters, point } = host
   return useMemo(
     () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show }),
     [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show],
   )
+}
+
+/** The value as it was last time, for as long as the new one says the same thing. */
+function useSame<T>(value: T, same: (a: T, b: T) => boolean): T {
+  const held = useRef(value)
+  if (held.current !== value && !same(held.current, value)) held.current = value
+  return held.current
 }
 
 /**
@@ -415,14 +213,7 @@ export function containersFrom(flat: string): { module: string; selected: boolea
   }
 }
 
-/**
- * Whether two filter choices say the same thing.
- *
- * Key by key, because the host builds a new record on every context whatever
- * happened — the same reason `same()` below exists, about the same failure. One
- * of these is a string comparison and the other is five, and both are cheaper
- * than the render they prevent.
- */
+/** Whether two filter choices say the same thing, key by key. */
 function agrees(a: FilterChoice, b: FilterChoice): boolean {
   const keys = Object.keys(a)
   if (keys.length !== Object.keys(b).length) return false
@@ -434,12 +225,9 @@ function agrees(a: FilterChoice, b: FilterChoice): boolean {
  *
  * Field by field, including `quoted`, because this is asking whether the object
  * CHANGED rather than whether it names the same place. The second question is
- * `keyOf` in `wire/pointed.ts`, which deliberately leaves the quote out — a
- * quote may be re-read from the file on the way back, and comparing it there
- * would break a match. Here a changed quote is a changed context and worth a
- * render.
+ * `keyOf` in `wire/pointed.ts`, which deliberately leaves the quote out.
  */
-function same(a: Passage | null, b: Passage | null): boolean {
+function samePassage(a: Passage | null, b: Passage | null): boolean {
   if (a === null || b === null) return a === b
   return a.path === b.path && a.page === b.page && a.from === b.from && a.to === b.to && a.quoted === b.quoted
 }

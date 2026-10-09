@@ -87,7 +87,7 @@ async function main() {
     const ticket = JSON.parse(document.getElementById('ticket').textContent)
     const r = await fetch('/api/retake', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-learning-ticket': ticket },
+      headers: { 'content-type': 'application/json', 'x-module-ticket': ticket },
       body: JSON.stringify({ project, epic: 'modes-are-modules' }),
     })
     return { status: r.status, said: (await r.json()).said }

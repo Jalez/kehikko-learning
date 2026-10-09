@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { Asked } from '../quiz/types.ts'
 import { QuestionCard, QuizView } from '../src/view/quiz.tsx'
 import { room } from '../src/view/room.ts'
-import { NoEpic, NoProject } from '../src/view/nowhere.tsx'
+import { NoEpic } from '../src/view/nowhere.tsx'
 
 afterEach(cleanup)
 
@@ -298,24 +298,8 @@ describe('the screens that are not errors', () => {
     expect(screen.getByText(/No questions have been written in this project yet/)).toBeTruthy()
   })
 
-  test('no project says where the questions live, and offers NOT a picker', () => {
-    /* This screen used to carry a receipt: the projects this app held questions
-       for, listed out of its own store. There is no such store now — the
-       questions are inside the projects — so it names the file instead, which is
-       a better answer to the question the receipt was really for.
-       It is still not a picker, and never was: choosing one here would be this
-       page deciding where it is standing, which is the thing it has just said it
-       cannot know. */
-    const { container } = render(<NoProject unhosted={false} />)
-    expect(screen.getByText('This canvas did not say where it is')).toBeTruthy()
-    expect(screen.getByText('.kehikot/learning/')).toBeTruthy()
-    expect(container.querySelectorAll('button')).toHaveLength(0)
-  })
-
-  test('opened directly, it says that instead of blaming the host', () => {
-    render(<NoProject unhosted />)
-    expect(screen.getByText('Nothing is framing this page')).toBeTruthy()
-  })
+  /* The screen for no project at all — hosted without a folder, or nothing framing the page — is
+     the protocol's shared cover now, and is asserted where the whole page is rendered: test/cover.test.tsx. */
 })
 
 describe('the layout at 220 pixels', () => {

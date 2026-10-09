@@ -1,5 +1,6 @@
 import { linesOf } from 'kehikot-module-protocol'
-import { useMemo, useState } from 'react'
+import { useServerStanding } from 'kehikot-module-protocol/client/react'
+import { useEffect, useMemo, useState } from 'react'
 
 import type { Files, HistoryEntry } from '@/store/ask.ts'
 import { placeOf } from './place.ts'
@@ -35,6 +36,24 @@ import { parseQuiz, quizProblems } from '../../quiz/format.ts'
  * `markdown-editor.tsx`); a test hands this a textarea instead, as Slides'
  * tests do. It is not drawn until the file has been read, so there is never an
  * empty editor to type into and have overwritten by the read.
+ *
+ * ## What is typed outlives this app's server
+ *
+ * `onUnsaved` tells `App` whether there are words here that are not on disk.
+ * While there are, `App` draws no full-pane cover over them and does not
+ * reload the page itself: the text stays in front of the person, the status
+ * says `not saved: …`, and the save is retried until something answers.
+ *
+ * What answers after a stop is a NEW process, and this page's ticket is refused
+ * by it for good, so those words can never be saved from here. They are not
+ * carried across a reload either: the text holds the answer key and is kept
+ * nowhere but in this component. And a reload is coming whatever this page
+ * does — under Vite dev, which is how this module is served, Vite's own client
+ * reloads the page the moment its server answers again (measured in WebKit:
+ * "[vite] server connection lost. Polling for restart..." and then a
+ * navigation). So the one useful thing is said WHILE the server is away, which
+ * is when a person can still act on it: copy what you typed. Where nothing
+ * reloads the page for it, the second sentence below stands with its press.
  */
 export function QuizEditor({
   files,
@@ -45,6 +64,7 @@ export function QuizEditor({
   saveDelay,
   at = null,
   editor: EditorPane = MarkdownEditor,
+  onUnsaved,
 }: {
   files: Files
   project: string
@@ -56,12 +76,25 @@ export function QuizEditor({
   /** The question the Edit press was made on, when it was made on one: the file opens there. */
   at?: { id: string; question: string } | null
   editor?: Editor
+  /** Told whenever "there are words here that are not on disk" changes, and `false` on the way out. */
+  onUnsaved?: (unsaved: boolean) => void
 }) {
   const doc = useQuiz({ files, project, epic, ...(saveDelay === undefined ? {} : { saveDelay }) })
   const [tab, setTab] = useState<'source' | 'preview'>('source')
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [trouble, setTrouble] = useState<string | null>(null)
+
+  /* Unsaved, saving, refused or failed — with a text to lose. A read that failed has none. */
+  const holding = doc.text !== null && doc.state !== 'saved' && doc.state !== 'loading'
+  useEffect(() => {
+    onUnsaved?.(holding)
+  }, [holding, onUnsaved])
+  useEffect(() => () => onUnsaved?.(false), [onUnsaved])
+  /* How this page's own server last answered: `down` is nothing answering, `stale` another process than the one that served it. */
+  const server = useServerStanding()
+  const outdated = (server === 'stale' || doc.stale) && holding
+  const away = server === 'down' && holding && !outdated
 
   const quiz = useMemo(() => parseQuiz(doc.text ?? ''), [doc.text])
   const problems = useMemo(() => quizProblems(quiz), [quiz])
@@ -146,6 +179,7 @@ export function QuizEditor({
         </div>
         <span data-save={doc.state} role="status" className="min-w-0 flex-1 text-[0.65rem] text-muted-foreground [overflow-wrap:anywhere]" title={file ?? undefined}>
           {said}
+          {doc.watching === 'detached' ? <span data-watch="detached"> · not hearing changes on disk — reconnecting</span> : null}
         </span>
         <Button type="button" size="container" variant="ghost" className="whitespace-nowrap" aria-expanded={entries !== null} disabled={busy || doc.text === null} onClick={() => void history()}>
           History
@@ -160,6 +194,23 @@ export function QuizEditor({
           </Button>
           <Button type="button" size="container" variant="ghost" className="whitespace-nowrap" onClick={() => void act(doc.mine)}>
             Keep mine
+          </Button>
+        </div>
+      ) : null}
+
+      {away ? (
+        <p role="alert" data-away="open" className="rounded border border-wrong/40 bg-wrong/5 px-2 py-1 text-[0.7rem] leading-4">
+          This app’s own server is not answering, so what you typed is not saved. Copy it now: when the server starts again this page reloads, and words that are only here are lost.
+        </p>
+      ) : null}
+
+      {outdated ? (
+        <div role="alert" data-outdated="open" className="flex min-w-0 flex-wrap items-center gap-1 rounded border border-wrong/40 bg-wrong/5 px-2 py-1 text-[0.7rem] leading-4">
+          <span className="min-w-0 basis-full">
+            This page is older than its server, so it cannot save what you typed. Copy it now, reload, then press Edit and paste it back.
+          </span>
+          <Button type="button" size="container" variant="outline" className="whitespace-nowrap" onClick={() => window.location.reload()}>
+            Reload
           </Button>
         </div>
       ) : null}

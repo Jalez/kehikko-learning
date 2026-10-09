@@ -567,8 +567,8 @@ quiz/migrate.ts    the one move out of the old questions.json
 quiz/history.ts    what each file held before every write, for undo
 quiz/projects.ts   what is left of "which project" now the path is the partition
 dev/*.mjs          probes that drive a real browser; see below
-page/document.ts   the document, generated per request so the ticket can reach it
-vite.config.ts     the doors as middleware, and the missing server.cors
+vite.config.ts     the protocol's doors() around doors.ts — it serves the page, with the
+                   ticket and the build printed into it — and the missing server.cors
 src/               the page: wire/ (pointed.ts, scope.ts), view/ (room.ts,
                    text.ts), store/ask.ts, ui/
 test/              no browser

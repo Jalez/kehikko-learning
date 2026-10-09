@@ -1,250 +1,51 @@
-import type { IncomingMessage } from 'node:http'
 import { resolve } from 'node:path'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { LEGACY_WELL_KNOWN, WELL_KNOWN, legacyManifest } from 'kehikot-module-protocol'
-import { frameAncestors, serves } from 'kehikot-module-protocol/serve'
-import { defineConfig, type Plugin } from 'vite'
+import { doors, serves } from 'kehikot-module-protocol/serve'
+import { defineConfig } from 'vite'
 
-import { MANIFEST, TICKET, answer, stream } from './doors.ts'
+import { BUILD, MANIFEST, TICKET, answer, stream } from './doors.ts'
 import { ID, PREFERRED_PORT } from './manifest.ts'
-import { page } from './page/document.ts'
 
 /**
- * Every door this app answers on, served by the one process that serves the
- * page.
+ * The dev server.
  *
- * ## Why they cannot be a second server
+ * - `serves()` first: it decides the port from `PREFERRED_PORT` (or $PORT from a host) and keeps
+ *   the registration true — `serves({ id: ID, prefer: PREFERRED_PORT })` — so there is no
+ *   `server` block here at all, and a test says so.
+ * - `doors()` is every door this app answers on, served by the one process that serves the page:
+ *   the manifest, `/app` with the write ticket and the build printed into it, the one
+ *   server-sent-event door (`/api/watch`) through `stream`, and `/healthz`, `/mcp` and `/api/*`
+ *   through `answer` in doors.ts. A module is ONE ORIGIN — the page fetches `/api/questions` and
+ *   `/api/answer` as relative paths — and `/app` has to be claimed before Vite's resolver sees
+ *   it, because this repository has a `src/app.tsx`. See the protocol's docs/module-plumbing.md.
  *
- * A module is ONE ORIGIN or it is nothing: the protocol refuses a manifest whose
- * `entry` points anywhere but the origin that served the manifest, and it is
- * right to — a program that could name somebody else's page would be a program
- * that could have the host frame somebody else.
+ *   What `doors()` prints into the page is a root element, the ticket and the build: no question,
+ *   no option and no key. What it adds to `/healthz` and the manifest is the build — a version, a
+ *   commit and a start time. Every question still has to be asked for, and what is answered is
+ *   already redacted (`asked` in `quiz/questions.ts`).
+ * - No `server.cors`: this module declares storage instead, and here that is sharper than
+ *   anywhere else. This app holds an ANSWER KEY. `/api/questions` is built so the key is not in
+ *   it, but `/api/answer` returns the key to whoever submits an answer, and a permissive CORS
+ *   header would let any page in any tab read `/app`, take the ticket printed into it, post an
+ *   answer to every question and read the key back off each reply. With `storage: true` the page
+ *   has a real origin, its `/api` calls are same-origin, and nothing is offered to strangers:
  *
- * That argument is usually made about the manifest and the health check. Here it
- * reaches further, because this module holds its own material: the page fetches
- * `/api/questions` and `/api/answer` as relative paths, which is how the app
- * works with nothing else running at all. A store on a second port would make
- * every one of those fetches cross-origin — and would mean this app could not
- * read its own questions inside the frame it exists to live in. So the store is
- * middleware here, in front of the same server that serves the page, and
- * `doors.ts` holds the deciding without holding a socket.
+ *       curl -sI -H 'Origin: https://evil.example' http://127.0.0.1:7950/app | grep -i access-control
  *
- * ## Why the page is generated rather than a file
- *
- * See `page/document.ts`: the ticket, and the `/app` versus `src/app.tsx`
- * collision that Atlas lost half a day to. `/app` is claimed here before Vite's
- * resolver ever sees it, so no file that happens to sit next to this one can
- * take it.
- */
-function doors(): Plugin {
-  return {
-    name: 'learning-doors',
-    configureServer(server) {
-      server.middlewares.use((request, response, next) => {
-        const url = new URL(request.url ?? '/', 'http://127.0.0.1')
-        const path = url.pathname
-        const method = (request.method ?? 'GET').toUpperCase()
-
-        const send = (status: number, body: unknown) => {
-          if (body === null) {
-            response.statusCode = status
-            response.end()
-            return
-          }
-          response.statusCode = status
-          response.setHeader('content-type', 'application/json; charset=utf-8')
-          response.end(JSON.stringify(body, null, 2))
-        }
-
-        /* Spelled by the protocol package so that this app and every host cannot
-           disagree about it by a character. */
-        if (path === WELL_KNOWN) return send(200, MANIFEST)
-        /* The same manifest in the spelling a host from before the rename asks for,
-           so that host still finds this module. */
-        if (path === LEGACY_WELL_KNOWN) return send(200, legacyManifest(MANIFEST))
-
-        if (path === '/app' || path === '/app/' || path === '/') {
-          void server
-            .transformIndexHtml(request.url ?? '/app', page(TICKET), request.originalUrl)
-            .then((html) => {
-              response.statusCode = 200
-              response.setHeader('content-type', 'text/html; charset=utf-8')
-              /* Never cached. The ticket in this document is minted per process,
-                 so a cached copy is a page whose every write is refused for a
-                 reason nobody would look for. */
-              response.setHeader('cache-control', 'no-store')
-              /*
-               * Framed by a host and by nothing else — and by nothing at all is
-               * fine too, which is what opening this page directly is.
-               *
-               * `frame-ancestors` is the module's own half of the arrangement: a
-               * host says which origins IT will frame, and this says who may
-               * frame this. It is deliberately not a list of one: whoever is
-               * running this decides, through `KEHIKOT_ORIGINS` (the list a host passes), and
-               * the default is every origin a host on this machine serves from. See
-               * `frameAncestors` in `kehikot-module-protocol/serve`.
-               */
-              response.setHeader('content-security-policy', frameAncestors())
-              response.end(html)
-            })
-            .catch(next)
-          return
-        }
-
-        const ours = path === '/healthz' || path === '/mcp' || path.startsWith('/api/')
-        if (!ours) return next()
-
-        /* The one live door: server-sent events, held open until the page goes. */
-        const live = stream(method, path, url.searchParams, (change) => response.write(`data: ${JSON.stringify(change)}\n\n`))
-        if (live && 'reply' in live) return send(live.reply.status, live.reply.body)
-        if (live) {
-          response.statusCode = 200
-          response.setHeader('content-type', 'text/event-stream; charset=utf-8')
-          response.setHeader('cache-control', 'no-store')
-          response.setHeader('connection', 'keep-alive')
-          response.flushHeaders()
-          response.write(': open\n\n')
-          /* A comment now and then, so nothing between here and the page decides the line is dead. */
-          const beat = setInterval(() => response.write(': beat\n\n'), 25_000)
-          request.on('close', () => {
-            clearInterval(beat)
-            live.close()
-          })
-          return
-        }
-
-        /* Only the paths above read a body, and only those wait for one. Vite's
-           own middleware stack has to keep seeing an unconsumed request for
-           everything else. */
-        void body(request)
-          .then((parsed) => {
-            const reply = answer(method, path, url.searchParams, parsed, readTicket(request.headers['x-learning-ticket']))
-            if (!reply) return next()
-            send(reply.status, reply.body)
-          })
-          .catch(next)
-      })
-    },
-  }
-}
-
-/** One header, which node hands over as a string, an array, or nothing. */
-function readTicket(value: string | string[] | undefined): string | null {
-  if (typeof value === 'string') return value
-  if (Array.isArray(value)) return value[0] ?? null
-  return null
-}
-
-/**
- * The request body, as JSON, or null.
- *
- * Bounded at a megabyte, because the caller is whatever on this machine found
- * the port — loopback is a fence around the machine and not around the programs
- * on it — and a handler that reads until the socket closes is a handler that can
- * be asked to read forever. Nothing this app accepts is anywhere near this size;
- * the bound is a bound rather than a budget.
- *
- * Unparseable is null rather than a throw, and `doors.ts` says "that was not a
- * request" about it. A malformed body is an ordinary answer to give.
- */
-const MAX_BODY_BYTES = 1_000_000
-
-async function body(request: IncomingMessage): Promise<Record<string, unknown> | null> {
-  if ((request.method ?? 'GET').toUpperCase() !== 'POST') return null
-  const chunks: Buffer[] = []
-  let size = 0
-  for await (const chunk of request) {
-    const piece = chunk as Buffer
-    size += piece.length
-    if (size > MAX_BODY_BYTES) return null
-    chunks.push(piece)
-  }
-  if (!chunks.length) return null
-  try {
-    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
-  } catch {
-    return null
-  }
-}
-
-/**
- * The dev server, and the one line missing from it.
- *
- * ## No `server.cors` — this module declares storage instead
- *
- * Atlas and References set `cors: true` and have to. A host frames a module
- * WITHOUT `allow-same-origin` unless its manifest declares storage, which puts
- * the page on an opaque origin — and `<script type="module">` is ALWAYS fetched
- * in CORS mode, so with no permissive header not one script in the page runs.
- * The document loads, `load` fires, the host greets it, and nothing answers.
- * `curl` cannot see it, being unsubject to CORS; only the browser console can.
- * That has cost this workspace days.
- *
- * This module must not go that way, for a reason those two do not have, and it
- * is sharper here than it is even in Checklist. This app holds an ANSWER KEY.
- * `/api/questions` is deliberately built so that the key is not in it — see
- * `asked` in `quiz/questions.ts` — but `/api/answer` returns the key to whoever
- * submits an answer, and permissive CORS would mean any page in any tab can read
- * `/app`, take the ticket printed into it, and then post an answer to every
- * question in the store and read the key back off each reply. Measured on
- * Journeys rather than theorised, before that module was moved to this shape:
- *
- *     $ curl -H 'Origin: https://evil.example' http://127.0.0.1:7840/app
- *     Access-Control-Allow-Origin: *
- *     ...ticket" type="application/json">"e75d4d01-…
- *
- * So the manifest declares `storage: true` and this line is absent. With a real
- * origin, this page's scripts and its `/api` calls are ordinary same-origin
- * requests: no CORS is involved at all, nothing is offered to strangers, and the
- * ticket is unreadable from anywhere but inside. To check that it is still true:
- *
- *     curl -sI -H 'Origin: https://evil.example' http://127.0.0.1:7950/app \
- *       | grep -i access-control
- *
- * must print nothing at all.
- *
- * ## No alias for `kehikot-module-protocol`
- *
- * There used to be one, in every app here, pointing at the protocol's source in
- * the repository they all used to live in. It is gone and must not come back:
- * the package's `exports` are correct, reaching past them is what made a whole
- * class of bug possible, and a module that resolved its contract differently
- * from the host it talks to is a module testing something nobody ships.
- *
- * The `@` alias below is a different thing entirely — it points inside this
- * repository, at `src`, and is what shadcn's generated components import
- * through.
- *
- * ## And still no `server` block, now for a second reason
- *
- * There is a test that this config declares no `server: {` at all, written to
- * keep `cors: true` from coming back. It now also covers the port, which used to
- * be demanded on the `bunx vite` line in `run.sh` and defaulted a second time in
- * `register.ts`: `--strictPort` meant a taken 7950 printed `Error: Port 7950 is
- * already in use` and exited 1, so a program with nothing to do with questions
- * could stop the questions from opening.
- *
- * `serves()` is what decides the port now, from `PREFERRED_PORT` in
- * `manifest.ts`, and it is FIRST in the plugin list because it has to claim one
- * before anything else in this config asks. A free 7950 is taken in silence;
- * this module already answering there ends the start cleanly rather than making
- * a second writer on one project’s files; anything else is a loud move to the
- * next free port with the registration rewritten to the port the server ACTUALLY
- * bound, read off `httpServer.address()` after `listening` rather than off what
- * was asked for.
+ *   must print nothing at all.
+ * - No alias for `kehikot-module-protocol`: it resolves through its exports, as the host's does.
+ *   The `@` alias points at `src`, which is what shadcn's generated components import through.
+ * - `base: './'`, because a host frames this page at whatever address it wrote down.
  */
 export default defineConfig({
-  /**
-   * `base: './'`, because this page is served at `/app` here and framed by a
-   * host at whatever address that host wrote down. Absolute asset paths are
-   * correct in the first case and a guess in the second; relative ones are a
-   * fact in both, because the browser resolves them against the document it just
-   * fetched.
-   */
   base: './',
-  plugins: [serves({ id: ID, prefer: PREFERRED_PORT }), doors(), react(), tailwindcss()],
+  plugins: [
+    serves({ id: ID, prefer: PREFERRED_PORT }),
+    doors({ manifest: MANIFEST, answer, stream, build: BUILD, page: { title: 'Learning', ticket: TICKET } }),
+    react(),
+    tailwindcss(),
+  ],
   resolve: { alias: { '@': resolve(import.meta.dirname, 'src') } },
 })

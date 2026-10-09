@@ -71,7 +71,7 @@ import type { Cited } from '../../quiz/types.ts'
  * identity is a claim every other module would resolve against its own root.
  * That is the same rule the store keeps — see `Kehikot.projectPath` in
  * `use-kehikot.ts` — and it costs nothing on screen, because a page with no
- * project path is showing `NoProject` and has no questions to press.
+ * project path is showing the no-project cover and has no questions to press.
  *
  * ## What is deliberately not sent
  *

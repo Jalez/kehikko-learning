@@ -285,7 +285,7 @@ async function main() {
         const ticket = JSON.parse(document.getElementById('ticket').textContent)
         await fetch('/api/retake', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-learning-ticket': ticket },
+          headers: { 'content-type': 'application/json', 'x-module-ticket': ticket },
           body: JSON.stringify({ project, epic }),
         })
       }, [KEHIKOT, EPIC])
