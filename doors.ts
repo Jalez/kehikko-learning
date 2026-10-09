@@ -23,7 +23,9 @@ import {
   writeQuiz,
   type Keyed,
 } from './quiz/questions.ts'
+import { poke, watchQuizzes } from './quiz/live.ts'
 import { MAX_PROJECT, defaultProject, usablePath } from './quiz/projects.ts'
+import type { QuizChange } from './quiz/types.ts'
 
 /**
  * Every door this app answers on that is not the page itself.
@@ -504,7 +506,10 @@ function mcp(rpc: Rpc): Reply {
         if (!epic) return text(standingsText(project))
         return text(epicText(project, epic, args.reveal === true))
       }
-      return text(call(name, args, project))
+      const said = call(name, args, project)
+      /* An editor open on this project hears of an agent's write at once. */
+      poke(project)
+      return text(said)
     } catch (e) {
       /* A refusal is an answer, and the sentence is the useful half. So it
          comes back as a tool error the agent reads, not a transport failure. */
@@ -598,6 +603,8 @@ export function answer(
               ? undoQuiz(project, epic, str(body?.id, MAX_ID))
               : { error: 'that was not a request this door takes.' }
     if ('error' in out) return { status: out.status ?? 400, body: { ok: false, error: out.error, ...(out.theirs ? { file: out.theirs } : {}) } }
+    /* A write of ours: an editor open on this project hears of it at once. */
+    if (!reads) poke(project)
     return ok({ ok: true, ...out })
   }
 
@@ -657,6 +664,32 @@ export function answer(
      and serve as a source file. Anything else is not ours at all. */
   if (path.startsWith('/api/')) return bad('not here', 404)
   return null
+}
+
+/**
+ * The one door that stays open: `GET /api/watch?project&ticket`, server-sent
+ * events of {@link QuizChange} — which epic's file changed, and the version it
+ * is at now. `emit` is handed each as it happens; the answer is a refusal to
+ * send instead of opening the stream, or the function to call when the page
+ * goes away. `null`: not this door.
+ *
+ * It is what lets an open editor notice the disk without being refused a save
+ * first. Behind the ticket like the editor's other doors — in the address,
+ * because an `EventSource` cannot carry a header — though nothing it sends is
+ * a word of any file.
+ */
+export function stream(
+  method: string,
+  path: string,
+  query: URLSearchParams,
+  emit: (change: QuizChange) => void,
+): { reply: Reply } | { close: () => void } | null {
+  if (method !== 'GET' || path !== '/api/watch') return null
+  if (query.get('ticket') !== TICKET) return { reply: bad('that did not come from this app’s own page', 403) }
+  const project = usablePath(query.get('project'))
+  if (!project) return { reply: bad('that did not say which project.') }
+  const watched = watchQuizzes(project, emit)
+  return 'error' in watched ? { reply: bad(watched.error) } : watched
 }
 
 export { MANIFEST }

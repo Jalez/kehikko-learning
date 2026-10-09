@@ -84,6 +84,8 @@ again that often and the server reads the file each time.
 **Edit** opens the file in the page: the Markdown beside what it will ask, the
 way Slides shows a deck beside its slides, and as `Source` / `Preview` tabs
 where the container is narrower than 672px. **Done** goes back to answering.
+The source is typed into the editor Slides opens a deck in — CodeMirror 6 with
+the same Markdown colouring, the same keys and the same light and dark.
 
 - What is typed is saved as typed, a beat after the last keystroke. A file with
   something wrong in it is still saved, and the sentences about what is wrong —
@@ -92,6 +94,16 @@ where the container is narrower than 672px. **Done** goes back to answering.
   disk meanwhile — an agent wrote, or it was edited elsewhere — nothing is
   written over it: the editor stops saving and asks which one stays, *Take what
   is on disk* or *Keep mine*.
+- The disk is listened to while the editor is open (`GET /api/watch`,
+  server-sent events of `{ epic, version }` behind the page's ticket, the way
+  Slides watches a deck). A change made elsewhere with nothing typed since the
+  last save is simply taken; with something typed and unsaved it raises the
+  same question at once, rather than at the next save.
+- Nothing typed is lost by leaving. **Done** waits for the save — one already
+  on its way, and what was typed during it — and stays open, saying so, if it
+  failed. Leaving the paper saves on the way out, and a container that is
+  closed sends its last save as a request the browser finishes after the page
+  is gone (for a file under about 48 kB; a larger one can lose the last beat).
 - **History** lists every write to the file, newest first — an agent's
   `add_quiz`, `reword_quiz` and `drop_quiz`, an undo, and each sitting at this
   editor as one entry — and **Undo** puts back what was there before one. The
@@ -621,5 +633,7 @@ statuses, the same press that points the paper. The CODE is a copy:
 `findQuote` and `resolveSource` from Slides' `deck/format.ts` and `deck/cite.ts`,
 and `store.ts` holds its `citedText`. `quiz/history.ts` is Slides' undo trail in
 the same shape, and `src/view/use-quiz.ts` its `useDeck`. They all belong in
-`kehikot-module-protocol`. The editor itself is a plain `<textarea>`, where
-Slides has CodeMirror.
+`kehikot-module-protocol`. So is `quiz/live.ts`, Slides' `live.ts` for quiz
+files. The editor is Slides' too, and also a copy (`src/view/markdown-editor.tsx`
+of its `src/editor/deck-editor.tsx`): sharing sixty lines through the protocol
+would hand CodeMirror to the host and to every module that installs it.

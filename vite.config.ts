@@ -7,7 +7,7 @@ import { LEGACY_WELL_KNOWN, WELL_KNOWN, legacyManifest } from 'kehikot-module-pr
 import { frameAncestors, serves } from 'kehikot-module-protocol/serve'
 import { defineConfig, type Plugin } from 'vite'
 
-import { MANIFEST, TICKET, answer } from './doors.ts'
+import { MANIFEST, TICKET, answer, stream } from './doors.ts'
 import { ID, PREFERRED_PORT } from './manifest.ts'
 import { page } from './page/document.ts'
 
@@ -95,6 +95,25 @@ function doors(): Plugin {
 
         const ours = path === '/healthz' || path === '/mcp' || path.startsWith('/api/')
         if (!ours) return next()
+
+        /* The one live door: server-sent events, held open until the page goes. */
+        const live = stream(method, path, url.searchParams, (change) => response.write(`data: ${JSON.stringify(change)}\n\n`))
+        if (live && 'reply' in live) return send(live.reply.status, live.reply.body)
+        if (live) {
+          response.statusCode = 200
+          response.setHeader('content-type', 'text/event-stream; charset=utf-8')
+          response.setHeader('cache-control', 'no-store')
+          response.setHeader('connection', 'keep-alive')
+          response.flushHeaders()
+          response.write(': open\n\n')
+          /* A comment now and then, so nothing between here and the page decides the line is dead. */
+          const beat = setInterval(() => response.write(': beat\n\n'), 25_000)
+          request.on('close', () => {
+            clearInterval(beat)
+            live.close()
+          })
+          return
+        }
 
         /* Only the paths above read a body, and only those wait for one. Vite's
            own middleware stack has to keep seeing an unconsumed request for

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-import type { Files, QuizFile } from '../src/store/ask.ts'
+import type { Files, QuizChange, QuizFile } from '../src/store/ask.ts'
+import type { EditorProps } from '../src/view/markdown-editor.tsx'
 import { QuizEditor } from '../src/view/editor.tsx'
 import { QuizView } from '../src/view/quiz.tsx'
 import { room } from '../src/view/room.ts'
@@ -17,9 +18,31 @@ afterEach(cleanup)
 const TEXT = '## Which half does a host read? [^1]\n<!-- id: q1 -->\n- [ ] the page\n- [x] the manifest\n\nWhy:\nIt is the only half it reads.\n\nSources:\n[^1]: chapters/bridge.tex | "the only half a host reads"\n'
 const SOURCE = { label: '1', path: 'chapters/bridge.tex', quote: 'the only half a host reads', status: 'holds' as const, at: { from: 0, to: 26, line: 4, endLine: 4 }, count: 1 }
 
-/** The routes, as a file held in memory. `disk` can be moved under the editor. */
+/** CodeMirror stands in as a textarea: same props. */
+function FakeEditor({ value, onChange }: EditorProps) {
+  return <textarea aria-label="the questions, as Markdown" value={value} onChange={(event) => onChange(event.target.value)} />
+}
+
+/** The routes, as a file held in memory. `disk` can be moved under the editor, and `announce` is the watch saying so. */
 function fake(text = TEXT) {
-  const state = { disk: text, version: 1, calls: [] as string[], saves: [] as { text: string; base: string | null; session: string }[], undone: [] as string[] }
+  const state = {
+    disk: text,
+    version: 1,
+    calls: [] as string[],
+    saves: [] as { text: string; base: string | null; session: string }[],
+    undone: [] as string[],
+    listeners: new Set<(change: QuizChange) => void>(),
+    /** Set to hold every save until it is called. */
+    gate: null as Promise<void> | null,
+    fail: null as string | null,
+  }
+  const announce = (version = `v${state.version}`) => act(async () => state.listeners.forEach((listener) => listener({ epic: 'thesis', version })))
+  /** Somebody else wrote the file, and the watch said so. */
+  const write = (next: string) => {
+    state.disk = next
+    state.version += 1
+    return announce()
+  }
   const file = (): QuizFile => ({ text: state.disk, version: `v${state.version}`, sources: [SOURCE] })
   const files: Files = {
     async read() {
@@ -29,6 +52,8 @@ function fake(text = TEXT) {
     async save(_project, _epic, sent, base, session) {
       state.calls.push('save')
       state.saves.push({ text: sent, base, session })
+      if (state.gate) await state.gate
+      if (state.fail) throw new Error(state.fail)
       if (base !== `v${state.version}`) return { ok: false, theirs: file() }
       state.disk = sent
       state.version += 1
@@ -44,13 +69,17 @@ function fake(text = TEXT) {
       state.version += 1
       return file()
     },
+    watch(_project, onChange) {
+      state.listeners.add(onChange)
+      return () => state.listeners.delete(onChange)
+    },
   }
-  return { state, files }
+  return { state, files, announce, write }
 }
 
 const open = async (files: Files, onDone = () => {}) => {
-  const view = render(<QuizEditor files={files} project="/p" epic="thesis" file=".kehikot/learning/thesis.md" onDone={onDone} saveDelay={0} />)
-  await waitFor(() => expect((view.container.querySelector('textarea') as HTMLTextAreaElement).disabled).toBe(false))
+  const view = render(<QuizEditor files={files} project="/p" epic="thesis" file=".kehikot/learning/thesis.md" onDone={onDone} saveDelay={0} editor={FakeEditor} />)
+  await waitFor(() => expect(view.container.querySelector('textarea')).toBeTruthy())
   return { ...view, area: view.container.querySelector('textarea') as HTMLTextAreaElement }
 }
 const type = (area: HTMLTextAreaElement, value: string) => fireEvent.change(area, { target: { value } })
@@ -77,6 +106,13 @@ describe('the press that opens it', () => {
     expect(container.querySelector('[data-status="holds"]')?.textContent).toContain('chapters/bridge.tex, line 4')
   })
 })
+
+/** Open with a save delay nothing in a test outlasts: only Done, or leaving, writes. */
+const later = async (files: Files, onDone = () => {}) => {
+  const view = render(<QuizEditor files={files} project="/p" epic="thesis" file={null} onDone={onDone} saveDelay={60_000} editor={FakeEditor} />)
+  await waitFor(() => expect(view.container.querySelector('textarea')).toBeTruthy())
+  return { ...view, area: view.container.querySelector('textarea') as HTMLTextAreaElement }
+}
 
 describe('typing', () => {
   test('saves what was typed, against the version last seen, as one sitting', async () => {
@@ -105,9 +141,7 @@ describe('typing', () => {
   test('Done saves what is still waiting before it leaves', async () => {
     const { state, files } = fake()
     let left = 0
-    const view = render(<QuizEditor files={files} project="/p" epic="thesis" file={null} onDone={() => (left += 1)} saveDelay={60_000} />)
-    const area = view.container.querySelector('textarea') as HTMLTextAreaElement
-    await waitFor(() => expect(area.disabled).toBe(false))
+    const { area } = await later(files, () => (left += 1))
     type(area, 'typed and not yet saved\n')
     expect(state.saves).toHaveLength(0)
     await act(async () => fireEvent.click(screen.getByText('Done')))
@@ -116,7 +150,126 @@ describe('typing', () => {
   })
 })
 
-describe('the file moved on disk under the editor', () => {
+describe('leaving with a save pending', () => {
+  test('Done waits for a save already on its way, and for what was typed during it', async () => {
+    const { state, files } = fake()
+    let left = 0
+    let release = () => {}
+    const { area } = await open(files, () => (left += 1))
+    state.gate = new Promise<void>((resolve) => (release = resolve))
+    type(area, 'first\n')
+    await waitFor(() => expect(state.saves).toHaveLength(1))
+    type(area, 'first, and more typed while it was being saved\n')
+    await act(async () => fireEvent.click(screen.getByText('Done')))
+    expect(left).toBe(0)
+    state.gate = null
+    await act(async () => release())
+    await waitFor(() => expect(left).toBe(1))
+    expect(state.disk).toBe('first, and more typed while it was being saved\n')
+    expect(state.saves.map((one) => one.base)).toEqual(['v1', 'v2'])
+  })
+
+  test('Done does not leave on a save that failed, says so, and leaves on a second press', async () => {
+    const { state, files } = fake()
+    let left = 0
+    const { area, container } = await later(files, () => (left += 1))
+    state.fail = 'the disk is full'
+    type(area, 'typed, and it cannot be written\n')
+    await act(async () => fireEvent.click(screen.getByText('Done')))
+    expect(left).toBe(0)
+    expect(container.textContent).toContain('Press Done again to leave without it')
+    expect(container.querySelector('[data-save]')?.textContent).toContain('the disk is full')
+    await act(async () => fireEvent.click(screen.getByText('Done')))
+    expect(left).toBe(1)
+    expect(state.disk).toBe(TEXT)
+  })
+
+  test('the editor taken away with words unsaved writes them on the way out', async () => {
+    const { state, files } = fake()
+    const { area, unmount } = await later(files)
+    type(area, 'typed, and then the paper was left\n')
+    unmount()
+    await waitFor(() => expect(state.disk).toBe('typed, and then the paper was left\n'))
+    expect(state.listeners.size).toBe(0)
+  })
+
+  test('the page going away sends what is waiting without being asked', async () => {
+    const { state, files } = fake()
+    const { area } = await later(files)
+    type(area, 'typed, and then the container was closed\n')
+    window.dispatchEvent(new Event('pagehide'))
+    await waitFor(() => expect(state.disk).toBe('typed, and then the container was closed\n'))
+  })
+})
+
+describe('the file changed on disk while the editor was open', () => {
+  test('with nothing typed since the last save, the editor takes what is on disk', async () => {
+    const { state, files, write } = fake()
+    const { area, container } = await open(files)
+    await write('what an agent wrote meanwhile\n')
+    await waitFor(() => expect(area.value).toBe('what an agent wrote meanwhile\n'))
+    expect(container.querySelector('[data-conflict]')).toBeNull()
+    expect(state.saves).toHaveLength(0)
+    /* And it is the base of the next save, which is therefore not refused. */
+    type(area, 'what an agent wrote meanwhile, and I added\n')
+    await saved(container)
+    expect(state.saves.at(-1)?.base).toBe('v2')
+    expect(state.disk).toBe('what an agent wrote meanwhile, and I added\n')
+  })
+
+  test('with something typed and unsaved, nothing is taken or written: the person is asked which stays', async () => {
+    const { state, files, write } = fake()
+    const { area, container } = await later(files)
+    type(area, 'what I typed\n')
+    await write('what an agent wrote meanwhile\n')
+    expect(container.querySelector('[data-conflict]')?.textContent).toContain('Which one stays?')
+    expect(area.value).toBe('what I typed\n')
+    expect(state.saves).toHaveLength(0)
+    expect(state.disk).toBe('what an agent wrote meanwhile\n')
+    await act(async () => fireEvent.click(screen.getByText('Keep mine')))
+    await saved(container)
+    expect(state.disk).toBe('what I typed\n')
+    expect(state.saves.at(-1)?.base).toBe('v2')
+  })
+
+  test('and “Take what is on disk” answers it the other way', async () => {
+    const { files, write } = fake()
+    const { area, container } = await later(files)
+    type(area, 'what I typed\n')
+    await write('what an agent wrote meanwhile\n')
+    await act(async () => fireEvent.click(screen.getByText('Take what is on disk')))
+    await waitFor(() => expect(area.value).toBe('what an agent wrote meanwhile\n'))
+    expect(container.querySelector('[data-conflict]')).toBeNull()
+  })
+
+  test('its own save, announced back, is not a change: nothing is read again', async () => {
+    const { state, files, announce } = fake()
+    const { area, container } = await open(files)
+    type(area, 'what I typed\n')
+    await saved(container)
+    await announce()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(state.calls.filter((one) => one === 'read')).toHaveLength(1)
+    expect(area.value).toBe('what I typed\n')
+  })
+
+  test('an announcement that arrives before the save it is about has answered waits for it', async () => {
+    const { state, files, announce } = fake()
+    let release = () => {}
+    const { area, container } = await open(files)
+    state.gate = new Promise<void>((resolve) => (release = resolve))
+    type(area, 'what I typed\n')
+    await waitFor(() => expect(state.saves).toHaveLength(1))
+    await announce('v2')
+    state.gate = null
+    await act(async () => release())
+    await saved(container)
+    expect(container.querySelector('[data-conflict]')).toBeNull()
+    expect(state.calls.filter((one) => one === 'read')).toHaveLength(1)
+  })
+})
+
+describe('a save refused because the file moved', () => {
   const moved = async () => {
     const made = fake()
     const view = await open(made.files)

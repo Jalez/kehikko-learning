@@ -89,6 +89,16 @@ export interface QuizFile {
   sources: Cited[]
 }
 
+/**
+ * One quiz file changed on disk: which epic, and the version it is at now
+ * (null: the file is gone). Deliberately not a word of the file — it is what
+ * the editor's watch is sent, and the editor asks for the text itself.
+ */
+export interface QuizChange {
+  epic: string
+  version: string | null
+}
+
 /** What one epic's questions add up to, for a container that has not opened them. */
 export interface Standing {
   epic: string
