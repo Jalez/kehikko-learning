@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-import type { Files, QuizChange, QuizFile } from '../src/store/ask.ts'
+import { AskFailed, resetServerStanding } from 'kehikot-module-protocol/client'
+
+import type { Attachment, Files, QuizChange, QuizFile } from '../src/store/ask.ts'
 import type { EditorProps } from '../src/view/markdown-editor.tsx'
 import { QuizEditor } from '../src/view/editor.tsx'
 import { QuizView } from '../src/view/quiz.tsx'
@@ -35,6 +37,10 @@ function fake(text = TEXT) {
     /** Set to hold every save until it is called. */
     gate: null as Promise<void> | null,
     fail: null as string | null,
+    /** Set, every save is refused the way a server that restarted under the page refuses one. */
+    restarted: false,
+    /** The watch's own line, for a test to drop and bring back. */
+    line: null as ((attachment: Attachment) => void) | null,
   }
   const announce = (version = `v${state.version}`) => act(async () => state.listeners.forEach((listener) => listener({ epic: 'thesis', version })))
   /** Somebody else wrote the file, and the watch said so. */
@@ -54,6 +60,7 @@ function fake(text = TEXT) {
       state.saves.push({ text: sent, base, session })
       if (state.gate) await state.gate
       if (state.fail) throw new Error(state.fail)
+      if (state.restarted) throw new AskFailed({ kind: 'stale', status: 403, error: 'This page is older than its server — reloading…', body: null })
       if (base !== `v${state.version}`) return { ok: false, theirs: file() }
       state.disk = sent
       state.version += 1
@@ -69,8 +76,9 @@ function fake(text = TEXT) {
       state.version += 1
       return file()
     },
-    watch(_project, onChange) {
+    watch(_project, onChange, onAttachment) {
       state.listeners.add(onChange)
+      state.line = onAttachment ?? null
       return () => state.listeners.delete(onChange)
     },
   }
@@ -330,5 +338,123 @@ describe('the history', () => {
     await act(async () => fireEvent.click(screen.getByLabelText('undo Question q1 reworded')))
     await waitFor(() => expect(area.value).toBe('the file as it was before\n'))
     expect(state.undone).toEqual(['e1'])
+  })
+})
+
+describe('the watch on the disk, said out loud', () => {
+  test('nothing is said while the line is open, or on a first load that has not opened it yet', async () => {
+    const { state, files } = fake()
+    const { container } = await open(files)
+    expect(container.querySelector('[data-watch]')).toBeNull()
+    await act(async () => state.line?.('connecting'))
+    await act(async () => state.line?.('attached'))
+    expect(container.querySelector('[data-watch]')).toBeNull()
+  })
+
+  test('a dropped line is said, and when it is back the file is read again — a change may have gone unheard', async () => {
+    const { state, files } = fake()
+    const { area, container } = await open(files)
+    await act(async () => state.line?.('attached'))
+    await act(async () => state.line?.('detached'))
+    expect(container.querySelector('[data-watch="detached"]')?.textContent).toContain('not hearing changes on disk')
+    /* Somebody wrote the file while nothing was listening. */
+    state.disk = 'written while the line was down\n'
+    state.version += 1
+    await act(async () => state.line?.('connecting'))
+    await act(async () => state.line?.('attached'))
+    await waitFor(() => expect(area.value).toBe('written while the line was down\n'))
+    expect(container.querySelector('[data-watch]')).toBeNull()
+  })
+
+  test('back with something typed and unsaved, the text is left alone: the save decides', async () => {
+    const { state, files } = fake()
+    const { area } = await open(files)
+    state.fail = 'This app’s own server is not answering.'
+    await act(async () => state.line?.('detached'))
+    type(area, 'typed while the server was away\n')
+    await waitFor(() => expect(state.saves.length).toBeGreaterThan(0))
+    const reads = state.calls.filter((call) => call === 'read').length
+    await act(async () => state.line?.('attached'))
+    expect(state.calls.filter((call) => call === 'read').length).toBe(reads)
+    expect(area.value).toBe('typed while the server was away\n')
+  })
+})
+
+describe('words that are not saved, and a server that is not there', () => {
+  afterEach(() => resetServerStanding())
+
+  test('the page is told whether there are any, and told there are none on the way out', async () => {
+    const { state, files } = fake()
+    const said: boolean[] = []
+    const view = render(<QuizEditor files={files} project="/p" epic="thesis" file={null} onDone={() => {}} saveDelay={0} editor={FakeEditor} onUnsaved={(unsaved) => said.push(unsaved)} />)
+    await waitFor(() => expect(view.container.querySelector('textarea')).toBeTruthy())
+    expect(said.at(-1)).toBe(false)
+    state.fail = 'This app’s own server is not answering.'
+    type(view.container.querySelector('textarea') as HTMLTextAreaElement, 'not on disk\n')
+    await waitFor(() => expect(said.at(-1)).toBe(true))
+    state.fail = null
+    await saved(view.container)
+    expect(said.at(-1)).toBe(false)
+    view.unmount()
+    expect(said.at(-1)).toBe(false)
+  })
+
+  test('a save refused because the page is older than its server is not retried, and the editor says what to do', async () => {
+    const { state, files } = fake()
+    const { area, container } = await open(files)
+    state.restarted = true
+    type(area, 'typed after the server restarted\n')
+    await waitFor(() => expect(container.querySelector('[data-outdated]')).toBeTruthy())
+    expect(container.querySelector('[data-outdated]')?.textContent).toContain('This page is older than its server, so it cannot save what you typed.')
+    expect(container.querySelector('[data-save]')?.textContent).toContain('not saved: this page is older than its server')
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy()
+    /* The words are still there, and the page is not hammering a door that will never open. */
+    expect(area.value).toBe('typed after the server restarted\n')
+    const sent = state.saves.length
+    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 60))))
+    expect(state.saves.length).toBe(sent)
+    type(area, 'and typed some more\n')
+    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 60))))
+    expect(state.saves.length).toBe(sent)
+    expect(area.value).toBe('and typed some more\n')
+  })
+
+  test('a save that merely failed IS retried, and goes through when something answers', async () => {
+    const { state, files } = fake()
+    const { area, container } = await open(files)
+    state.fail = 'This app’s own server is not answering.'
+    type(area, 'kept through an outage\n')
+    await waitFor(() => expect(container.querySelector('[data-save]')?.textContent).toContain('not saved: This app’s own server is not answering.'))
+    expect(container.querySelector('[data-outdated]')).toBeNull()
+    /* The fake does not move the page's standing; the real `ask()` does — see the next test. */
+    expect(container.querySelector('[data-away]')).toBeNull()
+    state.fail = null
+    await saved(container)
+    expect(state.disk).toBe('kept through an outage\n')
+  })
+})
+
+describe('while this app’s own server is away', () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = realFetch
+    resetServerStanding()
+  })
+
+  test('unsaved words are said to be at risk, while there is still time to copy them', async () => {
+    const { ask } = await import('kehikot-module-protocol/client')
+    const { state, files } = fake()
+    const { area, container } = await open(files)
+    expect(container.querySelector('[data-away]')).toBeNull()
+    state.fail = 'This app’s own server is not answering.'
+    globalThis.fetch = (async () => {
+      throw new TypeError('Load failed')
+    }) as unknown as typeof fetch
+    await act(async () => void (await ask('/api/questions')))
+    /* Nothing typed: nothing to lose, nothing said here (the page draws its cover instead). */
+    expect(container.querySelector('[data-away]')).toBeNull()
+    type(area, 'only here\n')
+    await waitFor(() => expect(container.querySelector('[data-away]')?.textContent).toContain('Copy it now'))
+    expect(area.value).toBe('only here\n')
   })
 })

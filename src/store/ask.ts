@@ -1,3 +1,6 @@
+import { TICKET_HEADER } from 'kehikot-module-protocol'
+import { answered, ask, follow, ticket, type AskFailure, type Attachment } from 'kehikot-module-protocol/client'
+
 import type { Asked, Attempt, HistoryEntry, QuizChange, QuizFile, Standing } from '../../quiz/types.ts'
 
 /**
@@ -6,6 +9,15 @@ import type { Asked, Attempt, HistoryEntry, QuizChange, QuizFile, Standing } fro
  * Every path here is relative, which is the whole reason the store is middleware
  * in front of the same Vite server that serves this page rather than a second
  * process on a second port. See `vite.config.ts`.
+ *
+ * ## The asking is the protocol's
+ *
+ * `ask()` carries the page's ticket on every write and turns every failure into one typed
+ * result: the server said no (its own sentence), nothing answered (`down`), or this page is older
+ * than its server (`stale`). It never throws, so a read that used to die as an uncaught "Failed
+ * to fetch" now tells `useServerStanding`, which is what draws the "own server is not answering"
+ * cover in `App`. `follow()` is the same for the one event stream. See the protocol's
+ * docs/module-plumbing.md.
  *
  * ## The types come from a file with no imports
  *
@@ -26,38 +38,18 @@ import type { Asked, Attempt, HistoryEntry, QuizChange, QuizFile, Standing } fro
  * route — `answer()` below is the only thing that ever returns one, and it
  * returns it as the reply to having chosen. See `asked` and `score` in
  * `quiz/questions.ts`.
- */
-
-/**
- * The write ticket, read once out of the inert JSON island in the document.
  *
- * It is not fetchable: there is no `/api/ticket`, deliberately, because a route
- * that hands out the write credential to whoever asks is the ticket abolished
- * with extra steps.
+ * The ticket is not fetchable either: it is read out of the inert JSON island in the document
+ * (the protocol's `ticket()`), and there is no `/api/ticket`, deliberately.
  */
-function ticket(): string {
-  const island = typeof document === 'undefined' ? null : document.getElementById('ticket')
-  if (!island?.textContent) return ''
-  try {
-    const parsed: unknown = JSON.parse(island.textContent)
-    return typeof parsed === 'string' ? parsed : ''
-  } catch {
-    return ''
-  }
-}
-
-const TICKET = ticket()
-
-async function post(path: string, body: unknown): Promise<unknown> {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-learning-ticket': TICKET },
-    body: JSON.stringify(body),
-  })
-  return response.json()
-}
 
 export type { Asked, Attempt, Standing }
+
+/** What a failed asking came to: the sentence, and which kind of failure it was. */
+export interface Failed {
+  error: string
+  kind: AskFailure
+}
 
 /*
  * There is no `everyProject()` here any more, and its absence is the change.
@@ -68,9 +60,6 @@ export type { Asked, Attempt, Standing }
  * is about, at `.kehikot/learning/`, and this app is handed one project at
  * a time and forgets it. So the list cannot be built, and — more to the point —
  * it is not needed: the questions are in the folder, in plain sight.
- *
- * The screen for a null `projectPath` therefore says where to look rather than
- * showing a receipt. See `NoProject` in `view/nowhere.tsx`.
  */
 
 export interface Opened {
@@ -92,22 +81,18 @@ export interface Opened {
  * second round trip would mean a render where the questions had arrived and the
  * heading had not.
  */
-export async function openEpic(project: string, epic: string | null): Promise<Opened | { error: string }> {
-  const parts = [`project=${encodeURIComponent(project)}`]
-  if (epic) parts.push(`epic=${encodeURIComponent(epic)}`)
-  const response = await fetch(`/api/questions?${parts.join('&')}`)
-  const body = (await response.json()) as Record<string, unknown>
-  if (body.ok === true) {
-    return {
-      project,
-      epic,
-      standings: Array.isArray(body.standings) ? (body.standings as Standing[]) : [],
-      questions: Array.isArray(body.questions) ? (body.questions as Asked[]) : [],
-      file: typeof body.file === 'string' ? body.file : null,
-      trouble: typeof body.trouble === 'string' ? body.trouble : null,
-    }
+export async function openEpic(project: string, epic: string | null): Promise<Opened | Failed> {
+  const asked = await ask<Record<string, unknown>>('/api/questions', { query: { project, epic: epic || null } })
+  if (!asked.ok) return { error: asked.error, kind: asked.kind }
+  const body = asked.body ?? {}
+  return {
+    project,
+    epic,
+    standings: Array.isArray(body.standings) ? (body.standings as Standing[]) : [],
+    questions: Array.isArray(body.questions) ? (body.questions as Asked[]) : [],
+    file: typeof body.file === 'string' ? body.file : null,
+    trouble: typeof body.trouble === 'string' ? body.trouble : null,
   }
-  return { error: typeof body.error === 'string' ? body.error : 'this app could not read its questions.' }
 }
 
 /** What comes back from having chosen: the verdict, and the key, now earned. */
@@ -125,18 +110,18 @@ export interface Scored {
  * The page sends an id and an index and gets back a verdict it could not have
  * computed. This is the moment the key crosses the wire, and it is the only one.
  */
-export async function answer(project: string, epic: string, id: string, chose: number): Promise<Scored | { error: string }> {
-  const body = (await post('/api/answer', { project, epic, id, chose })) as Record<string, unknown>
-  if (body.ok === true && typeof body.answer === 'number') {
-    return {
-      right: body.right === true,
-      answer: body.answer,
-      why: typeof body.why === 'string' ? body.why : '',
-      attempt: body.attempt as Attempt,
-      asked: body.asked as Asked,
-    }
+export async function answer(project: string, epic: string, id: string, chose: number): Promise<Scored | Failed> {
+  const asked = await ask<Record<string, unknown>>('/api/answer', { body: { project, epic, id, chose } })
+  if (!asked.ok) return { error: asked.error, kind: asked.kind }
+  const body = asked.body ?? {}
+  if (typeof body.answer !== 'number') return { error: 'it did not work, and said nothing about why', kind: 'refused' }
+  return {
+    right: body.right === true,
+    answer: body.answer,
+    why: typeof body.why === 'string' ? body.why : '',
+    attempt: body.attempt as Attempt,
+    asked: body.asked as Asked,
   }
-  return { error: typeof body.error === 'string' ? body.error : 'it did not work, and said nothing about why' }
 }
 
 /**
@@ -147,17 +132,17 @@ export async function answer(project: string, epic: string, id: string, chose: n
  * wire. Retaking genuinely puts the answers back out of reach rather than hiding
  * something the page already has.
  */
-export async function retake(project: string, epic: string): Promise<{ questions: Asked[] } | { error: string }> {
-  const body = (await post('/api/retake', { project, epic })) as Record<string, unknown>
-  if (body.ok === true) return { questions: Array.isArray(body.questions) ? (body.questions as Asked[]) : [] }
-  return { error: typeof body.error === 'string' ? body.error : 'it did not work, and said nothing about why' }
+export async function retake(project: string, epic: string): Promise<{ questions: Asked[] } | Failed> {
+  const asked = await ask<Record<string, unknown>>('/api/retake', { body: { project, epic } })
+  if (!asked.ok) return { error: asked.error, kind: asked.kind }
+  return { questions: Array.isArray(asked.body?.questions) ? (asked.body.questions as Asked[]) : [] }
 }
 
 /* ------------------------------------------------------------------ *
  * The editor's file
  * ------------------------------------------------------------------ */
 
-export type { HistoryEntry, QuizChange, QuizFile }
+export type { Attachment, HistoryEntry, QuizChange, QuizFile }
 
 /** What a save came to: written, or refused because the file moved — with what is there now. */
 export type SaveResult = { ok: true; file: QuizFile } | { ok: false; theirs: QuizFile }
@@ -169,6 +154,9 @@ export type SaveResult = { ok: true; file: QuizFile } | { ok: false; theirs: Qui
  * by that press and unmounted by Done, taking the text with it. Every call
  * carries the page's ticket, reads included, because the reply holds the key.
  *
+ * A failure is thrown as the protocol's `AskFailed`, whose `message` is the sentence and whose
+ * `kind` says whether the server refused, did not answer, or is newer than this page.
+ *
  * An interface, so a test hands the editor a fake.
  */
 export interface Files {
@@ -179,19 +167,12 @@ export interface Files {
   /**
    * Be told whenever a quiz file in this project changes on disk, by any path.
    * Answers with the way to stop listening. What is sent is an epic and an
-   * opaque version, never a word of the file.
+   * opaque version, never a word of the file. `onAttachment` is told whether the
+   * line is open: `connecting`, `attached`, and `detached` whenever it is not.
    */
-  watch(project: string, onChange: (change: QuizChange) => void): () => void
+  watch(project: string, onChange: (change: QuizChange) => void, onAttachment?: (attachment: Attachment) => void): () => void
 }
 
-async function reply<T>(response: Response): Promise<T> {
-  const parsed = (await response.json().catch(() => ({}))) as T & { ok?: boolean; error?: string }
-  if (!response.ok || parsed.ok === false) throw new Error(parsed.error ?? `this app answered ${response.status}`)
-  return parsed
-}
-
-const where = (project: string, epic: string) => `project=${encodeURIComponent(project)}&epic=${encodeURIComponent(epic)}`
-const ticketed = { headers: { 'x-learning-ticket': TICKET } }
 /**
  * `keepalive`, so a save that is on its way when the page goes — the container
  * closed with the last words still unsaved — is finished by the browser rather
@@ -200,46 +181,55 @@ const ticketed = { headers: { 'x-learning-ticket': TICKET } }
  * so a larger file is sent the ordinary way.
  */
 const KEEPALIVE_BYTES = 48_000
-const posted = (body: unknown) => {
-  const sent = JSON.stringify(body)
-  return {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-learning-ticket': TICKET },
-    body: sent,
-    keepalive: sent.length * 3 <= KEEPALIVE_BYTES || new TextEncoder().encode(sent).length <= KEEPALIVE_BYTES,
-  }
-}
+const small = (sent: string) => sent.length * 3 <= KEEPALIVE_BYTES || new TextEncoder().encode(sent).length <= KEEPALIVE_BYTES
+
+/**
+ * The `fetch` the editor's doors are asked through, and the two things it adds to `ask()`.
+ *
+ * `ask()` carries the ticket on anything but a GET, because in most modules a read needs none.
+ * Here two reads do — `/api/quiz` and `/api/history` are answered with the answer key — so the
+ * header is put on every request made through this. And `ask()` has no `keepalive`, which the
+ * save needs (above). Everything else — the typed failure, the standing, the stale mark — is
+ * still `ask()`'s.
+ */
+const ticketed = ((input: RequestInfo | URL, init?: RequestInit) => {
+  const sent = typeof init?.body === 'string' ? init.body : null
+  return fetch(input, {
+    ...init,
+    headers: { ...(init?.headers as Record<string, string> | undefined), [TICKET_HEADER]: ticket() },
+    ...(sent !== null && small(sent) ? { keepalive: true } : {}),
+  })
+}) as typeof fetch
 
 export const files: Files = {
   async read(project, epic) {
-    return (await reply<{ file: QuizFile }>(await fetch(`/api/quiz?${where(project, epic)}`, ticketed))).file
+    return answered(await ask<{ file: QuizFile }>('/api/quiz', { query: { project, epic }, fetch: ticketed })).file
   },
   async save(project, epic, text, base, session) {
-    const response = await fetch('/api/quiz', posted({ project, epic, text, base, session }))
-    if (response.status === 409) {
-      const conflict = (await response.json()) as { file?: QuizFile }
-      if (conflict.file) return { ok: false, theirs: conflict.file }
+    const asked = await ask<{ file: QuizFile }>('/api/quiz', { body: { project, epic, text, base, session }, fetch: ticketed })
+    /* "Not written, the file moved, and here is what is there now" is an answer of this door's
+       own shape rather than a failure of the asking: `ask()` keeps a refusal's body for it. */
+    if (!asked.ok && asked.status === 409) {
+      const theirs = (asked.body as { file?: QuizFile } | null)?.file
+      if (theirs) return { ok: false, theirs }
     }
-    return { ok: true, file: (await reply<{ file: QuizFile }>(response)).file }
+    return { ok: true, file: answered(asked).file }
   },
   async history(project, epic) {
-    return (await reply<{ entries: HistoryEntry[] }>(await fetch(`/api/history?${where(project, epic)}`, ticketed))).entries
+    return answered(await ask<{ entries: HistoryEntry[] }>('/api/history', { query: { project, epic }, fetch: ticketed })).entries
   },
   async undo(project, epic, id) {
-    return (await reply<{ file: QuizFile }>(await fetch('/api/undo', posted({ project, epic, id })))).file
+    return answered(await ask<{ file: QuizFile }>('/api/undo', { body: { project, epic, id }, fetch: ticketed })).file
   },
-  watch(project, onChange) {
-    if (typeof EventSource === 'undefined') return () => {}
-    /* An EventSource cannot carry a header, so the ticket rides in the address. */
-    const source = new EventSource(`/api/watch?project=${encodeURIComponent(project)}&ticket=${encodeURIComponent(TICKET)}`)
-    source.onmessage = (message) => {
-      try {
-        const change = JSON.parse(String(message.data)) as QuizChange
+  watch(project, onChange, onAttachment) {
+    /* An EventSource cannot carry a header, so the ticket rides in the address. `follow`
+       reconnects when the line drops and says so meanwhile, which this used not to. */
+    return follow<QuizChange>(
+      '/api/watch',
+      (change) => {
         if (change && typeof change.epic === 'string') onChange(change)
-      } catch {
-        /* a keep-alive or a line we do not read */
-      }
-    }
-    return () => source.close()
+      },
+      { query: { project, ticket: ticket() }, onAttachment },
+    )
   },
 }

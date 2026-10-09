@@ -55,7 +55,7 @@
 #
 # Several modules here still carry a `"build": "vite build"` that cannot succeed,
 # because there is no `index.html` for Vite to start from — the page is generated
-# per request, see `page/document.ts`. This one deliberately ships neither.
+# per request by the protocol's `doors()`, see `vite.config.ts`. This one deliberately ships neither.
 #
 # So Vite serves the page. The manifest, the health check, the MCP door and this
 # app's own store are middleware in front of the same server — see `doors()` in

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { LIMITS } from 'kehikot-module-protocol'
-import { useFocus } from 'kehikot-module-protocol/client/react'
+import { Cover, coverFor, useFocus, useServerStanding, type CoverState } from 'kehikot-module-protocol/client/react'
 
 import { ID } from '../manifest.ts'
 
@@ -9,7 +9,7 @@ import { answer, files, openEpic, retake, type Asked, type Standing } from '@/st
 import { useKehikot, type GotoHandler } from '@/wire/use-kehikot.ts'
 import { QuizEditor } from '@/view/editor.tsx'
 import { QuizView } from '@/view/quiz.tsx'
-import { NoEpic, NoProject } from '@/view/nowhere.tsx'
+import { NoEpic } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
 import { textWidth } from '@/view/text.ts'
 import { useFrame } from '@/view/use-frame.ts'
@@ -61,6 +61,10 @@ export function App() {
    */
   const [editing, setEditing] = useState<false | { at: { id: string; question: string } | null }>(false)
   const [busy, setBusy] = useState(false)
+  /* Whether the open editor holds words that are not on disk. `QuizEditor` says; see `cover` below. */
+  const [unsaved, setUnsaved] = useState(false)
+  /* How this page's own server last answered: `down` when nothing did, `stale` when it has restarted under this page. */
+  const server = useServerStanding()
 
   /*
    * This container shows questions about whatever paper is open. There is nothing in
@@ -398,7 +402,9 @@ export function App() {
     const opened = await openEpic(where_, which)
     if (writing.current) return
     if ('error' in opened) {
-      setTrouble(opened.error)
+      /* Nothing answered: `ask` has already said so to `useServerStanding`, which is what draws
+         the cover below. The next tick — or Try again — asks again; what was read stays. */
+      if (opened.kind === 'refused') setTrouble(opened.error)
       return
     }
     /* Only adopt an answer that is still about the pair we are showing. A slow
@@ -491,7 +497,7 @@ export function App() {
    * document identity without a root and a relative path published as an
    * absolute one is a claim every consumer would resolve against its own. That
    * is unreachable from the screen — a page with no project path shows
-   * `NoProject` and has no questions to press — and it is checked here anyway,
+   * the no-project cover and has no questions to press — and it is checked here anyway,
    * because "unreachable" is a property of a layout somebody may change.
    */
   const onPoint = useCallback(
@@ -631,14 +637,35 @@ export function App() {
     }
   }, [rungs.snap])
 
+  /*
+   * Every not-ready moment is the protocol's one cover, in the order that makes each true: a page
+   * that has not been greeted is `waiting`, never "no project".
+   *
+   * ## Except over words that are not saved
+   *
+   * `holding` is the editor open with something typed that is not on disk. No cover is drawn
+   * over that and this page does not reload itself: a stopped server is said in the editor (the
+   * save is retried, and the person is told to copy their words while they can), and a page
+   * older than its server — which can never save again — is said there too. The stale `Cover`
+   * IS what reloads the page from this side (this module turned the hook's own automatic reload
+   * off, see `wire/use-kehikot.ts`), so it is not drawn over unsaved words. That does not stop
+   * Vite's dev client, which reloads the page by itself when its server answers again; see
+   * `view/editor.tsx`. With nothing unsaved, a stale page reloads a moment later and comes back
+   * on the questions, not in the editor: the file is asked for again only by another press of
+   * Edit.
+   *
+   * Whatever is covered stays MOUNTED underneath, hidden — a chosen option, the place in the
+   * list — so a server that comes back gives the reader their screen as they left it.
+   */
+  const holding = editing !== false && unsaved
+  const cover: CoverState | null = holding
+    ? null
+    : server === 'stale'
+      ? 'stale'
+      : (coverFor({ where, projectPath }) ?? (server === 'down' ? 'down' : null))
+
   const screen =
-    where === 'listening' ? (
-      <p className="text-[0.7rem] leading-4 text-muted-foreground">
-        Waiting to hear whether anything is framing this page, and therefore which project it is standing in.
-      </p>
-    ) : !projectPath ? (
-      <NoProject unhosted={where === 'unhosted'} />
-    ) : !epic ? (
+    !projectPath ? null : !epic ? (
       <NoEpic project={project} standings={standings} />
     ) : editing ? (
       <QuizEditor
@@ -647,6 +674,7 @@ export function App() {
         epic={epic}
         file={file}
         at={editing.at}
+        onUnsaved={setUnsaved}
         onDone={() => {
           setEditing(false)
           void refresh()
@@ -712,7 +740,22 @@ export function App() {
         </p>
       ) : null}
 
-      {screen}
+      {cover ? (
+        <Cover
+          state={cover}
+          name="Learning"
+          onRetry={() => void refresh()}
+          /* Why this page will not go on without a folder: a guessed one is somebody's questions written where they will never look. */
+          detail={
+            cover === 'no-project' || cover === 'unhosted'
+              ? 'Questions are kept inside the project they are about, in .kehikot/learning/, so this page will not guess one.'
+              : null
+          }
+        />
+      ) : null}
+      <div hidden={cover !== null} className="min-w-0">
+        {screen}
+      </div>
     </div>
   )
 }

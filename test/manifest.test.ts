@@ -62,8 +62,10 @@ describe('the manifest', () => {
     ) as { version: string }
     const [major, minor] = packaged.version.split('.').map(Number)
     expect(major).toBe(0)
-    /* 0.34 is `useFocus` and the anchor rule, which the parts focus is built on. */
-    expect(minor).toBeGreaterThanOrEqual(34)
+    /* 0.34 is `useFocus` and the anchor rule, which the parts focus is built on. 0.35 is the
+       shared plumbing — `doors()`, `ask()`, `useHost`, `Cover` and the build identity — without
+       which `vite.config.ts` does not load. */
+    expect(minor).toBeGreaterThanOrEqual(35)
     /* And the field a stale copy would have stripped is actually there after
        the parse, which is the only check that catches the silent version. */
     expect(MANIFEST.reacts).toEqual(['passage', 'containers', 'parts'])

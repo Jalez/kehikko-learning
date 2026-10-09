@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { Files, QuizChange, QuizFile } from '@/store/ask.ts'
+import { AskFailed } from 'kehikot-module-protocol/client'
+
+import type { Attachment, Files, QuizChange, QuizFile } from '@/store/ask.ts'
 
 export type SaveState = 'loading' | 'saved' | 'unsaved' | 'saving' | 'conflict' | 'failed'
 
@@ -17,6 +19,17 @@ export interface QuizDoc {
    * of the two is chosen.
    */
   conflict: boolean
+  /**
+   * Whether the watch on the disk is open. `detached` is the line being down — this app's server
+   * stopped, or is not answering — and it reconnects by itself; until it has, a change on disk is
+   * not heard here (a save over one is still refused, as it always was).
+   */
+  watching: Attachment
+  /**
+   * The server answering is not the one that served this page, so nothing more can be saved from
+   * it. Saving stops rather than being retried; what is typed stays in the editor.
+   */
+  stale: boolean
   edit(text: string): void
   /**
    * Save until there is nothing left to save, waiting for a save already on its
@@ -48,6 +61,17 @@ export interface QuizDoc {
  * on disk. With something typed and unsaved it is the same question a refused
  * save asks, raised before the save rather than by it.
  *
+ * The line can drop — the server stopped. `watching` says so, the protocol's
+ * `follow` reconnects, and when it is back the file is read again if nothing is
+ * typed and unsaved, because whatever changed meanwhile was not heard.
+ *
+ * ## A page older than its server stops saving
+ *
+ * A save refused because this page's ticket belongs to a process that is gone
+ * (`AskFailed`, `stale`) cannot succeed from this page however often it is
+ * retried. So it is not retried: `stale` is set, the text stays where it is,
+ * and the editor says what to do with it.
+ *
  * ## Leaving does not lose the last words
  *
  * `flush` is what Done waits on. An unmount (the paper was left) saves what is
@@ -65,6 +89,8 @@ export function useQuiz({ files, project, epic, saveDelay = 600 }: { files: File
   const [state, setState] = useState<SaveState>('loading')
   const [error, setError] = useState<string | null>(null)
   const [conflict, setConflict] = useState(false)
+  const [watching, setWatching] = useState<Attachment>('connecting')
+  const [stale, setStale] = useState(false)
 
   /* The truth the async work reads, kept outside render so a late reply sees today's values. */
   const current = useRef<string | null>(null)
@@ -78,6 +104,10 @@ export function useQuiz({ files, project, epic, saveDelay = 600 }: { files: File
   /* A change heard while a save was in flight: decided once the save has answered. */
   const held = useRef<QuizChange | null>(null)
   const blocked = useRef(false)
+  /* Set by a save this page can never make: see "A page older than its server stops saving". */
+  const outdated = useRef(false)
+  /* The watch was down since it was last open, so a change may have gone unheard. */
+  const lost = useRef(false)
   const alive = useRef(true)
   /* One sitting at the editor is one entry in the undo trail. */
   const session = useRef('')
@@ -100,8 +130,12 @@ export function useQuiz({ files, project, epic, saveDelay = 600 }: { files: File
   }, [])
 
   const failed = (caught: unknown) => {
+    const old = caught instanceof AskFailed && caught.kind === 'stale'
+    if (old) outdated.current = true
     if (!alive.current) return
-    setError(caught instanceof Error ? caught.message : String(caught))
+    if (old) setStale(true)
+    /* The protocol's sentence for it ends "reloading…", which this page does not do over unsaved words. */
+    setError(old ? 'this page is older than its server' : caught instanceof Error ? caught.message : String(caught))
     setState('failed')
   }
 
@@ -174,7 +208,7 @@ export function useQuiz({ files, project, epic, saveDelay = 600 }: { files: File
         held.current = null
         if (waiting) onWatch.current(waiting)
         /* Typed while that save was in flight: it goes next. */
-        if (dirty() && !blocked.current && alive.current && !timer.current) timer.current = setTimeout(() => void run(false), saveDelay)
+        if (dirty() && !blocked.current && !outdated.current && alive.current && !timer.current) timer.current = setTimeout(() => void run(false), saveDelay)
       })
       return saving.current
     },
@@ -203,7 +237,20 @@ export function useQuiz({ files, project, epic, saveDelay = 600 }: { files: File
   useEffect(() => {
     alive.current = true
     void load()
-    const unwatch = files.watch(project, (change) => onWatch.current(change))
+    const unwatch = files.watch(
+      project,
+      (change) => onWatch.current(change),
+      (attachment) => {
+        if (!alive.current) return
+        setWatching(attachment)
+        if (attachment === 'detached') lost.current = true
+        if (attachment !== 'attached' || !lost.current) return
+        lost.current = false
+        /* Back after a gap. With nothing typed and unsaved, show what is on disk now; with
+           something, leave it — the save it is waiting on is refused if the file moved. */
+        if (current.current !== null && !saving.current && !dirty() && !blocked.current) void load()
+      },
+    )
     /* The page itself going away — the container closed. Nothing can be
        waited on, so the save is sent and the browser is left to finish it
        (`files.save` asks it to: see `keepalive` there). */
@@ -235,7 +282,7 @@ export function useQuiz({ files, project, epic, saveDelay = 600 }: { files: File
       setState(dirty() ? 'unsaved' : 'saved')
       if (timer.current) clearTimeout(timer.current)
       timer.current = null
-      if (dirty()) timer.current = setTimeout(() => void run(false), saveDelay)
+      if (dirty() && !outdated.current) timer.current = setTimeout(() => void run(false), saveDelay)
     },
     [run, saveDelay],
   )
@@ -257,5 +304,5 @@ export function useQuiz({ files, project, epic, saveDelay = 600 }: { files: File
     }
   }, [files, project, epic, flush])
 
-  return { text, sources, state, error, conflict, edit, flush, theirs, mine, take }
+  return { text, sources, state, error, conflict, watching, stale, edit, flush, theirs, mine, take }
 }

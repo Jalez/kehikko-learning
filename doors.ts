@@ -1,4 +1,5 @@
 import { linesOf } from 'kehikot-module-protocol'
+import { establishBuild, mintTicket, refuseTicket, type Reply } from 'kehikot-module-protocol/serve'
 
 import { ID, MANIFEST, VERSION } from './manifest.ts'
 import {
@@ -34,8 +35,8 @@ import type { QuizChange } from './quiz/types.ts'
  * A module is ONE ORIGIN: the page is Vite's, so the manifest, the health
  * check, the MCP door and this app's own store are Vite's too. Hence no
  * listener here. `answer()` takes a method, a path, a query and a body and
- * returns a status and a document, and `vite.config.ts` adapts a node request
- * to it.
+ * returns a status and a document, and the protocol's `doors()` in
+ * `vite.config.ts` adapts a node request to it.
  *
  * ## The one thing to know before changing anything here
  *
@@ -80,7 +81,15 @@ function whole(value: unknown): number {
  * ANSWER KEY — that is behind not being sent at all. What it buys is that a
  * stray script cannot fill somebody's history with attempts they never made.
  */
-export const TICKET = crypto.randomUUID()
+export const TICKET = mintTicket()
+
+/**
+ * What this process is built from: this module's version, the checkout's commit and when the
+ * process started. `doors()` says it in the manifest, at `/healthz`, in the page and on every
+ * answer, which is how a page notices that the server answering it is not the one that served it.
+ * Nothing in it is read from a project, so nothing in it can be about a question.
+ */
+export const BUILD = establishBuild({ version: VERSION, dir: import.meta.dirname })
 
 /** What an agent is called when it does not say. */
 const AGENT = process.env.LEARNING_AGENT ?? process.env.KEHIKOT_AGENT ?? 'an agent'
@@ -446,12 +455,8 @@ function call(name: string, args: Record<string, unknown>, project: string): str
   return `${out.said}.\n\n${epicText(project, epic, false)}`
 }
 
-/** A status and a document. Nothing here writes bytes; the adapter does that. */
-export interface Reply {
-  status: number
-  /** `null` means "answer with no body", which is what a notification gets. */
-  body: unknown
-}
+/* A status and a document — the protocol's `Reply`. Nothing here writes bytes; `doors()` does that. */
+export type { Reply }
 
 const ok = (body: unknown): Reply => ({ status: 200, body })
 const bad = (why: string, status = 400): Reply => ({ status, body: { ok: false, error: why } })
@@ -587,7 +592,10 @@ export function answer(
    * `/api/history` lists the writes that can be undone and `/api/undo` undoes one.
    */
   if (path === '/api/quiz' || path === '/api/history' || path === '/api/undo') {
-    if (ticket !== TICKET) return bad('that did not come from this app’s own page', 403)
+    /* `refuseTicket` marks the refusal, so a page that is merely older than this process — the
+       server restarted under it — is told so by its `ask()` instead of being called a stranger. */
+    const refused = refuseTicket(ticket, TICKET, 'that did not come from this app’s own page')
+    if (refused) return refused
     const from = method === 'GET' ? { project: query.get('project'), epic: query.get('epic') } : (body ?? {})
     const project = usablePath(from.project)
     const epic = str(from.epic, MAX_EPIC)
@@ -617,7 +625,8 @@ export function answer(
     /* The gate on every write from the page. An agent's door is `/mcp` and is
        deliberately above this check: an MCP client has no page to have been
        handed a ticket. */
-    if (ticket !== TICKET) return bad('that press did not come from this app’s own page', 403)
+    const refused = refuseTicket(ticket, TICKET, 'that press did not come from this app’s own page')
+    if (refused) return refused
     if (!body) return bad('that was not a request')
 
     const project = usablePath(body.project)
@@ -686,7 +695,10 @@ export function stream(
   emit: (change: QuizChange) => void,
 ): { reply: Reply } | { close: () => void } | null {
   if (method !== 'GET' || path !== '/api/watch') return null
-  if (query.get('ticket') !== TICKET) return { reply: bad('that did not come from this app’s own page', 403) }
+  /* The ticket in the ADDRESS is the one that counts here: `doors()` also hands this function
+     the header's, and an `EventSource` never sends one. */
+  const refused = refuseTicket(query.get('ticket'), TICKET, 'that did not come from this app’s own page')
+  if (refused) return { reply: refused }
   const project = usablePath(query.get('project'))
   if (!project) return { reply: bad('that did not say which project.') }
   const watched = watchQuizzes(project, emit)
