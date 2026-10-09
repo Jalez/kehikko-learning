@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test'
 
-import { findQuote, resolveSource } from '../quiz/cite.ts'
 import { idOf, keyOf, parseQuiz, quizProblems, serialiseQuiz, writable, type Quiz } from '../quiz/format.ts'
 
 /**
@@ -181,28 +180,5 @@ describe('what is wrong with a file', () => {
     expect(bent({ question: 'two\n- lines' })).toBe(false)
     expect(bent({ options: ['a\nb', 'c'] })).toBe(false)
     expect(bent({ why: 'a dash - in a sentence is fine, and so is a # sign' })).toBe(true)
-  })
-})
-
-describe('finding the words again', () => {
-  const FILE = 'First line.\nThe manifest is the\n  smallest half — “quoted”.\nThe manifest is here twice: the manifest.\n'
-  const source = (quote: string) => ({ label: '1', path: 'a.tex', quote })
-
-  test('holds: once, with byte offsets and lines, whatever the whitespace between the words', () => {
-    const found = resolveSource(source('manifest is the smallest half'), FILE)
-    expect(found).toMatchObject({ status: 'holds', count: 1, at: { from: 16, to: 47, line: 2, endLine: 3 } })
-    expect(new TextDecoder().decode(new TextEncoder().encode(FILE).subarray(16, 47))).toBe('manifest is the\n  smallest half')
-  })
-
-  test('offsets are bytes, not characters: what a passage carries', () => {
-    const found = findQuote(FILE, '“quoted”.')
-    expect(found.at?.from).toBe(new TextEncoder().encode(FILE.slice(0, FILE.indexOf('“quoted”'))).length)
-    expect(found.at!.to - found.at!.from).toBe(new TextEncoder().encode('“quoted”.').length)
-  })
-
-  test('ambiguous, adrift, unreadable', () => {
-    expect(resolveSource(source('manifest'), FILE)).toMatchObject({ status: 'ambiguous', count: 3 })
-    expect(resolveSource(source('Manifest is the smallest'), FILE)).toMatchObject({ status: 'adrift', at: null, count: 0 })
-    expect(resolveSource(source('anything'), null)).toMatchObject({ status: 'unreadable', at: null })
   })
 })

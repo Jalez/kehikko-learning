@@ -65,7 +65,8 @@ Sources:
   keeps its answers.
 
 **The passage is found by its words, not by byte offsets**, on every read — the
-rule and the code are Slides' (`quiz/cite.ts` is a copy of its `deck/cite.ts`).
+rule and the code are the ones Slides uses, shared through
+`kehikot-module-protocol` (its citations, 0.33.0).
 A run of whitespace in the quote matches any run in the file and nothing else is
 forgiven, so each source is one of `holds`, `ambiguous` (the words occur more
 than once), `adrift` (the paper changed under the question) or `unreadable` (the
@@ -559,9 +560,8 @@ tool's argument validation without a browser.
 manifest.ts        what a host reads, and the essay on every non-declaration
 doors.ts           /mcp, /healthz and /api, as one function with no socket
 store.ts           <project>/.kehikot/learning/, the fence around it, and the .gitignore
-quiz/types.ts      the shapes both sides name — NO imports, deliberately
+quiz/types.ts      the shapes both sides name — one type import, nothing of this module's
 quiz/format.ts     the Markdown file: the only reader and writer of one
-quiz/cite.ts       a source line, and finding its words again — copied from Slides
 quiz/questions.ts  the store, the rules, asked() and score()
 quiz/migrate.ts    the one move out of the old questions.json
 quiz/history.ts    what each file held before every write, for undo
@@ -628,12 +628,19 @@ parse is not moved and not treated as empty.
 
 The format is Slides' on purpose — a heading per unit, `[^n]` markers, a
 `Sources:` list in the same syntax, words rather than offsets, the same four
-statuses, the same press that points the paper. The CODE is a copy:
-`quiz/cite.ts` holds `parseSource`, `serialiseSource`, `uncitable`, `markersIn`,
-`findQuote` and `resolveSource` from Slides' `deck/format.ts` and `deck/cite.ts`,
-and `store.ts` holds its `citedText`. `quiz/history.ts` is Slides' undo trail in
-the same shape, and `src/view/use-quiz.ts` its `useDeck`. They all belong in
-`kehikot-module-protocol`. So is `quiz/live.ts`, Slides' `live.ts` for quiz
-files. The editor is Slides' too, and also a copy (`src/view/markdown-editor.tsx`
+statuses, the same press that points the paper.
+
+**Shared**, through `kehikot-module-protocol` (0.33.0): the source line
+(`parseSource`, `serialiseSource`, `uncitable`), its markers (`markersIn`,
+`CITE_MARKER`), `normaliseQuote`, `findQuote`, `resolveSource` with the four
+statuses, `linesOf`, and the view type (`Cited` here is its `CitationView`).
+Both modules import them; neither keeps a copy.
+
+**Still copied**, and candidates for the same move: `store.ts`'s `citedText`
+and the fence around the project folder, its atomic write (`put`),
+`quiz/history.ts` (Slides' undo trail in the same shape), `quiz/live.ts`
+(Slides' `live.ts` for quiz files) and `src/view/use-quiz.ts` (its `useDeck`).
+All but the last read or write the disk, which the protocol's root does not do,
+so they need a decision about where in it they live. The editor is Slides' too, and also a copy (`src/view/markdown-editor.tsx`
 of its `src/editor/deck-editor.tsx`): sharing sixty lines through the protocol
 would hand CodeMirror to the host and to every module that installs it.

@@ -296,9 +296,10 @@ describe('the browser bundle', () => {
     }
   })
 
-  test('the shared types file imports nothing at all', () => {
+  test('the shared types file imports nothing of this module, and only a type from the protocol', () => {
     /* Which is what makes importing it wrongly free. */
     const source = readFileSync(join(here, 'quiz/types.ts'), 'utf8')
-    expect(source).not.toMatch(/^import\s/m)
+    const imports = [...source.matchAll(/^import\s.*$/gm)].map((match) => match[0])
+    expect(imports).toEqual(["import type { CitationView } from 'kehikot-module-protocol'"])
   })
 })

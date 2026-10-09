@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, renameSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import { normaliseQuote } from 'kehikot-module-protocol'
 import { z } from 'zod'
 
 import { dataFile, put } from '../store.ts'
-import { normaliseQuote } from './cite.ts'
 import { emptyQuiz, serialiseQuiz, writable, type Quiz } from './format.ts'
 import type { Attempt } from './types.ts'
 

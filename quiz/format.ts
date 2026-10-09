@@ -1,4 +1,4 @@
-import { MARKER, markersIn, parseSource, serialiseSource, uncitable, type Source } from './cite.ts'
+import { CITE_MARKER, markersIn, parseSource, serialiseSource, uncitable, type CitedSource } from 'kehikot-module-protocol'
 
 /**
  * An epic's questions are one Markdown file, and this is the only place that
@@ -31,7 +31,7 @@ import { MARKER, markersIn, parseSource, serialiseSource, uncitable, type Source
  *   once the reader has answered.
  * - A `[^1]` on the question is the passage it rests on, and a line that is
  *   exactly `Sources:` opens the list of them, in Slides' syntax:
- *   `[^1]: <project-relative path> | "<exact words>"` (see `cite.ts`). One list
+ *   `[^1]: <project-relative path> | "<exact words>"` (the protocol's citations, shared with Slides). One list
  *   at the bottom is how this module writes it; a list after each question
  *   reads the same, because labels are the file's and not a question's.
  * - `<!-- id: … -->` is the name a reader's answers are filed under (they are
@@ -64,7 +64,7 @@ export interface Quiz {
   preamble: string
   questions: Question[]
   /** Every `Sources:` line in the file, in the order written. */
-  sources: Source[]
+  sources: CitedSource[]
   /** Lines under `Sources:` that are not a source, kept so a person's text survives. */
   strays: string[]
 }
@@ -100,7 +100,7 @@ export function parseQuiz(text: string): Quiz {
     const words = asked.join('\n')
     one.label = markersIn(words)[0] ?? null
     one.question = words
-      .replace(MARKER, '')
+      .replace(CITE_MARKER, '')
       .split('\n')
       .map((line) => line.replace(/[ \t]+/g, ' ').trim())
       .filter(Boolean)

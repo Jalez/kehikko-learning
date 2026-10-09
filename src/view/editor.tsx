@@ -1,3 +1,4 @@
+import { linesOf } from 'kehikot-module-protocol'
 import { useMemo, useState } from 'react'
 
 import type { Files, HistoryEntry } from '@/store/ask.ts'
@@ -235,7 +236,7 @@ export function QuizEditor({
                     <p data-status={source.status} className={`mt-1.5 text-[0.65rem] leading-4 [overflow-wrap:anywhere] ${source.at ? 'text-muted-foreground' : 'text-wrong'}`}>
                       [^{source.label}] {source.path}
                       {source.at
-                        ? `, ${source.at.line === source.at.endLine ? `line ${source.at.line}` : `lines ${source.at.line}–${source.at.endLine}`}`
+                        ? `, ${linesOf(source.at)}`
                         : source.status === 'adrift'
                           ? ' — these words are not in it'
                           : ' — not a file in this project'}

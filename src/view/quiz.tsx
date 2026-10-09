@@ -1,3 +1,4 @@
+import { linesOf } from 'kehikot-module-protocol'
 import { useState } from 'react'
 
 import type { Asked } from '@/store/ask.ts'
@@ -244,7 +245,7 @@ export function QuestionCard({
    */
   const pointable = !!cited?.at
   const where = cited?.at
-    ? `${cited.path}, ${cited.at.line === cited.at.endLine ? `line ${cited.at.line}` : `lines ${cited.at.line}–${cited.at.endLine}`}`
+    ? `${cited.path}, ${linesOf(cited.at)}`
     : (cited?.path ?? '')
   const words = cited ? `“${cited.quote.length > 160 ? `${cited.quote.slice(0, 157)}…` : cited.quote}”` : ''
   const about = !cited

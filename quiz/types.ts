@@ -1,34 +1,27 @@
 /**
  * The shapes the server and the page both name, and NOTHING ELSE.
  *
- * This file has no imports at all, deliberately. `quiz/questions.ts` imports
- * `node:fs`, and this page runs in a browser: the moment somebody drops the
- * `type` from an import of it, Vite pulls `node:fs` into the browser bundle,
- * the module fails to evaluate, and the only symptom is a container that never
- * answers the host's greeting. A types-only file with no imports cannot do
- * that, and `test/manifest.test.ts` asserts the rule over every file in `src/`.
+ * This file imports one thing, a TYPE from the protocol package, and nothing
+ * of this module's — deliberately. `quiz/questions.ts` imports `node:fs`, and
+ * this page runs in a browser: the moment somebody drops the `type` from an
+ * import of it, Vite pulls `node:fs` into the browser bundle, the module fails
+ * to evaluate, and the only symptom is a container that never answers the
+ * host's greeting. A types-only file that reaches nothing here cannot do that,
+ * and `test/manifest.test.ts` asserts the rule over every file in `src/`.
  */
 
+import type { CitationView } from 'kehikot-module-protocol'
+
 /**
- * The passage a question rests on, as it was found on this read: Slides'
- * `CitationView`, field for field, so a question and a slide cite alike.
+ * The passage a question rests on, as it was found on this read: the
+ * protocol's `CitationView`, the one a slide's citation is too.
  *
- * The file holds the path and the quoted words (`quiz/cite.ts`); the range is
- * looked for again every time, never stored, so an edit above the passage
- * moves the range with it and an edit TO the passage says `adrift` instead of
- * pointing at whatever moved into its bytes.
+ * The file holds the path and the quoted words; the range is looked for again
+ * every time, never stored, so an edit above the passage moves the range with
+ * it and an edit TO the passage says `adrift` instead of pointing at whatever
+ * moved into its bytes.
  */
-export interface Cited {
-  label: string
-  /** Relative to the project root. */
-  path: string
-  quote: string
-  status: 'holds' | 'ambiguous' | 'adrift' | 'unreadable'
-  /** UTF-8 byte offsets and 1-based lines, when the words were found. */
-  at: { from: number; to: number; line: number; endLine: number } | null
-  /** How many times the words occur in the file. */
-  count: number
-}
+export type Cited = CitationView
 
 /**
  * One attempt at one question. A list rather than a single "last answer",

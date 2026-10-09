@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, isAbsolute, relative, sep } from 'node:path'
 
+import { findQuote, normaliseQuote, resolveSource, uncitable } from 'kehikot-module-protocol'
 import { z } from 'zod'
 
 import { citedText, dataFile, makeDir, put, rootOf } from '../store.ts'
-import { findQuote, normaliseQuote, resolveSource, uncitable } from './cite.ts'
 import { history, kept, record } from './history.ts'
 import { emptyQuiz, idOf, keyOf, parseQuiz, quizProblems, serialiseQuiz, writable, type Question, type Quiz } from './format.ts'
 import { migrate, type Answers, type Stored } from './migrate.ts'
