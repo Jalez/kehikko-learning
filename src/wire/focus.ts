@@ -12,13 +12,15 @@ import type { Hidden } from '@/wire/scope.ts'
  * anchors a question, and how the sentence shares the one note this page
  * already has for a narrowing (`hiding` in `app.tsx`).
  *
- * ## Third, after the aim and the scope
+ * ## Third, after the aim and the scope — and ahead of the aim's guess
  *
- * The aim decides which documents are in front, the scope how narrow within
- * the pointed one, and the parts are applied to what those two leave. So the
- * number in the sentence is the questions that would be on screen this minute
- * if no part were ticked — the count a reader wondering where a question went
- * can act on — and the three never count one question twice.
+ * The parts are applied to what the aim and the scope leave, so the three
+ * never count one question twice. But while a part is ticked the aim leaves
+ * everything, unless a person picked a container out: what the canvas happens
+ * to be showing is a guess at where the reader is, and a tick is them saying.
+ * `wire/aim.ts` has what went wrong when the guess was applied first. So the
+ * number in the sentence is the questions about the rest of the epic, unless
+ * a picked-out container or the reader's own scope narrowed first.
  *
  * The editor does not come through here: Edit shows the whole file. Nor does
  * the MCP door: an agent has no canvas and sees every question.
@@ -79,4 +81,21 @@ export function whyUnfocused(narrowing: Narrowing, left: number, before: number)
  */
 export function standingOn(shown: readonly { id: string }[], on: string | null): number {
   return Math.max(0, on === null ? 0 : shown.findIndex((question) => question.id === on))
+}
+
+/**
+ * The question a change of ticks may not take away, or null.
+ *
+ * `keep` is for what a person is in the middle of. Here that is a question
+ * whose answer is on its way — the reply has to land on a card — or one they
+ * have opened a piece of: the question in full, its explanation. NOT the question that
+ * merely happens to be on screen. At the paged rungs one always is, so
+ * holding it meant a tick never moved this pane at all: somebody who went
+ * from Methods to Results was left on a Methods question, with the reason in
+ * a tooltip.
+ *
+ * `on` is the question on screen at a paged rung, or null at the list.
+ */
+export function inHand(input: { answering: string | null; on: string | null; part: string }): string | null {
+  return input.answering ?? (input.part === 'options' ? null : input.on)
 }

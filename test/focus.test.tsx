@@ -5,7 +5,7 @@ import { FOCUS_WHERE, partsDeclaration, type EpicPart } from 'kehikot-module-pro
 import { useFocus } from 'kehikot-module-protocol/client/react'
 
 import { MANIFEST } from '../manifest.ts'
-import { anchorOf, focusNote, standingOn, whyUnfocused } from '../src/wire/focus.ts'
+import { anchorOf, focusNote, inHand, standingOn, whyUnfocused } from '../src/wire/focus.ts'
 import type { Anchored } from '../src/wire/pointed.ts'
 
 /**
@@ -84,6 +84,26 @@ describe('which questions the ticked parts leave', () => {
     expect(standingOn(narrowed(['intro', 'methods']).shown, 'methods-1')).toBe(2)
     expect(standingOn(narrowed(['intro']).shown, 'methods-1')).toBe(0)
     expect(standingOn(narrowed(['intro']).shown, null)).toBe(0)
+  })
+})
+
+describe('what a change of ticks may not take away', () => {
+  test('the question that is merely on screen is not in anybody’s hands, so a tick moves the pane', () => {
+    expect(inHand({ answering: null, on: 'methods-1', part: 'options' })).toBeNull()
+    expect(inHand({ answering: null, on: null, part: 'options' })).toBeNull()
+  })
+
+  test('one they opened a piece of is, and so is one whose answer is on its way — at any rung', () => {
+    expect(inHand({ answering: null, on: 'methods-1', part: 'why' })).toBe('methods-1')
+    expect(inHand({ answering: null, on: 'methods-1', part: 'question' })).toBe('methods-1')
+    expect(inHand({ answering: 'intro-2', on: null, part: 'options' })).toBe('intro-2')
+    expect(inHand({ answering: 'intro-2', on: 'methods-1', part: 'why' })).toBe('intro-2')
+  })
+
+  test('left out by the new ticks and not held: the reader is at the top of the new list', () => {
+    const { shown } = narrowed(['intro'], inHand({ answering: null, on: 'methods-1', part: 'options' }))
+    expect(ids(shown)).toEqual(['intro-1', 'intro-2'])
+    expect(standingOn(shown, 'methods-1')).toBe(0)
   })
 })
 

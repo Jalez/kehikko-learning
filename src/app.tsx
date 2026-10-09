@@ -13,7 +13,7 @@ import { NoEpic } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
 import { textWidth } from '@/view/text.ts'
 import { useFrame } from '@/view/use-frame.ts'
-import { anchorOf, focusNote, standingOn, whyUnfocused } from '@/wire/focus.ts'
+import { anchorOf, focusNote, inHand, standingOn, whyUnfocused } from '@/wire/focus.ts'
 import { aimNote, aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
 import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
 import { hiddenNote, narrow, offer, reachOf, scopeOf } from '@/wire/scope.ts'
@@ -98,6 +98,10 @@ export function App() {
    * the difference between a pane that narrows and one that ratchets wider.
    */
   const onCanvas = useMemo<Shown[]>(() => containersFrom(containers), [containers])
+  /* The parts of the epic ticked in the host's bar. Read before the aim,
+     because a tick outranks the aim's guess at what is in front — see "The
+     ticked parts say it first" in `wire/aim.ts`. */
+  const focus = useFocus({ parts: epicParts, epic })
   const front = useMemo(
     () =>
       inFrontOf({
@@ -105,8 +109,9 @@ export function App() {
         passage: passage ? { path: passage.path, from: passage.from, to: passage.to } : null,
         containers: onCanvas,
         aim: aimOf(chosen),
+        focused: focus.focused,
       }),
-    [onCanvas, passage, chosen],
+    [onCanvas, passage, chosen, focus.focused],
   )
 
   /*
@@ -273,26 +278,32 @@ export function App() {
    * the sentence are the protocol's; `wire/focus.ts` says what anchors a
    * question.
    *
-   * ## A tick never takes the question out from under the reader
+   * ## A tick never takes a question out of the reader's hands
    *
-   * `on` is the question in their hands at the moment the ticks change — the
-   * one on screen at a paged rung, or one whose answer is on its way. If the
-   * new ticks put it outside, it is `held`: still drawn, in its place, still
-   * counted outside, and the note says so. It goes when they move to another
-   * question, or tick again. And where they stand follows the question, not
-   * the index: ticking a second part beside the one being read moves nobody.
+   * `hand` is the question they are in the middle of at the moment the ticks
+   * change — one whose answer is on its way, or one they have opened a piece
+   * of (`inHand` in `wire/focus.ts`, which says why the question that is
+   * merely on screen is not one). If the new ticks put it outside, it is
+   * `held`: still drawn, in its place, still counted outside, and the note
+   * says so. It goes when they move to another question, or tick again.
+   *
+   * `on` is where they stand, which follows the question and not the index:
+   * ticking a second part beside the one being read moves nobody. A question
+   * the new ticks leave out, and that is not in their hands, is left for the
+   * top of the new list — which is how this pane is seen to follow a tick.
    */
-  const focus = useFocus({ parts: epicParts, epic })
   const [held, setHeld] = useState<string | null>(null)
   const on = useRef<string | null>(null)
+  const hand = useRef<string | null>(null)
   /* Which question an answer in flight is to. */
   const answering = useRef<string | null>(null)
   const [ticked, setTicked] = useState(focus)
   if (ticked !== focus) {
     setTicked(focus)
     const now = on.current
-    setHeld(now)
-    setShown(standingOn(focus.narrow(narrowed, anchorOf(projectPath), { keep: (one) => one.id === now }).shown, now))
+    const keep = hand.current
+    setHeld(keep)
+    setShown(standingOn(focus.narrow(narrowed, anchorOf(projectPath), { keep: (one) => one.id === keep }).shown, now))
   }
   const inParts = useMemo(
     () => focus.narrow(narrowed, anchorOf(projectPath), { noun: 'question', keep: (one) => one.id === held }),
@@ -364,8 +375,10 @@ export function App() {
   )
 
   const at = Math.min(Math.max(shown, 0), Math.max(0, cards.length - 1))
-  /* What the reader's hands are in, for the next change of ticks to read. */
-  on.current = answering.current ?? (rungs.rung === 'list' ? null : (visible[at]?.id ?? null))
+  /* Where the reader stands and what their hands are in, for the next change of ticks to read. */
+  const onScreen = rungs.rung === 'list' ? null : (visible[at]?.id ?? null)
+  on.current = answering.current ?? onScreen
+  hand.current = inHand({ answering: answering.current, on: onScreen, part })
   /* The chips, decided by the same number that decided whether the question is
      on screen above them. `rungs.header` is zero when no header was drawn —
      because the question is longer than the header's ceiling, or because drawing
