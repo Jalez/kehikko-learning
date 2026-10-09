@@ -314,7 +314,7 @@ export const MANIFEST: Manifest = manifestSchema.parse({
    * line of documentation into a permission over a broadcast, and the
    * protocol refuses that in so many words.
    */
-  reacts: ['passage', 'containers'],
+  reacts: ['passage', 'containers', 'parts'],
   declares: {
     protocol: `>=${PROTOCOL} <${PROTOCOL + 1}`,
     uses: ['passage:set', 'showing:set'],

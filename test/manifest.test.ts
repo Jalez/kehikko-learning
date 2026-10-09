@@ -62,10 +62,11 @@ describe('the manifest', () => {
     ) as { version: string }
     const [major, minor] = packaged.version.split('.').map(Number)
     expect(major).toBe(0)
-    expect(minor).toBeGreaterThanOrEqual(20)
+    /* 0.34 is `useFocus` and the anchor rule, which the parts focus is built on. */
+    expect(minor).toBeGreaterThanOrEqual(34)
     /* And the field a stale copy would have stripped is actually there after
        the parse, which is the only check that catches the silent version. */
-    expect(MANIFEST.reacts).toEqual(['passage', 'containers'])
+    expect(MANIFEST.reacts).toEqual(['passage', 'containers', 'parts'])
   })
 
   test('says who it is, and the filename register.ts writes matches', () => {
@@ -103,11 +104,12 @@ describe('the manifest', () => {
   test('says which context fields it moves on, and only those', () => {
     /* A description and not a request: the context arrives whole whatever is
        written here. `passage` marks a card and narrows by scope; `containers`
-       narrows to what the picked-out containers show. `selection` is NOT here,
+       narrows to what the picked-out containers show; `parts` narrows to the
+       files the ticked parts of the epic own. `selection` is NOT here,
        because this page reads no refs and never will, and ticking a word
        because the field arrives is what the protocol's essay on `reacts` names
        as the thing to refuse. */
-    expect(MANIFEST.reacts).toEqual(['passage', 'containers'])
+    expect(MANIFEST.reacts).toEqual(['passage', 'containers', 'parts'])
   })
 
   test('the essay is honest about the capabilities it now declares', () => {

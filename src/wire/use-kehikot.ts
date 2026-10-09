@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { FilterChoice, FilterGroup, ModuleContext } from 'kehikot-module-protocol'
+import { sameParts, type EpicPart, type FilterChoice, type FilterGroup, type ModuleContext } from 'kehikot-module-protocol'
 
 import { connect, type Connection, type HostEvents } from 'kehikot-module-protocol/client'
 
@@ -137,6 +137,13 @@ export interface Kehikot {
    * notes module made the same choice for the same reason.
    */
   containers: string
+  /**
+   * `context.parts`: every part of the open epic, the ones a person ticked in
+   * the host's bar flagged. `[]` from a host that has never heard of parts and
+   * before any greeting — nothing picked, the whole epic. Kept by value, so a
+   * context that re-states the same parts is the same array.
+   */
+  parts: EpicPart[]
   /** Ask the host to make this container a given height. */
   resize: (height: number) => void
   /**
@@ -218,6 +225,7 @@ export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
   const [passage, setPassage] = useState<Passage | null>(null)
   const [chosen, setChosen] = useState<FilterChoice>({})
   const [containers, setContainers] = useState('')
+  const [parts, setParts] = useState<EpicPart[]>([])
   const host = useRef<Connection | null>(null)
 
   /* The handler is read through a ref so that a caller re-creating it does not
@@ -283,6 +291,7 @@ export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
       /* Flattened to a string on arrival, so the setter is a no-op when the
          canvas did not move — see `containers` above. */
       setContainers(flattenContainers((context as { containers?: unknown }).containers))
+      setParts((was) => (sameParts(was, context.parts ?? []) ? was : (context.parts ?? [])))
     }
 
     /*
@@ -342,8 +351,8 @@ export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
   }, [])
 
   return useMemo(
-    () => ({ where, epic, projectPath, project, passage, chosen, containers, resize, filters, point, show }),
-    [where, epic, projectPath, project, passage, chosen, containers, resize, filters, point, show],
+    () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show }),
+    [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show],
   )
 }
 
