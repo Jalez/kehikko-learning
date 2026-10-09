@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { KEHIKOT_DIR, LEGACY_WELL_KNOWN, WELL_KNOWN } from 'kehikot-module-protocol'
+import { KEHIKOT_DIR, WELL_KNOWN } from 'kehikot-module-protocol'
 import { doorsHandler, type DoorRequest, type DoorResponse } from 'kehikot-module-protocol/serve'
 
 import { BUILD, MANIFEST, TICKET, answer, stream } from '../doors.ts'
@@ -22,6 +22,9 @@ import { BUILD, MANIFEST, TICKET, answer, stream } from '../doors.ts'
 const EPIC = 'modes-are-modules'
 const WHY = 'The manifest is the only half a host reads.'
 let dir = ''
+
+/** Where the manifest was also served before protocol 1.0.0. Not a door any more: asked here so that stays true. */
+const OLD_WELL_KNOWN = '/.well-known/roadmap-module.json'
 
 /* The options exactly as `vite.config.ts` passes them. */
 const handler = doorsHandler({ manifest: MANIFEST, answer, stream, build: BUILD, page: { title: 'Learning', ticket: TICKET } })
@@ -145,16 +148,21 @@ describe('what the shared doors serve without being asked for the file', () => {
     expect(Object.keys(BUILD).sort()).toEqual(['commit', 'protocol', 'started', 'version'])
   })
 
-  test('the health check and both manifests: the build was added, and nothing of anybody’s questions', async () => {
+  test('the health check and the manifest: the build was added, and nothing of anybody’s questions', async () => {
     const health = await get('/healthz')
     expect(Object.keys(JSON.parse(health.text) as object).sort()).toEqual(['build', 'id', 'ok', 'version'])
     keyless(health)
-    for (const path of [WELL_KNOWN, LEGACY_WELL_KNOWN]) {
-      const manifest = await get(path)
-      expect(manifest.status).toBe(200)
-      keyless(manifest)
-      expect(manifest.text).not.toContain(dir)
-    }
+    const manifest = await get(WELL_KNOWN)
+    expect(manifest.status).toBe(200)
+    keyless(manifest)
+    expect(manifest.text).not.toContain(dir)
+  })
+
+  test('the manifest’s old address is not a door: this app answers nothing there, so nothing of the key', async () => {
+    const old = await get(OLD_WELL_KNOWN)
+    expect(old.passed).toBe(true)
+    expect(old.text).toBe('')
+    expect(old.headers).toEqual({})
   })
 
   test('the questions route, served: the question and its options, and still no key', async () => {
@@ -250,7 +258,7 @@ describe('what the shared doors serve without being asked for the file', () => {
        the health check, the manifests, the questions, the watch — before or after asking. */
     const salt = (JSON.parse(readFileSync(join(dir, KEHIKOT_DIR, 'learning', 'order.json'), 'utf8')) as Record<string, string>)[EPIC]!
     expect(salt).toMatch(/^[0-9a-f]{32}$/)
-    const doors = ['/app', '/', '/healthz', WELL_KNOWN, LEGACY_WELL_KNOWN, `/api/questions?${where()}`, `/api/questions?project=${encodeURIComponent(dir)}`, `/api/watch?project=${encodeURIComponent(dir)}&ticket=${TICKET}`]
+    const doors = ['/app', '/', '/healthz', WELL_KNOWN, `/api/questions?${where()}`, `/api/questions?project=${encodeURIComponent(dir)}`, `/api/watch?project=${encodeURIComponent(dir)}&ticket=${TICKET}`]
     for (const path of doors) {
       const got = await get(path)
       expect(got.status).toBe(200)
@@ -258,6 +266,10 @@ describe('what the shared doors serve without being asked for the file', () => {
       expect(said(got)).not.toContain(salt)
       expect(said(got)).not.toContain('order.json')
     }
+    /* And the manifest's old address, which is no door at all now, serves none of it either. */
+    const old = await get(OLD_WELL_KNOWN)
+    expect(old.passed).toBe(true)
+    expect(said(old)).toBe('{}\n')
     /* Asking twice is the same answer: nothing to average an order out of. */
     expect((await get(`/api/questions?${where()}`)).text).toBe(asked.text)
   })

@@ -134,7 +134,7 @@ export function useQuiz({ files, project, epic, saveDelay = 600 }: { files: File
     if (old) outdated.current = true
     if (!alive.current) return
     if (old) setStale(true)
-    /* The protocol's sentence for it ends "reloading…", which this page does not do over unsaved words. */
+    /* This page's own words, kept: the protocol's sentence is capitalised and ends in a full stop, and this one is set after "not saved: ". */
     setError(old ? 'this page is older than its server' : caught instanceof Error ? caught.message : String(caught))
     setState('failed')
   }
