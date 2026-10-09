@@ -850,7 +850,7 @@ export function QuizView({
           {hiding ? (
             <span
               data-scope-note="brief"
-              title={hiding.full}
+              title={[hiding.full, hiding.where].filter(Boolean).join(' ')}
               className="text-[0.65rem] whitespace-nowrap text-muted-foreground"
             >
               {hiding.brief}
@@ -922,7 +922,7 @@ export function QuizView({
           that scrolls a few pixels more while narrowed, which is what a list does.
         */}
         {hiding ? (
-          <span data-scope-note="full" className="text-[0.65rem] text-muted-foreground">
+          <span data-scope-note="full" title={hiding.where} className="text-[0.65rem] text-muted-foreground">
             {hiding.full}
           </span>
         ) : null}

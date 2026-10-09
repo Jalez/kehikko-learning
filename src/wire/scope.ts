@@ -254,6 +254,8 @@ export interface Hidden {
   full: string
   /** For a row of controls in a 220-pixel column: `+3 elsewhere`. */
   brief: string
+  /** Where the control that hid them is, when it is not this container's header: the tooltip. */
+  where?: string
 }
 
 export function hiddenNote(scope: Scope, hidden: number): Hidden | null {

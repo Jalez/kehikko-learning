@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { LIMITS } from 'kehikot-module-protocol'
+import { useFocus } from 'kehikot-module-protocol/client/react'
 
 import { ID } from '../manifest.ts'
 
@@ -12,6 +13,7 @@ import { NoEpic, NoProject } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
 import { textWidth } from '@/view/text.ts'
 import { useFrame } from '@/view/use-frame.ts'
+import { anchorOf, focusNote, standingOn, whyUnfocused } from '@/wire/focus.ts'
 import { aimNote, aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
 import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
 import { hiddenNote, narrow, offer, reachOf, scopeOf } from '@/wire/scope.ts'
@@ -76,7 +78,7 @@ export function App() {
     )
   }, [])
 
-  const { where, epic, projectPath, project, passage, chosen, containers, resize, filters, point, show: tell } = useKehikot(
+  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell } = useKehikot(
     ID,
     onGoto,
   )
@@ -187,7 +189,13 @@ export function App() {
    * on it after a page, which reads as a broken button.
    */
   const show = useCallback((at: number) => {
-    setShown(at)
+    /* Leaving a question that was only here because the reader was on it lets
+       it go — and the list is then one shorter, so the question asked for is
+       found again by its id rather than by the index it had. */
+    const { list, kept } = leaving.current
+    const target = list[at]?.id
+    setHeld(null)
+    setShown(kept && target && target !== kept ? standingOn(list.filter((one) => one.id !== kept), target) : at)
     setPart('options')
   }, [])
 
@@ -248,20 +256,59 @@ export function App() {
    * grain within the pointed document. `wire/aim.ts` argues for the split.
    */
   const aimed = useMemo(() => inFront(questions, projectPath, front), [questions, projectPath, front])
-  const visible = useMemo(
+  const narrowed = useMemo(
     () => narrow(aimed.shown, projectPath, passage, scope),
     [aimed, projectPath, passage, scope],
   )
-  const hidden = questions.length - visible.length
+  const hidden = questions.length - narrowed.length
+
+  /*
+   * And third, the parts of the epic ticked in the host's bar: of what the
+   * aim and the scope leave, only the questions whose source is a file a
+   * ticked part owns. Nothing ticked, nothing changes. The rule, the count and
+   * the sentence are the protocol's; `wire/focus.ts` says what anchors a
+   * question.
+   *
+   * ## A tick never takes the question out from under the reader
+   *
+   * `on` is the question in their hands at the moment the ticks change — the
+   * one on screen at a paged rung, or one whose answer is on its way. If the
+   * new ticks put it outside, it is `held`: still drawn, in its place, still
+   * counted outside, and the note says so. It goes when they move to another
+   * question, or tick again. And where they stand follows the question, not
+   * the index: ticking a second part beside the one being read moves nobody.
+   */
+  const focus = useFocus({ parts: epicParts, epic })
+  const [held, setHeld] = useState<string | null>(null)
+  const on = useRef<string | null>(null)
+  /* Which question an answer in flight is to. */
+  const answering = useRef<string | null>(null)
+  const [ticked, setTicked] = useState(focus)
+  if (ticked !== focus) {
+    setTicked(focus)
+    const now = on.current
+    setHeld(now)
+    setShown(standingOn(focus.narrow(narrowed, anchorOf(projectPath), { keep: (one) => one.id === now }).shown, now))
+  }
+  const inParts = useMemo(
+    () => focus.narrow(narrowed, anchorOf(projectPath), { noun: 'question', keep: (one) => one.id === held }),
+    [focus, narrowed, projectPath, held],
+  )
+  const visible = inParts.shown
+  const leaving = useRef<{ list: readonly Asked[]; kept: string | null }>({ list: [], kept: null })
+  leaving.current = { list: visible, kept: inParts.kept ? held : null }
   /* Worded once, and read by both the page and the geometry: `view/room.ts`
      needs the short form's WIDTH, because it is one more item in the row of
      controls the paged rungs measure their room against. The scope's sentence
      wins when both narrowed, because the scope is the reader's own press and
      the thing they will look for first. */
-  const hiding = hiddenNote(scope, hidden) ?? aimNote(front, hidden)
+  const hiding = focusNote(inParts, hiddenNote(scope, hidden) ?? aimNote(front, hidden), hidden)
   /* Why the aim left nothing, in this module's words — or null. Held apart
      from `hiding`, because it is drawn as the whole screen and not a line. */
-  const emptied = aimed.shown.length === 0 ? whyEmpty(front, questions.length, aimed.unresolved) : null
+  const emptied =
+    aimed.shown.length === 0
+      ? whyEmpty(front, questions.length, aimed.unresolved)
+      : whyUnfocused(inParts, visible.length, narrowed.length)
 
   /*
    * What this container is showing, told to the canvas whenever it changes.
@@ -313,6 +360,8 @@ export function App() {
   )
 
   const at = Math.min(Math.max(shown, 0), Math.max(0, cards.length - 1))
+  /* What the reader's hands are in, for the next change of ticks to read. */
+  on.current = answering.current ?? (rungs.rung === 'list' ? null : (visible[at]?.id ?? null))
   /* The chips, decided by the same number that decided whether the question is
      on screen above them. `rungs.header` is zero when no header was drawn —
      because the question is longer than the header's ceiling, or because drawing
@@ -391,6 +440,7 @@ export function App() {
       if (!projectPath || !epic) return
       setBusy(true)
       writing.current = true
+      answering.current = id
       try {
         const out = await answer(projectPath, epic, id, chose)
         if ('error' in out) {
@@ -418,6 +468,7 @@ export function App() {
          */
       } finally {
         writing.current = false
+        answering.current = null
         setBusy(false)
         void refresh()
       }
