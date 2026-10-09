@@ -1,4 +1,3 @@
-import { TICKET_HEADER } from 'kehikot-module-protocol'
 import { answered, ask, follow, ticket, type AskFailure, type Attachment } from 'kehikot-module-protocol/client'
 
 import type { Asked, Attempt, HistoryEntry, QuizChange, QuizFile, Standing } from '../../quiz/types.ts'
@@ -152,7 +151,7 @@ export type SaveResult = { ok: true; file: QuizFile } | { ok: false; theirs: Qui
  * this page that are answered with the answers.** Nothing here runs until a
  * person presses Edit: `view/editor.tsx` is the one caller, and it is mounted
  * by that press and unmounted by Done, taking the text with it. Every call
- * carries the page's ticket, reads included, because the reply holds the key.
+ * carries the page's ticket, reads included (`ticket: true`), because the reply holds the key.
  *
  * A failure is thrown as the protocol's `AskFailed`, whose `message` is the sentence and whose
  * `kind` says whether the server refused, did not answer, or is newer than this page.
@@ -173,40 +172,14 @@ export interface Files {
   watch(project: string, onChange: (change: QuizChange) => void, onAttachment?: (attachment: Attachment) => void): () => void
 }
 
-/**
- * `keepalive`, so a save that is on its way when the page goes — the container
- * closed with the last words still unsaved — is finished by the browser rather
- * than dropped with the page. A browser allows that only for small bodies (64
- * KiB across everything in flight) and refuses the request outright above it,
- * so a larger file is sent the ordinary way.
- */
-const KEEPALIVE_BYTES = 48_000
-const small = (sent: string) => sent.length * 3 <= KEEPALIVE_BYTES || new TextEncoder().encode(sent).length <= KEEPALIVE_BYTES
-
-/**
- * The `fetch` the editor's doors are asked through, and the two things it adds to `ask()`.
- *
- * `ask()` carries the ticket on anything but a GET, because in most modules a read needs none.
- * Here two reads do — `/api/quiz` and `/api/history` are answered with the answer key — so the
- * header is put on every request made through this. And `ask()` has no `keepalive`, which the
- * save needs (above). Everything else — the typed failure, the standing, the stale mark — is
- * still `ask()`'s.
- */
-const ticketed = ((input: RequestInfo | URL, init?: RequestInit) => {
-  const sent = typeof init?.body === 'string' ? init.body : null
-  return fetch(input, {
-    ...init,
-    headers: { ...(init?.headers as Record<string, string> | undefined), [TICKET_HEADER]: ticket() },
-    ...(sent !== null && small(sent) ? { keepalive: true } : {}),
-  })
-}) as typeof fetch
-
 export const files: Files = {
   async read(project, epic) {
-    return answered(await ask<{ file: QuizFile }>('/api/quiz', { query: { project, epic }, fetch: ticketed })).file
+    return answered(await ask<{ file: QuizFile }>('/api/quiz', { query: { project, epic }, ticket: true })).file
   },
   async save(project, epic, text, base, session) {
-    const asked = await ask<{ file: QuizFile }>('/api/quiz', { body: { project, epic, text, base, session }, fetch: ticketed })
+    /* `keepalive`, so a save that is on its way when the page goes — the container closed with the
+       last words unsaved — is finished by the browser rather than dropped with the page. */
+    const asked = await ask<{ file: QuizFile }>('/api/quiz', { body: { project, epic, text, base, session }, keepalive: true })
     /* "Not written, the file moved, and here is what is there now" is an answer of this door's
        own shape rather than a failure of the asking: `ask()` keeps a refusal's body for it. */
     if (!asked.ok && asked.status === 409) {
@@ -216,20 +189,21 @@ export const files: Files = {
     return { ok: true, file: answered(asked).file }
   },
   async history(project, epic) {
-    return answered(await ask<{ entries: HistoryEntry[] }>('/api/history', { query: { project, epic }, fetch: ticketed })).entries
+    return answered(await ask<{ entries: HistoryEntry[] }>('/api/history', { query: { project, epic }, ticket: true })).entries
   },
   async undo(project, epic, id) {
-    return answered(await ask<{ file: QuizFile }>('/api/undo', { body: { project, epic, id }, fetch: ticketed })).file
+    return answered(await ask<{ file: QuizFile }>('/api/undo', { body: { project, epic, id } })).file
   },
   watch(project, onChange, onAttachment) {
     /* An EventSource cannot carry a header, so the ticket rides in the address. `follow`
-       reconnects when the line drops and says so meanwhile, which this used not to. */
+       reconnects when the line drops and says so meanwhile; `probe` asks `/healthz` each time it
+       does, so a stream a restarted server refuses is told apart from a server that has stopped. */
     return follow<QuizChange>(
       '/api/watch',
       (change) => {
         if (change && typeof change.epic === 'string') onChange(change)
       },
-      { query: { project, ticket: ticket() }, onAttachment },
+      { query: { project, ticket: ticket() }, probe: true, onAttachment },
     )
   },
 }
