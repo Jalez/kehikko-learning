@@ -2,6 +2,7 @@ import { linesOf } from 'kehikot-module-protocol'
 import { useMemo, useState } from 'react'
 
 import type { Files, HistoryEntry } from '@/store/ask.ts'
+import { placeOf } from './place.ts'
 import { MarkdownEditor, type Editor } from '@/view/markdown-editor.tsx'
 import { useQuiz } from '@/view/use-quiz.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -42,6 +43,7 @@ export function QuizEditor({
   file,
   onDone,
   saveDelay,
+  at = null,
   editor: EditorPane = MarkdownEditor,
 }: {
   files: Files
@@ -51,6 +53,8 @@ export function QuizEditor({
   file: string | null
   onDone: () => void
   saveDelay?: number
+  /** The question the Edit press was made on, when it was made on one: the file opens there. */
+  at?: { id: string; question: string } | null
   editor?: Editor
 }) {
   const doc = useQuiz({ files, project, epic, ...(saveDelay === undefined ? {} : { saveDelay }) })
@@ -199,7 +203,7 @@ export function QuizEditor({
           data-source="quiz"
           className={`${tab === 'source' ? 'block' : 'hidden'} min-h-0 min-w-0 flex-1 overflow-hidden rounded border bg-card focus-within:ring-1 focus-within:ring-ring @2xl/container:block`}
         >
-          {doc.text === null ? null : <EditorPane value={doc.text} onChange={doc.edit} />}
+          {doc.text === null ? null : <EditorPane value={doc.text} onChange={doc.edit} reveal={at ? placeOf(doc.text, at) : null} />}
         </div>
         <div data-preview="quiz" className={`${tab === 'preview' ? 'block' : 'hidden'} min-h-0 min-w-0 flex-1 overflow-y-auto @2xl/container:block`}>
           {quiz.questions.length === 0 ? (

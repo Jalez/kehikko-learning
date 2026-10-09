@@ -12,6 +12,8 @@ import { useEffect, useMemo, useState, type ComponentType } from 'react'
 export interface EditorProps {
   value: string
   onChange(text: string): void
+  /** An offset to open on, once, when the editor is first drawn: its line is brought to the top and the caret put there. */
+  reveal?: number | null
 }
 
 export type Editor = ComponentType<EditorProps>
@@ -32,7 +34,7 @@ export type Editor = ComponentType<EditorProps>
  * page opened on its own) the machine's setting decides, as it does in
  * `index.css`.
  */
-export function MarkdownEditor({ value, onChange }: EditorProps) {
+export function MarkdownEditor({ value, onChange, reveal }: EditorProps) {
   const theme = useTheme()
   const extensions = useMemo(() => [markdown({ base: markdownLanguage }), EditorView.lineWrapping], [])
   return (
@@ -43,6 +45,11 @@ export function MarkdownEditor({ value, onChange }: EditorProps) {
       theme={theme}
       extensions={extensions}
       onChange={onChange}
+      onCreateEditor={(view) => {
+        if (reveal === null || reveal === undefined) return
+        const at = Math.min(reveal, view.state.doc.length)
+        view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'start', yMargin: 6 }) })
+      }}
       basicSetup={{
         lineNumbers: false,
         foldGutter: false,
