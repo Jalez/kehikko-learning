@@ -507,9 +507,13 @@ export function QuestionCard({
  * control that moves between the look and the press is a control that gets
  * pressed wrong. The essay on the body below carries the rest.
  */
+/** Said on the press that opens the editor, because it is the one that shows the answers. */
+const EDIT_NOTE = 'Open these questions as the Markdown they are. The file holds the answers, so the editor shows them.'
+
 export function QuizView({
   epic,
   file = null,
+  onEdit,
   questions,
   hiding = null,
   aimed = null,
@@ -537,6 +541,8 @@ export function QuizView({
    * is not sent it: the file holds the answers.
    */
   file?: string | null
+  /** Open the file in the editor. The one press after which this page holds the answers. */
+  onEdit?: () => void
   questions: Asked[]
   /**
    * What the scope is hiding, already worded — `3 more questions about other
@@ -629,7 +635,12 @@ export function QuizView({
                 — or type them into <code className="[overflow-wrap:anywhere]">{file}</code>
               </>
             ) : null}
-            .
+            .{' '}
+            {onEdit ? (
+              <button type="button" data-edit="empty" onClick={onEdit} className="underline underline-offset-2 hover:text-foreground">
+                Write them here
+              </button>
+            ) : null}
           </p>
         )}
       </section>
@@ -860,6 +871,11 @@ export function QuizView({
               </Button>
             </>
           ) : null}
+          {onEdit ? (
+            <Button type="button" size="container" variant="ghost" data-edit="row" className="whitespace-nowrap" onClick={onEdit} title={EDIT_NOTE}>
+              Edit
+            </Button>
+          ) : null}
         </div>
       </section>
     )
@@ -952,8 +968,15 @@ export function QuizView({
         </div>
       ) : null}
       {file ? (
-        <p data-file="quiz" className="text-[0.6rem] leading-3 text-muted-foreground">
-          Edit these in <code className="[overflow-wrap:anywhere]">{file}</code>
+        <p data-file="quiz" className="text-[0.6rem] leading-4 text-muted-foreground">
+          {onEdit ? (
+            <button type="button" data-edit="list" onClick={onEdit} title={EDIT_NOTE} className="font-medium underline underline-offset-2 hover:text-foreground">
+              Edit
+            </button>
+          ) : (
+            'Edit'
+          )}{' '}
+          these — they are <code className="[overflow-wrap:anywhere]">{file}</code>
         </p>
       ) : null}
     </section>

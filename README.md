@@ -76,18 +76,51 @@ there is something to point at, and says which of the others it is.
 and question id, and only answering adds to it: an answer is a record of what a
 person did, not material to edit.
 
-An edit shows within three seconds, because the page asks again that often and
-the server reads the file each time. There is no editor in the page, on purpose
-— see the next section.
+An edit made in any editor shows within three seconds, because the page asks
+again that often and the server reads the file each time.
+
+### Editing it in the page
+
+**Edit** opens the file in the page: the Markdown beside what it will ask, the
+way Slides shows a deck beside its slides, and as `Source` / `Preview` tabs
+where the container is narrower than 672px. **Done** goes back to answering.
+
+- What is typed is saved as typed, a beat after the last keystroke. A file with
+  something wrong in it is still saved, and the sentences about what is wrong —
+  the ones `quizzes` prints — stand above the editor.
+- A save is made against the version the editor last saw. If the file moved on
+  disk meanwhile — an agent wrote, or it was edited elsewhere — nothing is
+  written over it: the editor stops saving and asks which one stays, *Take what
+  is on disk* or *Keep mine*.
+- **History** lists every write to the file, newest first — an agent's
+  `add_quiz`, `reword_quiz` and `drop_quiz`, an undo, and each sitting at this
+  editor as one entry — and **Undo** puts back what was there before one. The
+  trail is `history.json` beside the files, fifty entries an epic.
+
+### What an edit does to answers already given
+
+An answer is about the question as it was answered. It is kept while the
+question's **options and key** are what they were — rewording the question, its
+explanation or its source keeps it — and stops counting the moment either
+changes: the question is then one nobody has answered, its key withheld again,
+so a moved tick never leaves a stale "correct" on screen. The old attempts stay
+in `answers.json` and count again if the edit is undone. `drop_quiz` leaves a
+question's answers there too, so undoing a drop brings them back with it.
 
 ## The one design constraint: where the answer lives
 
 **The correct option is not in this page until you have chosen.** It lives in
 the Markdown file, on disk, and it crosses the wire exactly once per question:
-in the reply to the request that submits an answer. The page is never sent the
-file, and no door serves it — the tick IS the answer key. That is why the file
-is edited in an editor rather than in this page: a page that could show the
-whole file would be handed every answer in it.
+in the reply to the request that submits an answer. The tick IS the answer key,
+so the answering page is never sent the file.
+
+**The editor is the one exception, and it is a press.** `GET /api/quiz` answers
+with the file whole. It is behind the page's ticket, the page asks for it only
+when a person presses Edit, and the text is held only by the editor, which Done
+unmounts. Until that press the page holds no answer it has not earned; while
+the editor is open it holds all of them. That is the trade — the person at the
+editor is the author — and it means an agent that can press buttons in this
+page can read the key by pressing that one.
 
 That is not the obvious build. A quiz container could perfectly well be handed the
 whole question — options, key and all — and simply not draw the key until you
@@ -442,8 +475,8 @@ Four tools, matching `kehikko-checklist`'s shape:
 |---|---|
 | `quizzes` | one project's epics, or one epic's questions and how they were answered |
 | `add_quiz` | one question, at the end of the epic's file: `project`, `epic`, `question`, `options`, `answer`, `why`, `path`, `quote`. Refused unless the quoted words are in the file exactly once |
-| `reword_quiz` | sharpen one, keeping its id and every answer given to it; `path` and `quote` cite it again |
-| `drop_quiz` | take one out of the file, along with its answers |
+| `reword_quiz` | sharpen one, keeping its id — and its answers, unless the options or key change; `path` and `quote` cite it again |
+| `drop_quiz` | take one out of the file; undoable from the editor's History |
 
 They read and write the same Markdown a person edits, so `quizzes` also prints
 whether each source still holds and anything wrong with the file. No byte
@@ -519,6 +552,7 @@ quiz/format.ts     the Markdown file: the only reader and writer of one
 quiz/cite.ts       a source line, and finding its words again — copied from Slides
 quiz/questions.ts  the store, the rules, asked() and score()
 quiz/migrate.ts    the one move out of the old questions.json
+quiz/history.ts    what each file held before every write, for undo
 quiz/projects.ts   what is left of "which project" now the path is the partition
 dev/*.mjs          probes that drive a real browser; see below
 page/document.ts   the document, generated per request so the ticket can reach it
@@ -585,6 +619,7 @@ The format is Slides' on purpose — a heading per unit, `[^n]` markers, a
 statuses, the same press that points the paper. The CODE is a copy:
 `quiz/cite.ts` holds `parseSource`, `serialiseSource`, `uncitable`, `markersIn`,
 `findQuote` and `resolveSource` from Slides' `deck/format.ts` and `deck/cite.ts`,
-and `store.ts` holds its `citedText`. They belong in `kehikot-module-protocol`,
-with the undo trail Slides keeps for agent writes, which this module does not
-have: `drop_quiz` and `reword_quiz` are not undoable from here.
+and `store.ts` holds its `citedText`. `quiz/history.ts` is Slides' undo trail in
+the same shape, and `src/view/use-quiz.ts` its `useDeck`. They all belong in
+`kehikot-module-protocol`. The editor itself is a plain `<textarea>`, where
+Slides has CodeMirror.

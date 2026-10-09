@@ -1,13 +1,15 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, isAbsolute, relative, sep } from 'node:path'
 
 import { z } from 'zod'
 
 import { citedText, dataFile, makeDir, put, rootOf } from '../store.ts'
 import { findQuote, normaliseQuote, resolveSource, uncitable } from './cite.ts'
-import { emptyQuiz, keyOf, parseQuiz, quizProblems, serialiseQuiz, writable, type Question, type Quiz } from './format.ts'
-import { migrate, type Answers } from './migrate.ts'
-import type { Asked, Attempt, Cited, Standing } from './types.ts'
+import { history, kept, record } from './history.ts'
+import { emptyQuiz, idOf, keyOf, parseQuiz, quizProblems, serialiseQuiz, writable, type Question, type Quiz } from './format.ts'
+import { migrate, type Answers, type Stored } from './migrate.ts'
+import type { Asked, Attempt, Cited, HistoryEntry, QuizFile, Standing } from './types.ts'
 
 /**
  * One project's questions and answers, as two kinds of file in
@@ -47,11 +49,13 @@ const SLUG = /^[a-z0-9-]+$/
 
 const ANSWERS = 'answers.json'
 
-const answersSchema = z.record(z.record(z.array(z.object({ chose: z.number().int(), right: z.boolean(), at: z.string() }))))
+const answersSchema = z.record(z.record(z.array(z.object({ chose: z.number().int(), right: z.boolean(), at: z.string(), of: z.string().optional() }))))
 
 /** One epic's quiz, open. */
 interface Held {
   quiz: Quiz
+  /** The file as it is on disk, or null when there is none: what an undo puts back. */
+  text: string | null
   /** Every epic's answers, so a write puts the others back untouched. */
   all: Answers
   /** The resolved project root: what every source path is relative to. */
@@ -99,13 +103,13 @@ function open(projectPath: string | null | undefined, epic: string): Opened {
 
   /* A file that is not there is an empty quiz and not trouble: it is what an
      epic nobody has written a question about looks like. */
-  let quiz = emptyQuiz()
+  let text: string | null = null
   if (SLUG.test(epic)) {
     const file = dataFile(projectPath, `${epic}.md`)
     if (file.trouble) return refused(file.trouble)
-    if (file.path !== null && existsSync(file.path)) quiz = parseQuiz(readFileSync(file.path, 'utf8'))
+    if (file.path !== null && existsSync(file.path)) text = readFileSync(file.path, 'utf8')
   }
-  return { held: { quiz, all, root }, trouble: null, nowhere: false }
+  return { held: { quiz: text === null ? emptyQuiz() : parseQuiz(text), text, all, root }, trouble: null, nowhere: false }
 }
 
 /**
@@ -138,6 +142,38 @@ function citer(held: Held): (question: Question) => Cited | null {
   }
 }
 
+/**
+ * What an attempt was made against: the options, in order, and which one was
+ * the key. Kept with each attempt (`of`), never sent to a page — four guesses
+ * at the key would reproduce it.
+ */
+function stamp(question: Question): string {
+  return idOf(JSON.stringify([question.options, question.correct]))
+}
+
+/**
+ * The attempts that still say something about this question.
+ *
+ * A quiz file can be edited after it was answered. An answer is kept while the
+ * question's OPTIONS AND KEY are what they were when it was given — rewording
+ * the question, its explanation or its source keeps it — and stops counting
+ * the moment either changes: "you chose 2 and were wrong" about options that
+ * have since been reordered, or a key that has since moved, is a sentence about
+ * a different question, and it would put a stale "correct" on screen. The
+ * question is then simply unanswered again, key withheld again; the old
+ * attempts stay in `answers.json`, and count once more if the edit is undone.
+ *
+ * Attempts from before this was recorded carry no `of`, and are kept while
+ * they are at least consistent with the key as it is now.
+ */
+function counted(question: Question, stored: Stored[] = []): Attempt[] {
+  const now = stamp(question)
+  const key = keyOf(question)
+  return stored
+    .filter((one) => (one.of === undefined ? one.chose < question.options.length && one.right === (one.chose === key) : one.of === now))
+    .map(({ chose, right, at }) => ({ chose, right, at }))
+}
+
 /* ------------------------------------------------------------------------ *
  * The one rule this module exists to enforce
  * ------------------------------------------------------------------------ */
@@ -147,7 +183,8 @@ function citer(held: Held): (question: Question) => Cited | null {
  *
  * **The key lives in the Markdown file, on disk, and it crosses the wire
  * exactly once per question: in the reply to the request that submitted an
- * answer.** The page is never sent the file. That is not the obvious build — a
+ * answer.** The answering page is never sent the file (the editor is, on a
+ * person's press: see `readQuiz`). That is not the obvious build — a
  * quiz could be handed everything and simply not draw the key — and it is
  * worthless here, because an agent reading the page (which agents in this
  * workspace do, routinely) would hold the key to every question on screen and
@@ -190,7 +227,7 @@ export function forEpic(projectPath: string | null | undefined, epic: string): {
   const answers = held.all[epic] ?? {}
   const questions = held.quiz.questions
     .filter((question) => keyOf(question) !== null)
-    .map((question) => asked(question, answers[question.id] ?? [], cite(question)))
+    .map((question) => asked(question, counted(question, answers[question.id]), cite(question)))
   return { questions, problems: quizProblems(held.quiz), trouble, nowhere }
 }
 
@@ -252,7 +289,7 @@ export function withKey(projectPath: string | null | undefined, epic: string): {
   const questions = held.quiz.questions.map((question) => ({
     question,
     key: keyOf(question),
-    attempts: answers[question.id] ?? [],
+    attempts: counted(question, answers[question.id]),
     source: cite(question),
   }))
   return { questions, problems: quizProblems(held.quiz), trouble, nowhere }
@@ -273,7 +310,7 @@ export function epicsOf(projectPath: string | null | undefined, id: string): str
  * applied at the doors, where a string arrives; the RULES are here.
  */
 export type Op =
-  | { op: 'add'; project: string | null; epic: string; question: string; options: string[]; answer: number; why: string; path: string; quote: string }
+  | { op: 'add'; project: string | null; epic: string; question: string; options: string[]; answer: number; why: string; path: string; quote: string; agent?: string }
   | {
       op: 'reword'
       project: string | null
@@ -286,8 +323,9 @@ export type Op =
       /** A new source, in whole or in part: what is left out is kept. */
       path?: string
       quote?: string
+      agent?: string
     }
-  | { op: 'drop'; project: string | null; epic: string; id: string }
+  | { op: 'drop'; project: string | null; epic: string; id: string; agent?: string }
   | { op: 'retake'; project: string | null; epic: string }
 
 export type Done = { ok: true; said: string; id: string } | { ok: false; error: string }
@@ -396,7 +434,10 @@ export function change(op: Op): Done {
       )
     }
     const wrote = save(op.project, `${op.epic}.md`, serialiseQuiz(quiz))
-    return wrote ? no(wrote) : { ok: true, said, id }
+    if (wrote) return no(wrote)
+    /* Recorded with what the file held before, so the person can undo it. */
+    record(op.project, op.epic, held.text, { agent: op.agent ?? 'an agent', summary: said })
+    return { ok: true, said, id }
   }
 
   if (op.op === 'add') {
@@ -425,14 +466,11 @@ export function change(op: Op): Done {
   if (op.op === 'drop') {
     quiz.questions = quiz.questions.filter((one) => one !== question)
     uncite(quiz, question.label)
-    const answers = all[op.epic]?.[op.id]?.length ?? 0
-    const done = written(`Question ${op.id} dropped, along with ${answers} answer(s) to it`, op.id)
-    if (done.ok && answers) {
-      delete all[op.epic]![op.id]
-      const wrote = saveAnswers(op.project, all)
-      if (wrote) return no(wrote)
-    }
-    return done
+    /* Its answers are left in `answers.json`, under an id nothing has: they
+       count for nothing while the question is gone and are there again if the
+       drop is undone. */
+    const answers = counted(question, all[op.epic]?.[op.id]).length
+    return written(`Question ${op.id} (“${question.question.slice(0, 60)}”) dropped, with ${answers} answer(s) to it`, op.id)
   }
 
   /* reword. The id and the answers survive: this is for sharpening a question,
@@ -504,8 +542,123 @@ export function score(
   }
   const attempt: Attempt = { chose, right: chose === key, at: new Date().toISOString() }
   const mine = (held.all[epic] ??= {})
-  const attempts = (mine[id] = [...(mine[id] ?? []), attempt].slice(-MAX_ATTEMPTS))
+  mine[id] = [...(mine[id] ?? []), { ...attempt, of: stamp(question) }].slice(-MAX_ATTEMPTS)
+  const attempts = counted(question, mine[id])
   const wrote = saveAnswers(projectPath, held.all)
   if (wrote) return { error: wrote }
   return { scored: { right: attempt.right, answer: key, why: question.why, attempt, asked: asked(question, attempts, citer(held)(question)) } }
+}
+
+/* ------------------------------------------------------------------------ *
+ * The file itself, for the editor
+ * ------------------------------------------------------------------------ */
+
+/** The largest quiz file this module keeps, in characters. */
+export const MAX_QUIZ_CHARS = 500_000
+
+/** A refusal. `status` is the HTTP status; a conflict carries what is there now. */
+export interface Refused {
+  error: string
+  status?: number
+  /** On a conflict: the file as it is now. */
+  theirs?: QuizFile
+}
+
+/** The opaque version of a file's text: what the editor sends back as `base`. */
+function versionOf(text: string | null): string | null {
+  return text === null ? null : createHash('sha1').update(text).digest('hex').slice(0, 16)
+}
+
+function fileOfHeld(held: Held): QuizFile {
+  const files = new Map<string, string | null>()
+  const sources = held.quiz.sources.map((source) => {
+    if (!files.has(source.path)) files.set(source.path, citedText(held.root, source.path))
+    return resolveSource(source, files.get(source.path) ?? null)
+  })
+  return { text: held.text ?? '', version: versionOf(held.text), sources }
+}
+
+function opened(projectPath: string | null | undefined, epic: string): { held: Held } | Refused {
+  if (!SLUG.test(epic)) return { error: `"${epic.slice(0, MAX_EPIC)}" is not an epic slug, so there is no file of that name.` }
+  const { held, trouble } = open(projectPath, epic)
+  return held ? { held } : { error: trouble ?? NOWHERE }
+}
+
+/**
+ * One epic's quiz file, WHOLE — **the answer key included**.
+ *
+ * This is the one way the key reaches a page without being earned, and it
+ * exists for the editor: a person who presses Edit is the author, and an
+ * author sees what they wrote. `doors.ts` serves it only behind the page's
+ * ticket and the page asks only on that press; `grep -n readQuiz doors.ts` is
+ * the audit. An epic with no file yet is an empty text with no version.
+ */
+export function readQuiz(projectPath: string | null | undefined, epic: string): { file: QuizFile } | Refused {
+  const out = opened(projectPath, epic)
+  return 'held' in out ? { file: fileOfHeld(out.held) } : out
+}
+
+/**
+ * Replace an epic's quiz file with what a person typed, exactly as typed: a
+ * file with something wrong in it is saved and the problems are said, never
+ * repaired or refused.
+ *
+ * Refused as a conflict — carrying what is there now — unless the file is
+ * still at `base`, the version the editor last saw. So an agent's write, or an
+ * edit in another editor, is never silently written over: the person is shown
+ * both and chooses. `session` names the sitting at the editor, which the undo
+ * trail records once (see `history.ts`).
+ */
+export function writeQuiz(
+  projectPath: string | null | undefined,
+  epic: string,
+  text: string,
+  base: string | null,
+  session: string,
+): { file: QuizFile } | Refused {
+  const out = opened(projectPath, epic)
+  if (!('held' in out)) return out
+  const { held } = out
+  if (text.length > MAX_QUIZ_CHARS) return { status: 413, error: `That is longer than ${MAX_QUIZ_CHARS} characters, which is more than this module keeps.` }
+  if (base !== versionOf(held.text)) {
+    return {
+      status: 409,
+      error: `The questions about ${epic} changed on disk since the editor read them. Nothing was written.`,
+      theirs: fileOfHeld(held),
+    }
+  }
+  const next = text.replace(/\r\n/g, '\n')
+  if (next !== (held.text ?? '')) {
+    const wrote = save(projectPath, `${epic}.md`, next)
+    if (wrote) return { error: wrote }
+    record(projectPath, epic, held.text, { agent: 'person', summary: 'edited in the page', session })
+  }
+  return readQuiz(projectPath, epic)
+}
+
+/** An epic's undo trail, newest first. */
+export function quizHistory(projectPath: string | null | undefined, epic: string): { entries: HistoryEntry[] } | Refused {
+  const out = opened(projectPath, epic)
+  return 'held' in out ? { entries: history(projectPath, epic) } : out
+}
+
+/**
+ * Put an epic's file back to how it was before entry `id`. The undo is itself
+ * an entry (by `person`), so it can be undone in turn. Undoing the write that
+ * created the file removes it.
+ */
+export function undoQuiz(projectPath: string | null | undefined, epic: string, id: string): { file: QuizFile } | Refused {
+  const out = opened(projectPath, epic)
+  if (!('held' in out)) return out
+  const entry = kept(projectPath, epic, id)
+  if (!entry) return { status: 404, error: `There is no entry "${id.slice(0, 40)}" in the history of ${epic}.` }
+  if (entry.before === null) {
+    const { path } = dataFile(projectPath, `${epic}.md`)
+    if (path !== null && existsSync(path)) rmSync(path)
+  } else {
+    const wrote = save(projectPath, `${epic}.md`, entry.before)
+    if (wrote) return { error: wrote }
+  }
+  record(projectPath, epic, out.held.text, { agent: 'person', summary: `undo: ${entry.summary}` })
+  return readQuiz(projectPath, epic)
 }

@@ -105,7 +105,7 @@ describe('where the file is', () => {
        read on its own. Nothing of this module's lands beside somebody else's. */
     expect(question().ok).toBe(true)
     expect(readdirSync(join(project, KEHIKOT_DIR))).toEqual(['learning'])
-    expect(readdirSync(mine(project))).toEqual([FILE])
+    expect(readdirSync(mine(project)).sort()).toEqual(['history.json', FILE])
   })
 })
 

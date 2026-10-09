@@ -41,9 +41,10 @@ import { MARKER, markersIn, parseSource, serialiseSource, uncitable, type Source
  *   answers, and rewording one that has none starts it afresh.
  * - A line that is exactly `---` between questions is allowed and means nothing.
  *
- * Plain functions over strings: no I/O, so every rule is a unit test. The page
- * never imports this and is never sent the file — the tick IS the answer key
- * (see `asked` in `questions.ts`).
+ * Plain functions over strings: no I/O, so every rule is a unit test, and the
+ * editor in the page parses what is being typed with the same code. Only the
+ * editor does: the answering page is never sent the file — the tick IS the
+ * answer key (see `asked` and `readQuiz` in `questions.ts`).
  */
 
 export interface Question {

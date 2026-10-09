@@ -64,6 +64,31 @@ export interface Asked {
   why: string | null
 }
 
+/** One write to an epic's quiz file, as the editor's history lists it. The previous text stays on disk. */
+export interface HistoryEntry {
+  id: string
+  epic: string
+  /** ISO time. */
+  at: string
+  /** Who wrote: an agent's name, or `person` for an edit or an undo made in the page. */
+  agent: string
+  summary: string
+}
+
+/**
+ * An epic's quiz file, WHOLE — key, explanations and all. It is sent only to
+ * the editor, only after a person pressed Edit, through a route behind the
+ * page's ticket (`/api/quiz` in `doors.ts`). Nothing else the page is sent has
+ * an answer in it.
+ */
+export interface QuizFile {
+  text: string
+  /** Opaque: sent back as `base` when saving. Null when there is no file yet. */
+  version: string | null
+  /** Every line under `Sources:`, looked for in its file. */
+  sources: Cited[]
+}
+
 /** What one epic's questions add up to, for a container that has not opened them. */
 export interface Standing {
   epic: string

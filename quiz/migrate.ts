@@ -54,7 +54,10 @@ const oldSchema = z.object({
     .default([]),
 })
 
-export type Answers = Record<string, Record<string, Attempt[]>>
+/** An attempt as kept: `of` names the options and key it was made against (see `stamp` in `questions.ts`). */
+export type Stored = Attempt & { of?: string }
+
+export type Answers = Record<string, Record<string, Stored[]>>
 
 /** Move what is there; `all` gains the attempts. A sentence when it could not be done, else null. */
 export function migrate(projectPath: string | null | undefined, all: Answers, answersFile: string): string | null {
