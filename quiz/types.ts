@@ -29,7 +29,7 @@ export type Cited = CitationView
  * got right immediately.
  */
 export interface Attempt {
-  /** Zero-based index into the question's options. */
+  /** Zero-based index into the question's options — as the page holds them, which is the shown order and not the file's. */
   chose: number
   right: boolean
   at: string
@@ -46,13 +46,13 @@ export interface Asked {
   /** The name answers are filed under: the question's `<!-- id: … -->`. */
   id: string
   question: string
-  /** The options, in the order they are shown. */
+  /** The options, in the order they are shown: shuffled by the server (`quiz/order.ts`), never the file's order. */
   options: string[]
   /** Null for a question that names no source, or one that has no line under `Sources:`. */
   source: Cited | null
   /** Every attempt, oldest first. */
   attempts: Attempt[]
-  /** The key, and only once it has been earned. `null` means "not yet, and not from here". */
+  /** The key, as a position in `options`, and only once it has been earned. `null` means "not yet, and not from here". */
   answer: number | null
   why: string | null
 }

@@ -18,8 +18,9 @@ import { Button } from '@/components/ui/button.tsx'
  * The question, the options, and the name of its source. **Nothing else.** There is no
  * hidden element, no `data-correct` attribute, no class that differs between the
  * right option and the wrong ones, and no ordering that gives it away — the
- * options are drawn in the order the author wrote them, which is the order they
- * are stored in and the order every reader sees.
+ * options are drawn in the order the SERVER sent them, which it shuffled: the
+ * order the author wrote them in (so often right-answer-first) never reaches
+ * this page, and every index here is a position in the order shown.
  *
  * That is not achieved by being careful in this component. It is achieved by
  * this component NOT HAVING the answer: `Asked.answer` is `null` for a question

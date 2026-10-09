@@ -15,10 +15,10 @@ import {
   change,
   epicsOf,
   fileOf,
-  forEpic,
   quizHistory,
   readQuiz,
-  score,
+  scoreShown,
+  shownEpic,
   standings,
   undoQuiz,
   withKey,
@@ -41,8 +41,11 @@ import type { QuizChange } from './quiz/types.ts'
  * ## The one thing to know before changing anything here
  *
  * There are two ways out of this file for a question, and they carry different
- * things. `forEpic` produces `Asked`, which has no answer key in it until the
- * reader has answered; `withKey` carries the key. Everything the PAGE can reach
+ * things. `shownEpic` produces `Asked`, which has no answer key in it until the
+ * reader has answered, and whose options are SHUFFLED — file order would give
+ * the key away by position, so the page speaks only in shown positions and
+ * `scoreShown` turns the one it posts back into the file's (`quiz/order.ts`).
+ * `withKey` carries the key, in file order. Everything the PAGE can reach
  * uses the first — with ONE exception, `/api/quiz`, which hands the editor the
  * Markdown file itself, key and all, behind the page's ticket and only when a
  * person has pressed Edit (see `readQuiz`). Until that press the page holds no
@@ -168,7 +171,11 @@ function tools() {
             items: { type: 'string', maxLength: MAX_OPTION },
             minItems: MIN_OPTIONS,
             maxItems: MAX_OPTIONS,
-            description: `Between ${MIN_OPTIONS} and ${MAX_OPTIONS} options, in the order they will be shown. They must all differ.`,
+            description:
+              `Between ${MIN_OPTIONS} and ${MAX_OPTIONS} options. They must all differ. This is the order the file keeps and `
+              + 'that `answer` counts in, NOT the order a reader sees: the page shuffles them, so never refer to an option '
+              + 'by its position or a letter ("the second option", "B", "both A and C") in an option, the question or the '
+              + 'explanation — quote its words instead. An "All of the above" or "None of the above" is kept last.',
           },
           answer: {
             type: 'integer',
@@ -177,7 +184,10 @@ function tools() {
           },
           why: {
             type: 'string',
-            description: `The explanation, shown once the reader has chosen. Up to ${MAX_WHY} characters. Say why the other options are wrong, not only why this one is right.`,
+            description:
+              `The explanation, shown once the reader has chosen. Up to ${MAX_WHY} characters. Say why the other options `
+              + 'are wrong, not only why this one is right — naming each by what it says, never by its position: the '
+              + 'reader saw them in another order.',
           },
           path: {
             type: 'string',
@@ -218,7 +228,8 @@ function tools() {
           options: {
             type: 'array',
             items: { type: 'string', maxLength: MAX_OPTION },
-            description: 'The full new set of options, replacing the old. Omit to leave them alone.',
+            description:
+              'The full new set of options, replacing the old, in the file’s order (a reader sees them shuffled). Omit to leave them alone.',
           },
           answer: { type: 'integer', minimum: 0, description: 'The new correct index. Omit to leave it alone.' },
           why: { type: 'string', description: 'The new explanation. Omit to leave it alone.' },
@@ -372,8 +383,8 @@ function call(name: string, args: Record<string, unknown>, project: string): str
        would become two. */
     if (!Array.isArray(args.options)) {
       throw new Error(
-        `add_quiz needs options: an ARRAY of between ${MIN_OPTIONS} and ${MAX_OPTIONS} strings, in the order they will `
-        + 'be shown. A single string is not a list of options, however it is punctuated.',
+        `add_quiz needs options: an ARRAY of between ${MIN_OPTIONS} and ${MAX_OPTIONS} strings. A single string is not `
+        + 'a list of options, however it is punctuated.',
       )
     }
     const answer = whole(args.answer)
@@ -558,8 +569,8 @@ export function answer(
    * One epic's questions, or one project's epics.
    *
    * Ungated, like every read here: this answer CONTAINS NO ANSWER KEY.
-   * `forEpic` returns `Asked`, whose `answer` and `why` are null for anything
-   * nobody has answered yet. `file` says where a person edits them, and what
+   * `shownEpic` returns `Asked`, whose `answer` and `why` are null for anything
+   * nobody has answered yet, and whose options are not in the file's order. `file` says where a person edits them, and what
    * is wrong with the file rides in `trouble`, in sentences that name no option.
    */
   if (path === '/api/questions' && method === 'GET') {
@@ -574,7 +585,7 @@ export function answer(
     const epic = str(query.get('epic'), MAX_EPIC)
     const { standings: rows, trouble: unusable } = standings(project)
     if (!epic) return ok({ ok: true, project, epic: null, standings: rows, questions: [], trouble: unusable })
-    const { questions, problems, trouble } = forEpic(project, epic)
+    const { questions, problems, trouble } = shownEpic(project, epic)
     const wrong = problems.length ? `${fileOf(project, epic)}: ${problems.join(' ')}` : null
     return ok({ ok: true, project, epic, file: fileOf(project, epic), standings: rows, questions, trouble: trouble ?? wrong })
   }
@@ -642,7 +653,8 @@ export function answer(
     /*
      * The one place the answer key crosses the wire.
      *
-     * The page posts an id and an index; this scores it HERE, against the
+     * The page posts an id and the POSITION it showed the chosen option at;
+     * `scoreShown` turns that into the file's index and scores it HERE, against the
      * file, and replies with the verdict, the key and the explanation. This
      * route is the only one that records an attempt, it is behind the ticket,
      * and the MCP door has no equivalent.
@@ -654,7 +666,7 @@ export function answer(
       if (!Number.isFinite(chose)) {
         return bad('that answer did not say which option was chosen, so nothing was recorded.')
       }
-      const out = score(project, epic, id, chose)
+      const out = scoreShown(project, epic, id, chose)
       if ('error' in out) return bad(out.error)
       return ok({ ok: true, ...out.scored })
     }
@@ -666,7 +678,7 @@ export function answer(
      */
     const out = change({ op: 'retake', project, epic })
     if (!out.ok) return bad(out.error)
-    const { questions, trouble } = forEpic(project, epic)
+    const { questions, trouble } = shownEpic(project, epic)
     return ok({ ok: true, said: out.said, questions, trouble })
   }
 
