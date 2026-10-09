@@ -19,8 +19,8 @@ const TEXT = '## Which half does a host read? [^1]\n<!-- id: q1 -->\n- [ ] the p
 const SOURCE = { label: '1', path: 'chapters/bridge.tex', quote: 'the only half a host reads', status: 'holds' as const, at: { from: 0, to: 26, line: 4, endLine: 4 }, count: 1 }
 
 /** CodeMirror stands in as a textarea: same props. */
-function FakeEditor({ value, onChange }: EditorProps) {
-  return <textarea aria-label="the questions, as Markdown" value={value} onChange={(event) => onChange(event.target.value)} />
+function FakeEditor({ value, onChange, reveal }: EditorProps) {
+  return <textarea aria-label="the questions, as Markdown" data-reveal={reveal ?? ''} value={value} onChange={(event) => onChange(event.target.value)} />
 }
 
 /** The routes, as a file held in memory. `disk` can be moved under the editor, and `announce` is the watch saying so. */
@@ -95,6 +95,18 @@ describe('the press that opens it', () => {
     expect(state.calls).toEqual([])
     fireEvent.click(container.querySelector('[data-edit]')!)
     expect(pressed).toBe(1)
+  })
+
+  test('pressed on a question, the file opens on that question; pressed elsewhere, at the top', async () => {
+    const two = `# About this quiz\n\n${TEXT}\n## A second one\n<!-- id: q2 -->\n- [x] yes\n- [ ] no\n`
+    const onSecond = render(
+      <QuizEditor files={fake(two).files} project="/p" epic="thesis" file={null} onDone={() => {}} saveDelay={0} at={{ id: 'q2', question: 'A second one' }} editor={FakeEditor} />,
+    )
+    await waitFor(() => expect(onSecond.container.querySelector('textarea')).toBeTruthy())
+    expect(onSecond.container.querySelector('textarea')!.getAttribute('data-reveal')).toBe(String(two.indexOf('## A second one')))
+    cleanup()
+    const plain = await open(fake(two).files)
+    expect(plain.area.getAttribute('data-reveal')).toBe('')
   })
 
   test('mounted, the editor reads the file once and shows it whole — the tick included', async () => {

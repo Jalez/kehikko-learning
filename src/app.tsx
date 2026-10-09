@@ -57,7 +57,7 @@ export function App() {
    * that: `QuizEditor` is what fetches it, and it is mounted only while this
    * is true. Leaving the paper closes it.
    */
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState<false | { at: { id: string; question: string } | null }>(false)
   const [busy, setBusy] = useState(false)
 
   /*
@@ -595,6 +595,7 @@ export function App() {
         project={projectPath}
         epic={epic}
         file={file}
+        at={editing.at}
         onDone={() => {
           setEditing(false)
           void refresh()
@@ -604,7 +605,7 @@ export function App() {
       <QuizView
         epic={epic}
         file={file}
-        onEdit={() => setEditing(true)}
+        onEdit={(at) => setEditing({ at: at ?? null })}
         questions={visible}
         /* What the narrowing hid, in this module's own words. Drawn in the page
            because the host cannot count rows it does not render. */

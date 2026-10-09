@@ -543,7 +543,8 @@ export function QuizView({
    */
   file?: string | null
   /** Open the file in the editor. The one press after which this page holds the answers. */
-  onEdit?: () => void
+  /** The press that opens the file. Made on a question, it says which, so the file opens there. */
+  onEdit?: (at?: { id: string; question: string }) => void
   questions: Asked[]
   /**
    * What the scope is hiding, already worded — `3 more questions about other
@@ -638,7 +639,7 @@ export function QuizView({
             ) : null}
             .{' '}
             {onEdit ? (
-              <button type="button" data-edit="empty" onClick={onEdit} className="underline underline-offset-2 hover:text-foreground">
+              <button type="button" data-edit="empty" onClick={() => onEdit()} className="underline underline-offset-2 hover:text-foreground">
                 Write them here
               </button>
             ) : null}
@@ -873,7 +874,7 @@ export function QuizView({
             </>
           ) : null}
           {onEdit ? (
-            <Button type="button" size="container" variant="ghost" data-edit="row" className="whitespace-nowrap" onClick={onEdit} title={EDIT_NOTE}>
+            <Button type="button" size="container" variant="ghost" data-edit="row" className="whitespace-nowrap" onClick={() => onEdit(question && { id: question.id, question: question.question })} title={EDIT_NOTE}>
               Edit
             </Button>
           ) : null}
@@ -971,7 +972,7 @@ export function QuizView({
       {file ? (
         <p data-file="quiz" className="text-[0.6rem] leading-4 text-muted-foreground">
           {onEdit ? (
-            <button type="button" data-edit="list" onClick={onEdit} title={EDIT_NOTE} className="font-medium underline underline-offset-2 hover:text-foreground">
+            <button type="button" data-edit="list" onClick={() => onEdit()} title={EDIT_NOTE} className="font-medium underline underline-offset-2 hover:text-foreground">
               Edit
             </button>
           ) : (
