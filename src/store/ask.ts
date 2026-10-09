@@ -1,4 +1,4 @@
-import type { Asked, Attempt, HistoryEntry, QuizFile, Standing } from '../../quiz/types.ts'
+import type { Asked, Attempt, HistoryEntry, QuizChange, QuizFile, Standing } from '../../quiz/types.ts'
 
 /**
  * This app's own store, over this app's own origin.
@@ -157,7 +157,7 @@ export async function retake(project: string, epic: string): Promise<{ questions
  * The editor's file
  * ------------------------------------------------------------------ */
 
-export type { HistoryEntry, QuizFile }
+export type { HistoryEntry, QuizChange, QuizFile }
 
 /** What a save came to: written, or refused because the file moved — with what is there now. */
 export type SaveResult = { ok: true; file: QuizFile } | { ok: false; theirs: QuizFile }
@@ -176,6 +176,12 @@ export interface Files {
   save(project: string, epic: string, text: string, base: string | null, session: string): Promise<SaveResult>
   history(project: string, epic: string): Promise<HistoryEntry[]>
   undo(project: string, epic: string, id: string): Promise<QuizFile>
+  /**
+   * Be told whenever a quiz file in this project changes on disk, by any path.
+   * Answers with the way to stop listening. What is sent is an epic and an
+   * opaque version, never a word of the file.
+   */
+  watch(project: string, onChange: (change: QuizChange) => void): () => void
 }
 
 async function reply<T>(response: Response): Promise<T> {
@@ -186,11 +192,23 @@ async function reply<T>(response: Response): Promise<T> {
 
 const where = (project: string, epic: string) => `project=${encodeURIComponent(project)}&epic=${encodeURIComponent(epic)}`
 const ticketed = { headers: { 'x-learning-ticket': TICKET } }
-const posted = (body: unknown) => ({
-  method: 'POST',
-  headers: { 'content-type': 'application/json', 'x-learning-ticket': TICKET },
-  body: JSON.stringify(body),
-})
+/**
+ * `keepalive`, so a save that is on its way when the page goes — the container
+ * closed with the last words still unsaved — is finished by the browser rather
+ * than dropped with the page. A browser allows that only for small bodies (64
+ * KiB across everything in flight) and refuses the request outright above it,
+ * so a larger file is sent the ordinary way.
+ */
+const KEEPALIVE_BYTES = 48_000
+const posted = (body: unknown) => {
+  const sent = JSON.stringify(body)
+  return {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-learning-ticket': TICKET },
+    body: sent,
+    keepalive: sent.length * 3 <= KEEPALIVE_BYTES || new TextEncoder().encode(sent).length <= KEEPALIVE_BYTES,
+  }
+}
 
 export const files: Files = {
   async read(project, epic) {
@@ -209,5 +227,19 @@ export const files: Files = {
   },
   async undo(project, epic, id) {
     return (await reply<{ file: QuizFile }>(await fetch('/api/undo', posted({ project, epic, id })))).file
+  },
+  watch(project, onChange) {
+    if (typeof EventSource === 'undefined') return () => {}
+    /* An EventSource cannot carry a header, so the ticket rides in the address. */
+    const source = new EventSource(`/api/watch?project=${encodeURIComponent(project)}&ticket=${encodeURIComponent(TICKET)}`)
+    source.onmessage = (message) => {
+      try {
+        const change = JSON.parse(String(message.data)) as QuizChange
+        if (change && typeof change.epic === 'string') onChange(change)
+      } catch {
+        /* a keep-alive or a line we do not read */
+      }
+    }
+    return () => source.close()
   },
 }

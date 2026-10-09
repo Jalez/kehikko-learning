@@ -233,3 +233,30 @@
     overflow-wrap: anywhere;
   }
 }
+
+/*
+ * The editor: CodeMirror on this module's tokens, by the rules Slides gives a
+ * deck's (`.deck-editor` in its `index.css`) — at this page's smaller type,
+ * because a quiz's container is a fraction of a deck's.
+ */
+@layer components {
+  .quiz-editor .cm-editor {
+    height: 100%;
+    background: var(--card);
+    color: var(--foreground);
+    font-size: 0.72rem;
+  }
+  .quiz-editor .cm-editor.cm-focused {
+    outline: none;
+  }
+  .quiz-editor .cm-scroller {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    line-height: 1.55;
+  }
+  .quiz-editor .cm-content {
+    padding: 8px 0;
+  }
+  .quiz-editor .cm-line {
+    padding: 0 10px;
+  }
+}

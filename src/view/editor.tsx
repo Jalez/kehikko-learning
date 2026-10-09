@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import type { Files, HistoryEntry } from '@/store/ask.ts'
+import { MarkdownEditor, type Editor } from '@/view/markdown-editor.tsx'
 import { useQuiz } from '@/view/use-quiz.ts'
 import { Button } from '@/components/ui/button.tsx'
 
@@ -27,6 +28,11 @@ import { parseQuiz, quizProblems } from '../../quiz/format.ts'
  * What is typed is saved as typed, a beat after the last keystroke. A file
  * with something wrong in it is still saved — the sentences about what is
  * wrong stand above it, and are the same ones `quizzes` prints.
+ *
+ * The source is typed into the editor Slides opens a deck in (`editor`,
+ * `markdown-editor.tsx`); a test hands this a textarea instead, as Slides'
+ * tests do. It is not drawn until the file has been read, so there is never an
+ * empty editor to type into and have overwritten by the read.
  */
 export function QuizEditor({
   files,
@@ -35,6 +41,7 @@ export function QuizEditor({
   file,
   onDone,
   saveDelay,
+  editor: EditorPane = MarkdownEditor,
 }: {
   files: Files
   project: string
@@ -43,6 +50,7 @@ export function QuizEditor({
   file: string | null
   onDone: () => void
   saveDelay?: number
+  editor?: Editor
 }) {
   const doc = useQuiz({ files, project, epic, ...(saveDelay === undefined ? {} : { saveDelay }) })
   const [tab, setTab] = useState<'source' | 'preview'>('source')
@@ -79,10 +87,17 @@ export function QuizEditor({
     }
   }
 
+  /*
+   * Done waits for the last words to be written, and does not leave on a save
+   * that failed: the text is only here, and leaving would be the loss. Said
+   * once; a second press, with nothing typed since, is the person's answer.
+   */
+  const [unsaved, setUnsaved] = useState<string | null>(null)
   const done = () =>
     act(async () => {
-      await doc.flush()
-      onDone()
+      if ((await doc.flush()) || unsaved === doc.text) return onDone()
+      setUnsaved(doc.text)
+      throw new Error('That could not be saved, so the editor is still open. Press Done again to leave without it.')
     })
 
   const history = () =>
@@ -135,7 +150,7 @@ export function QuizEditor({
       {doc.conflict ? (
         <div role="alert" data-conflict="open" className="flex min-w-0 flex-wrap items-center gap-1 rounded border border-wrong/40 bg-wrong/5 px-2 py-1 text-[0.7rem] leading-4">
           <span className="min-w-0 basis-full">These questions changed on disk before your edits were saved. Which one stays?</span>
-          <Button type="button" size="container" variant="outline" className="whitespace-nowrap" onClick={doc.theirs}>
+          <Button type="button" size="container" variant="outline" className="whitespace-nowrap" onClick={() => void act(doc.theirs)}>
             Take what is on disk
           </Button>
           <Button type="button" size="container" variant="ghost" className="whitespace-nowrap" onClick={() => void act(doc.mine)}>
@@ -179,14 +194,12 @@ export function QuizEditor({
       ) : null}
 
       <div className="flex min-h-0 min-w-0 flex-1 gap-2">
-        <textarea
-          aria-label="the questions, as Markdown"
-          spellCheck={false}
-          disabled={doc.text === null}
-          value={doc.text ?? ''}
-          onChange={(event) => doc.edit(event.target.value)}
-          className={`${tab === 'source' ? 'block' : 'hidden'} min-h-0 min-w-0 flex-1 resize-none rounded border bg-card p-2 font-mono text-[0.72rem] leading-5 text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring @2xl/container:block`}
-        />
+        <div
+          data-source="quiz"
+          className={`${tab === 'source' ? 'block' : 'hidden'} min-h-0 min-w-0 flex-1 overflow-hidden rounded border bg-card focus-within:ring-1 focus-within:ring-ring @2xl/container:block`}
+        >
+          {doc.text === null ? null : <EditorPane value={doc.text} onChange={doc.edit} />}
+        </div>
         <div data-preview="quiz" className={`${tab === 'preview' ? 'block' : 'hidden'} min-h-0 min-w-0 flex-1 overflow-y-auto @2xl/container:block`}>
           {quiz.questions.length === 0 ? (
             <p className="text-[0.7rem] leading-4 text-muted-foreground">

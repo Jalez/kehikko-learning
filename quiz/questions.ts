@@ -45,7 +45,7 @@ export const MAX_ATTEMPTS = 12
  * not membership: no dot, slash or backslash, so no character in it can leave
  * the folder.
  */
-const SLUG = /^[a-z0-9-]+$/
+export const SLUG = /^[a-z0-9-]+$/
 
 const ANSWERS = 'answers.json'
 
@@ -565,7 +565,9 @@ export interface Refused {
 }
 
 /** The opaque version of a file's text: what the editor sends back as `base`. */
-function versionOf(text: string | null): string | null {
+export function versionOf(text: string): string
+export function versionOf(text: string | null): string | null
+export function versionOf(text: string | null): string | null {
   return text === null ? null : createHash('sha1').update(text).digest('hex').slice(0, 16)
 }
 
