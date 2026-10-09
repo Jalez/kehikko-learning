@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo } from 'react'
 
-import { sameParts, type EpicPart, type FilterChoice, type FilterGroup, type Passage } from 'kehikot-module-protocol'
+import type { EpicPart, FilterChoice, FilterGroup, Passage } from 'kehikot-module-protocol'
 import type { HostEvents } from 'kehikot-module-protocol/client'
 import { useHost, type Host } from 'kehikot-module-protocol/client/react'
 
@@ -11,21 +11,16 @@ import { useHost, type Host } from 'kehikot-module-protocol/client/react'
  * ## What is underneath now
  *
  * The connection, the grace before deciding nobody is there, the theme on `<html>` (both classes
- * spelled, and remembered for the next load's first paint), the flattened context, `point` and a
- * stable `request` are `kehikot-module-protocol/client/react`. This file used to be 445 lines that
+ * spelled, and remembered for the next load's first paint), the flattened context — `passage`,
+ * `chosen` and `parts` the same object while they say the same thing — `point` and a stable
+ * `request` are `kehikot-module-protocol/client/react`. This file used to be 445 lines that
  * did all of that by hand; see the protocol's docs/module-plumbing.md.
  *
  * ## What stays here, and why
  *
- * - **Values that keep their identity when nothing changed.** A context arrives after every change
- *   anywhere on the canvas, and the host builds a fresh passage, a fresh filter record and a fresh
- *   parts array each time whatever happened. `useHost` hands those over as they came. Here a new
- *   identity re-narrows the whole question list and re-decides the ladder, several times a second
- *   on top of a poll that is already running — so `passage`, `chosen` and `parts` are compared by
- *   value and the old object is kept when they say the same thing.
- * - **`containers` as ONE STRING.** For the same reason, and because `wire/aim.ts` reads only the
- *   module, the flag and each document's path and range: `App` inflates it once with
- *   `containersFrom`, memoised on the string.
+ * - **`containers` as ONE STRING.** `wire/aim.ts` reads only the module, the flag and each
+ *   document's path and range, so only a change in those may re-decide the aim: `App` inflates
+ *   it once with `containersFrom`, memoised on the string.
  * - **`show`**, which says which documents this container is showing (`showing.set`).
  *
  * ## Why there is no kept state here
@@ -124,9 +119,6 @@ export type GotoHandler = NonNullable<HostEvents['onGoto']>
 export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
   const host = useHost(id, { onGoto }, { reloadWhenStale: false })
 
-  const passage = useSame(host.passage, samePassage)
-  const chosen = useSame(host.chosen, agrees)
-  const parts = useSame(host.parts, (a, b) => sameParts(a, b))
   const containers = useMemo(() => flattenContainers(host.containers), [host.containers])
 
   const { request } = host
@@ -140,18 +132,11 @@ export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
     [request],
   )
 
-  const { where, epic, projectPath, project, resize, filters, point } = host
+  const { where, epic, projectPath, project, passage, chosen, parts, resize, filters, point } = host
   return useMemo(
     () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show }),
     [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show],
   )
-}
-
-/** The value as it was last time, for as long as the new one says the same thing. */
-function useSame<T>(value: T, same: (a: T, b: T) => boolean): T {
-  const held = useRef(value)
-  if (held.current !== value && !same(held.current, value)) held.current = value
-  return held.current
 }
 
 /**
@@ -211,23 +196,4 @@ export function containersFrom(flat: string): { module: string; selected: boolea
   } catch {
     return []
   }
-}
-
-/** Whether two filter choices say the same thing, key by key. */
-function agrees(a: FilterChoice, b: FilterChoice): boolean {
-  const keys = Object.keys(a)
-  if (keys.length !== Object.keys(b).length) return false
-  return keys.every((key) => a[key] === b[key])
-}
-
-/**
- * Whether two passages say the same thing.
- *
- * Field by field, including `quoted`, because this is asking whether the object
- * CHANGED rather than whether it names the same place. The second question is
- * `keyOf` in `wire/pointed.ts`, which deliberately leaves the quote out.
- */
-function samePassage(a: Passage | null, b: Passage | null): boolean {
-  if (a === null || b === null) return a === b
-  return a.path === b.path && a.page === b.page && a.from === b.from && a.to === b.to && a.quoted === b.quoted
 }

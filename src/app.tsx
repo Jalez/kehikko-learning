@@ -658,11 +658,7 @@ export function App() {
    * list — so a server that comes back gives the reader their screen as they left it.
    */
   const holding = editing !== false && unsaved
-  const cover: CoverState | null = holding
-    ? null
-    : server === 'stale'
-      ? 'stale'
-      : (coverFor({ where, projectPath }) ?? (server === 'down' ? 'down' : null))
+  const cover: CoverState | null = holding ? null : coverFor({ where, projectPath, server })
 
   const screen =
     !projectPath ? null : !epic ? (
