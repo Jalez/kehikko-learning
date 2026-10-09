@@ -98,7 +98,8 @@ const MAX_CITED_BYTES = 5_000_000
  * A project file's text, for finding a quote in, or null when it cannot be
  * read: missing, not a file, too large, or resolving outside the project. The
  * path is a quiz file's, so it is a stranger's string: confined like our own.
- * (Slides' `citedText`, copied.)
+ * (Slides' `citedText`, copied: the read and its fence did not move to the
+ * protocol with the finding, which takes the text this returns.)
  */
 export function citedText(root: string, path: string): string | null {
   if (!path || isAbsolute(path) || path.replace(/\\/g, '/').split('/').includes('..')) return null

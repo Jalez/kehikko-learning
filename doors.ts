@@ -1,5 +1,6 @@
+import { linesOf } from 'kehikot-module-protocol'
+
 import { ID, MANIFEST, VERSION } from './manifest.ts'
-import { linesOf } from './quiz/cite.ts'
 import {
   MAX_EPIC,
   MAX_ID,
