@@ -44,6 +44,27 @@ import { documentOf, type Anchored } from '@/wire/pointed.ts'
  * has narrowed, and a pane emptied by silence is a pane whose emptiness has
  * no cause a person could see or undo.
  *
+ * ## The ticked parts say it first
+ *
+ * The union is a GUESS at what the reader is on, made when nobody has said.
+ * A part ticked in the host's bar is somebody saying: the whole canvas is
+ * pointed at those parts, and the questions in front are the questions about
+ * their files (`wire/focus.ts`). So while a part is ticked and no container
+ * is picked out, the union is not consulted and nothing is narrowed here.
+ *
+ * It used to be applied first and the parts to what it left, which made the
+ * two an intersection, and the union lost every time it lagged the ticks: a
+ * paper showing two ticked parts names the one file its caret is in, so the
+ * other part's questions were gone, under a sentence saying `0 questions
+ * outside the 2 picked parts`; and a paper that had been walked to a passage
+ * by somebody else does not say where it is again until a person touches it,
+ * so every later tick narrowed the chapter it was last walked to, and this
+ * pane stood on the old chapter's question whatever was ticked.
+ *
+ * A container somebody picked out is still theirs to narrow by: the box in a
+ * container's header is as deliberate as a tick, and the two are applied
+ * together. So is the reader's scope.
+ *
  * ## Matched by document, never by range, and `scope` is where the range lives
  *
  * A place a container shows may carry a byte range — the host folds the
@@ -132,6 +153,8 @@ export function inFrontOf(input: {
   passage: Place | null
   containers: readonly Shown[]
   aim: Aim
+  /** Whether a part of the epic is ticked in the host's bar. See "The ticked parts say it first" above. */
+  focused?: boolean
 }): InFront {
   const others = input.containers.filter((one) => one.module !== input.self)
   const picked = others.filter((one) => one.selected)
@@ -151,6 +174,10 @@ export function inFrontOf(input: {
       quiet,
     }
   }
+
+  /* Nobody picked a container out, and a part is ticked: the parts are what is
+     in front, and `wire/focus.ts` narrows to them. */
+  if (input.focused) return { everything: true, narrowed: false, documents: [], picked: names, quiet }
 
   const documents = onePerPath([...(input.passage ? [input.passage] : []), ...others.flatMap((one) => one.documents)])
   return { everything: documents.length === 0, narrowed: false, documents, picked: names, quiet }

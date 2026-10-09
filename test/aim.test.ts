@@ -67,6 +67,35 @@ describe('what is in front, by the protocol’s rule', () => {
     expect(ids(inFront(QUESTIONS, PROJECT, front).shown)).toEqual(['q3a', 'q3b'])
   })
 
+  test('a part ticked in the host’s bar outranks the union: nothing is narrowed here, and the parts decide', () => {
+    /* A paper showing two ticked parts names one file; one that was walked to a
+       passage names the chapter it was walked to. Neither is what the person
+       ticked. `wire/focus.ts` narrows to the parts. */
+    const front = inFrontOf({
+      self: SELF,
+      passage: place(CH3, 100, 200),
+      containers: [container('kehikot.paper', false, [place(CH3)]), container(SELF, false)],
+      aim: 'follow',
+      focused: true,
+    })
+    expect(front.everything).toBe(true)
+    expect(front.narrowed).toBe(false)
+    expect(ids(inFront(QUESTIONS, PROJECT, front).shown)).toEqual(['q1', 'q3a', 'q3b', 'q5'])
+    expect(aimNote(front, 0)).toBeNull()
+  })
+
+  test('a container somebody picked out narrows whether or not a part is ticked', () => {
+    const front = inFrontOf({
+      self: SELF,
+      passage: null,
+      containers: [container('kehikot.paper', true, [place(CH3)]), container(SELF, false)],
+      aim: 'follow',
+      focused: true,
+    })
+    expect(front.narrowed).toBe(true)
+    expect(ids(inFront(QUESTIONS, PROJECT, front).shown)).toEqual(['q3a', 'q3b'])
+  })
+
   test('nothing picked out and nothing shown anywhere: the whole epic, not an empty pane', () => {
     /* The one case the rule leaves open. Literally nothing is in front; a pane
        emptied by silence has no cause a person could see or undo, so this
