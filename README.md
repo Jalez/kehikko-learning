@@ -18,7 +18,7 @@ bun test && bun run typecheck
 ## The model, which is three sentences long
 
 A **question cites a passage** — a document, and the exact words in it. It is
-**multiple choice**: the options in the order they are shown, which one is
+**multiple choice**: the options, which one is
 right, and the explanation its author wrote. **Answering is recorded**, per
 question, so the container can say what you got right and what you did not, and
 so the same question can be asked again later.
@@ -171,6 +171,29 @@ container that still hid them would be coy rather than careful. `Ask these again
 (`POST /api/retake`) clears the attempts, which puts the key back out of reach in
 the store and therefore on the wire — genuinely out of reach, not merely out of
 sight.
+
+### Position is not allowed to give it away either
+
+An author writes the right option first more often than not, so the file's order
+on the page would be the key in plain sight. `/api/questions` therefore sends
+each question's options **shuffled** (`shownEpic`), and the page only ever speaks
+in positions of the order it was shown: `POST /api/answer` takes one, and
+`scoreShown` turns it into the file's index before grading. Everything that is
+KEPT stays in file order — the Markdown, `answers.json`, the editor, the MCP
+door — so nothing was migrated.
+
+- The order is `shownOrder(salt + id, options)` in `quiz/order.ts`: pure, so the
+  server remembers nothing per reader, and the same on every poll, after a reload
+  and across a restart.
+- The salt is per epic, in `order.json` beside the answers, and is never sent. It
+  is minted the first time an epic's questions are served to the page (the one
+  write this app makes on a read, into a folder that already holds the quiz).
+- `Ask these again` replaces the salt: a second pass is in a new order, so
+  positions cannot be memorised. Nothing else moves an order.
+- "All of the above" / "None of the above" (and "Kaikki edellä mainitut", …)
+  stay last. An option, question or explanation that names an option by letter
+  or position ("the second option") cannot survive a shuffle, and the tools'
+  descriptions tell an author not to write one.
 
 The MCP door applies the same rule for the same reason. `quizzes` prints
 `answer: withheld` for a question nobody has answered; `reveal: true` prints it,

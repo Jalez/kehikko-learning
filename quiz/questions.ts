@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, isAbsolute, relative, sep } from 'node:path'
 
@@ -9,6 +9,7 @@ import { citedText, dataFile, makeDir, put, rootOf } from '../store.ts'
 import { history, kept, record } from './history.ts'
 import { emptyQuiz, idOf, keyOf, parseQuiz, quizProblems, serialiseQuiz, writable, type Question, type Quiz } from './format.ts'
 import { migrate, type Answers, type Stored } from './migrate.ts'
+import { shownOrder, toFile, toShown } from './order.ts'
 import type { Asked, Attempt, Cited, HistoryEntry, QuizFile, Standing } from './types.ts'
 
 /**
@@ -48,6 +49,8 @@ export const MAX_ATTEMPTS = 12
 export const SLUG = /^[a-z0-9-]+$/
 
 const ANSWERS = 'answers.json'
+/** Each epic's salt for the order its options are shown in: `{ "<epic>": "<hex>" }`. See `saltOf`. */
+const ORDER = 'order.json'
 
 const answersSchema = z.record(z.record(z.array(z.object({ chose: z.number().int(), right: z.boolean(), at: z.string(), of: z.string().optional() }))))
 
@@ -214,6 +217,59 @@ export function asked(question: Question, attempts: Attempt[], source: Cited | n
 /* ------------------------------------------------------------------------ *
  * Reading
  * ------------------------------------------------------------------------ */
+
+/** What the order falls back to when `order.json` cannot be written: stable for as long as this process lives. */
+const PROCESS_SALT = randomBytes(16).toString('hex')
+
+/**
+ * The secret half of an epic's shown order, kept in `order.json` beside the
+ * answers and never sent anywhere.
+ *
+ * Minted the first time the epic's questions are served to the page, so the
+ * order is the same on every poll, after a reload and across a restart of this
+ * server; `fresh` replaces it, which is what a retake does — the positions
+ * somebody learned on the last pass are not the positions on the next.
+ *
+ * It is the one thing here written on a read, and only into a folder that
+ * already holds the quiz file it is about. A file that is missing or unreadable
+ * is minted again: nothing in it is anybody's work.
+ */
+function saltOf(projectPath: string | null | undefined, epic: string, fresh = false): string {
+  const { path } = dataFile(projectPath, ORDER)
+  let all: Record<string, string> = {}
+  try {
+    if (path !== null && existsSync(path)) all = z.record(z.string()).parse(JSON.parse(readFileSync(path, 'utf8')))
+  } catch {
+    all = {}
+  }
+  if (!fresh && all[epic]) return all[epic]
+  const salt = randomBytes(16).toString('hex')
+  return save(projectPath, ORDER, `${JSON.stringify({ ...all, [epic]: salt }, null, 1)}\n`) === null ? salt : PROCESS_SALT
+}
+
+/** One question with its options in the shown order, and every index in it moved to match. */
+function shown(one: Asked, salt: string): Asked {
+  const order = shownOrder(`${salt}\n${one.id}`, one.options)
+  return {
+    ...one,
+    options: order.map((file) => one.options[file]!),
+    attempts: one.attempts.map((attempt) => ({ ...attempt, chose: toShown(order, attempt.chose) })),
+    answer: one.answer === null ? null : toShown(order, one.answer),
+  }
+}
+
+/**
+ * One epic's questions AS THE PAGE IS SENT THEM: `forEpic`, with each
+ * question's options shuffled (`quiz/order.ts`). The page never sees file
+ * order, nor anything it could be worked out from — the options are simply in
+ * another order, and `attempts[].chose` and `answer` are positions in it.
+ */
+export function shownEpic(projectPath: string | null | undefined, epic: string): ReturnType<typeof forEpic> {
+  const out = forEpic(projectPath, epic)
+  if (!out.questions.length) return out
+  const salt = saltOf(projectPath, epic)
+  return { ...out, questions: out.questions.map((one) => shown(one, salt)) }
+}
 
 /**
  * One epic's questions, as a page is allowed to know them, in the order the
@@ -423,6 +479,8 @@ export function change(op: Op): Done {
     delete all[op.epic]
     const wrote = forgotten ? saveAnswers(op.project, all) : null
     if (wrote) return no(wrote)
+    /* A new pass, a new order: where the right option sat last time says nothing about this time. */
+    if (held.text !== null) saltOf(op.project, op.epic, true)
     return { ok: true, said: `${forgotten} answer${forgotten === 1 ? '' : 's'} forgotten for ${op.epic}`, id: op.epic }
   }
 
@@ -547,6 +605,25 @@ export function score(
   const wrote = saveAnswers(projectPath, held.all)
   if (wrote) return { error: wrote }
   return { scored: { right: attempt.right, answer: key, why: question.why, attempt, asked: asked(question, attempts, citer(held)(question)) } }
+}
+
+/**
+ * `score`, for an answer that came from the page — where `chose` is a position
+ * in the SHOWN order. It is turned into the file's index here, graded and
+ * filed in file order, and the reply is turned back, so the key and the choice
+ * point at the options the reader is looking at.
+ */
+export function scoreShown(projectPath: string | null | undefined, epic: string, id: string, chose: number): ReturnType<typeof score> {
+  const question = open(projectPath, epic).held?.quiz.questions.find((one) => one.id === id)
+  /* Nothing to translate against: `score` says why, in its own words. */
+  if (!question || keyOf(question) === null) return score(projectPath, epic, id, chose)
+  const salt = saltOf(projectPath, epic)
+  const order = shownOrder(`${salt}\n${id}`, question.options)
+  /* A position that is not one is passed on as it came, and refused there. */
+  const out = score(projectPath, epic, id, toFile(order, chose) ?? chose)
+  if ('error' in out) return out
+  const asked = shown(out.scored.asked, salt)
+  return { scored: { ...out.scored, answer: asked.answer ?? -1, attempt: asked.attempts.at(-1) ?? out.scored.attempt, asked } }
 }
 
 /* ------------------------------------------------------------------------ *

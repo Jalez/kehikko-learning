@@ -81,7 +81,11 @@ afterEach(() => {
 describe('a write', () => {
   test('carries the page’s ticket in the shared header, which the doors accept', async () => {
     const id = added()
-    const scored = await answer(dir, EPIC, id, 0)
+    /* The right option, at whatever position this page was shown it: the file's order is not sent. */
+    const opened = await openEpic(dir, EPIC)
+    const shown = 'error' in opened ? -1 : opened.questions[0]!.options.indexOf('Which tab the page gets')
+    carried = []
+    const scored = await answer(dir, EPIC, id, shown)
     expect('error' in scored).toBe(false)
     expect((scored as { right: boolean }).right).toBe(true)
     expect(carried).toEqual([{ method: 'POST', path: '/api/answer', ticket: TICKET, keepalive: false }])

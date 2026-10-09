@@ -78,6 +78,35 @@ function added(over: Record<string, unknown> = {}): string {
   return id ?? ''
 }
 
+const RIGHT = 'Which tab the page gets'
+const WRONG = 'What colour the container is'
+
+interface Shown {
+  id: string
+  options: string[]
+  answer: number | null
+  why: string | null
+  attempts: { chose: number; right: boolean }[]
+}
+
+/** One epic's questions as the page is sent them — options in the SHOWN order. */
+function shown(project = A, epic = 'modes-are-modules'): Shown[] {
+  const reply = answer('GET', '/api/questions', new URLSearchParams({ project, epic }), null, null)
+  return (reply?.body as { questions: Shown[] }).questions
+}
+
+/**
+ * Press an option the way a reader does: by its words, at whatever position
+ * the page was shown it. The page never knows the file's order, so neither
+ * does a test that stands where the page stands.
+ */
+function press(id: string, words: string, epic = 'modes-are-modules') {
+  const chose = shown(A, epic).find((one) => one.id === id)?.options.indexOf(words) ?? -1
+  expect(chose).toBeGreaterThanOrEqual(0)
+  const reply = answer('POST', '/api/answer', nothing, { project: A, epic, id, chose }, TICKET)
+  return reply?.body as { ok: boolean; right: boolean; answer: number; why: string; attempt: { chose: number; right: boolean }; asked: Shown }
+}
+
 /* ------------------------------------------------------------------ *
  * The shape of the MCP door
  * ------------------------------------------------------------------ */
@@ -326,10 +355,11 @@ describe('quizzes', () => {
     /* The reader has already been shown it; withholding it from the agent at
        that point protects nothing and makes the tool useless for its job. */
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 1 }, TICKET)
+    press(id, WRONG)
     const { text } = tool('quizzes', { project: A, epic: 'modes-are-modules' })
     expect(text).toContain('answer: 0. Which tab the page gets')
-    expect(text).toContain('was WRONG')
+    /* In the FILE's numbering, whatever position the page showed it at. */
+    expect(text).toContain(`the reader chose 1 (${WRONG}) and was WRONG`)
   })
 
   test('prints the source, which is the module’s whole claim, and where the file is', () => {
@@ -445,7 +475,7 @@ describe('reword_quiz and drop_quiz', () => {
 
   test('a reword keeps the id and every answer', () => {
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0 }, TICKET)
+    press(id, RIGHT)
     const { text, isError } = tool('reword_quiz', { project: A, id, question: 'A sharper question' })
     expect(isError).toBe(false)
     expect(text).toContain(`Question ${id} reworded`)
@@ -532,11 +562,12 @@ describe('/api/questions', () => {
 
   test('carries the key once there is an attempt', () => {
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 2 }, TICKET)
-    const reply = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
-    const body = reply?.body as { questions: { answer: number | null; why: string | null }[] }
-    expect(body.questions[0]?.answer).toBe(0)
-    expect(body.questions[0]?.why).toBe('The manifest is the only half a host reads.')
+    press(id, WRONG)
+    const [question] = shown()
+    /* The key is a position in the order shown, and it is on the right words. */
+    expect(question?.options[question.answer ?? -1]).toBe(RIGHT)
+    expect(question?.options[question.attempts[0]?.chose ?? -1]).toBe(WRONG)
+    expect(question?.why).toBe('The manifest is the only half a host reads.')
   })
 
   test('with no epic it answers with the standings and no questions', () => {
@@ -572,12 +603,13 @@ describe('/api/answer', () => {
 
   test('returns the verdict, the key and the explanation — the one place they cross', () => {
     const id = added()
-    const reply = answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 1 }, TICKET)
-    const body = reply?.body as { right: boolean; answer: number; why: string; asked: { answer: number | null } }
+    const body = press(id, WRONG)
     expect(body.right).toBe(false)
-    expect(body.answer).toBe(0)
+    expect(body.asked.options[body.answer]).toBe(RIGHT)
+    expect(body.asked.options[body.attempt.chose]).toBe(WRONG)
     expect(body.why).toBe('The manifest is the only half a host reads.')
-    expect(body.asked.answer).toBe(0)
+    expect(body.asked.answer).toBe(body.answer)
+    expect(press(id, RIGHT).right).toBe(true)
   })
 
   test('an option that does not exist is refused, not scored as wrong', () => {
@@ -605,7 +637,7 @@ describe('/api/retake', () => {
     const id = added()
     answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0 }, TICKET)
     const before = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
-    expect((before?.body as { questions: { answer: number | null }[] }).questions[0]?.answer).toBe(0)
+    expect((before?.body as { questions: { answer: number | null }[] }).questions[0]?.answer).not.toBeNull()
 
     const reply = answer('POST', '/api/retake', nothing, { project: A, epic: 'modes-are-modules' }, TICKET)
     expect(reply?.status).toBe(200)

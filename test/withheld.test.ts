@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { LEGACY_WELL_KNOWN, WELL_KNOWN } from 'kehikot-module-protocol'
+import { KEHIKOT_DIR, LEGACY_WELL_KNOWN, WELL_KNOWN } from 'kehikot-module-protocol'
 import { doorsHandler, type DoorRequest, type DoorResponse } from 'kehikot-module-protocol/serve'
 
 import { BUILD, MANIFEST, TICKET, answer, stream } from '../doors.ts'
@@ -15,7 +15,8 @@ import { BUILD, MANIFEST, TICKET, answer, stream } from '../doors.ts'
  * exactly as `vite.config.ts` configures it, because that handler now writes things this module
  * used to write itself — the page document, the manifest, the health check's answer, a header on
  * every reply. None of them may carry a word of the key for a question nobody has answered: not
- * the tick, not the correct option's index, not the explanation.
+ * the tick, not the correct option's index, not the explanation — and not the ORDER THE FILE
+ * HAS THE OPTIONS IN, which with an author who writes the right one first is the key by position.
  */
 
 const EPIC = 'modes-are-modules'
@@ -199,6 +200,66 @@ describe('what the shared doors serve without being asked for the file', () => {
     }
     /* And anything that is not a door goes on to Vite unread, as before. */
     expect((await get('/src/main.tsx')).passed).toBe(true)
+  })
+
+  test('the order the file has the options in is not recoverable from any door served before answering', async () => {
+    /* Forty more questions, each written as authors write them: the right option FIRST. */
+    const MANY = 40
+    const right = (n: number) => `the right one, ${n}`
+    const inFile = (n: number) => [right(n), `a wrong one, ${n}`, `another wrong one, ${n}`, `a third wrong one, ${n}`]
+    for (let n = 0; n < MANY; n += 1) {
+      const reply = answer('POST', '/mcp', new URLSearchParams(), {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'add_quiz', arguments: { project: dir, epic: EPIC, question: `Asked ${n}?`, options: inFile(n), answer: 0, why: WHY, path: 'chapters/bridge.tex', quote: 'the manifest is the smallest half of this program' } },
+      }, null)
+      expect((reply?.body as { result: { isError?: boolean } }).result.isError).not.toBe(true)
+    }
+
+    const asked = await get(`/api/questions?${where()}`)
+    keyless(asked)
+    const { questions } = JSON.parse(asked.text) as { questions: Record<string, unknown>[] }
+    const ours = questions.slice(1)
+    expect(ours).toHaveLength(MANY)
+
+    /* No field beside the options that could be an index, an order or a seed: a question is these seven things. */
+    for (const question of questions) {
+      expect(Object.keys(question).sort()).toEqual(['answer', 'attempts', 'id', 'options', 'question', 'source', 'why'])
+      expect(question).toMatchObject({ answer: null, why: null, attempts: [] })
+      for (const option of question.options as unknown[]) expect(typeof option).toBe('string')
+    }
+    /* The top of the document is as it was, too. */
+    expect(Object.keys(JSON.parse(asked.text) as object).sort()).toEqual(['epic', 'file', 'ok', 'project', 'questions', 'standings', 'trouble'])
+
+    /* Where the right option is SERVED — known here only because this test wrote the file. In the
+       file it is at 0 forty times out of forty; served, no position has it every time. */
+    const at = [0, 0, 0, 0]
+    ours.forEach((question, n) => {
+      const options = question.options as string[]
+      expect(options.toSorted()).toEqual(inFile(n).toSorted())
+      at[options.indexOf(right(n))]! += 1
+    })
+    for (const count of at) expect(count).toBeGreaterThan(0)
+    for (const count of at) expect(count).toBeLessThan(MANY * 0.6)
+    /* Nor is it one fixed re-arrangement applied to every question, which would be file order renamed. */
+    const arrangements = new Set(ours.map((question, n) => (question.options as string[]).map((option) => inFile(n).indexOf(option)).join('')))
+    expect(arrangements.size).toBeGreaterThan(5)
+
+    /* The salt the order is made from is on disk, and in nothing that is served — the page,
+       the health check, the manifests, the questions, the watch — before or after asking. */
+    const salt = (JSON.parse(readFileSync(join(dir, KEHIKOT_DIR, 'learning', 'order.json'), 'utf8')) as Record<string, string>)[EPIC]!
+    expect(salt).toMatch(/^[0-9a-f]{32}$/)
+    const doors = ['/app', '/', '/healthz', WELL_KNOWN, LEGACY_WELL_KNOWN, `/api/questions?${where()}`, `/api/questions?project=${encodeURIComponent(dir)}`, `/api/watch?project=${encodeURIComponent(dir)}&ticket=${TICKET}`]
+    for (const path of doors) {
+      const got = await get(path)
+      expect(got.status).toBe(200)
+      keyless(got)
+      expect(said(got)).not.toContain(salt)
+      expect(said(got)).not.toContain('order.json')
+    }
+    /* Asking twice is the same answer: nothing to average an order out of. */
+    expect((await get(`/api/questions?${where()}`)).text).toBe(asked.text)
   })
 
   test('with the ticket the file does come whole — the one place, and it is the editor’s', async () => {
