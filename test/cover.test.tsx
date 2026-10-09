@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { resetServerStanding } from 'kehikot-module-protocol/client'
+import { mailbox, resetServerStanding } from 'kehikot-module-protocol/client'
 
 import { TICKET, answer as door } from '../doors.ts'
 import { App } from '../src/app.tsx'
@@ -26,6 +26,8 @@ let asked: string[] = []
 
 beforeEach(() => {
   resetServerStanding()
+  /* The mailbox replays what it kept to every new listener: an earlier test's greeting would greet this one. */
+  mailbox.forget?.()
   down = false
   restarted = false
   asked = []
