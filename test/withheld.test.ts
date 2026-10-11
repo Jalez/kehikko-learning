@@ -237,8 +237,12 @@ describe('what the shared doors serve without being asked for the file', () => {
       expect(question).toMatchObject({ answer: null, why: null, attempts: [] })
       for (const option of question.options as unknown[]) expect(typeof option).toBe('string')
     }
-    /* The top of the document is as it was, too. */
-    expect(Object.keys(JSON.parse(asked.text) as object).sort()).toEqual(['epic', 'file', 'ok', 'project', 'questions', 'standings', 'trouble'])
+    /* The top of the document is as it was, with one thing more: the name of the order, which the
+       page posts back with an answer. One short string for the whole epic — not one per question,
+       so there is no position in it. */
+    expect(Object.keys(JSON.parse(asked.text) as object).sort()).toEqual(['epic', 'file', 'ok', 'order', 'project', 'questions', 'standings', 'trouble'])
+    const { order } = JSON.parse(asked.text) as { order: string }
+    expect(order).toMatch(/^[0-9a-f]{16}$/)
 
     /* Where the right option is SERVED — known here only because this test wrote the file. In the
        file it is at 0 forty times out of forty; served, no position has it every time. */
@@ -266,12 +270,63 @@ describe('what the shared doors serve without being asked for the file', () => {
       expect(said(got)).not.toContain(salt)
       expect(said(got)).not.toContain('order.json')
     }
+    /* The name of the order is not the salt, nor a piece of it, nor the other way round: it is a
+       one-way hash, so what the page holds cannot be turned back into what the order is made from. */
+    expect(order).not.toBe(salt)
+    expect(salt).not.toContain(order)
+    expect(order).not.toContain(salt.slice(0, 8))
+    /* It does not depend on the file at all. The same questions written in ANOTHER file order —
+       so another key position for every one of them — under the same salt have the same name;
+       there is nothing about the options, their order or the key for it to carry. */
+    const before = JSON.parse(asked.text) as { questions: { id: string }[] }
+    for (let n = 0; n < MANY; n += 1) {
+      const moved = [...inFile(n).slice(1), right(n)]
+      const reply = answer('POST', '/mcp', new URLSearchParams(), {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'reword_quiz', arguments: { project: dir, epic: EPIC, id: before.questions[n + 1]!.id, options: moved, answer: 3 } },
+      }, null)
+      expect((reply?.body as { result: { isError?: boolean } }).result.isError).not.toBe(true)
+    }
+    const rewritten = await get(`/api/questions?${where()}`)
+    keyless(rewritten)
+    expect((JSON.parse(rewritten.text) as { order: string }).order).toBe(order)
+    /* Nor is it a count of anything: an epic with one question, dealt once, has a name of the same shape. */
+    const other = await get(`/api/questions?project=${encodeURIComponent(dir)}&epic=nothing-here`)
+    expect((JSON.parse(other.text) as { order: unknown }).order).toBeNull()
+
     /* And the manifest's old address, which is no door at all now, serves none of it either. */
     const old = await get(OLD_WELL_KNOWN)
     expect(old.passed).toBe(true)
     expect(said(old)).toBe('{}\n')
     /* Asking twice is the same answer: nothing to average an order out of. */
-    expect((await get(`/api/questions?${where()}`)).text).toBe(asked.text)
+    expect((await get(`/api/questions?${where()}`)).text).toBe(rewritten.text)
+  })
+
+  test('an answer refused for naming an old order is told nothing: no verdict, no key, no order, and the new name only by reading again', async () => {
+    const asked = JSON.parse((await get(`/api/questions?${where()}`)).text) as { order: string; questions: { id: string }[] }
+    const retaken = await get('/api/retake', { method: 'POST', ticket: TICKET, body: { project: dir, epic: EPIC } })
+    expect(retaken.status).toBe(200)
+    keyless(retaken)
+    const now = (JSON.parse(retaken.text) as { order: string }).order
+    expect(now).toMatch(/^[0-9a-f]{16}$/)
+    expect(now).not.toBe(asked.order)
+    const salt = (JSON.parse(readFileSync(join(dir, KEHIKOT_DIR, 'learning', 'order.json'), 'utf8')) as Record<string, string>)[EPIC]!
+    expect(said(retaken)).not.toContain(salt)
+
+    for (const chose of [0, 1, 2]) {
+      const refused = await get('/api/answer', { method: 'POST', ticket: TICKET, body: { project: dir, epic: EPIC, id: asked.questions[0]!.id, chose, order: asked.order } })
+      expect(refused.status).toBe(409)
+      keyless(refused)
+      expect(Object.keys(JSON.parse(refused.text) as object).sort()).toEqual(['error', 'ok'])
+      expect(said(refused)).not.toContain(salt)
+      expect(said(refused)).not.toContain(now)
+    }
+    /* Three refused guesses later the question is still one nobody has answered. */
+    const after = JSON.parse((await get(`/api/questions?${where()}`)).text) as { order: string; questions: { answer: unknown; why: unknown; attempts: unknown[] }[] }
+    expect(after.order).toBe(now)
+    expect(after.questions[0]).toMatchObject({ answer: null, why: null, attempts: [] })
   })
 
   test('with the ticket the file does come whole — the one place, and it is the editor’s', async () => {

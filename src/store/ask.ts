@@ -66,6 +66,8 @@ export interface Opened {
   epic: string | null
   standings: Standing[]
   questions: Asked[]
+  /** The name of the order these options are in: sent back with an answer, and opaque. Null with no questions. */
+  order: string | null
   /** Where this epic's questions are, relative to the project: the Markdown file a person edits. */
   file: string | null
   trouble: string | null
@@ -89,6 +91,7 @@ export async function openEpic(project: string, epic: string | null): Promise<Op
     epic,
     standings: Array.isArray(body.standings) ? (body.standings as Standing[]) : [],
     questions: Array.isArray(body.questions) ? (body.questions as Asked[]) : [],
+    order: typeof body.order === 'string' ? body.order : null,
     file: typeof body.file === 'string' ? body.file : null,
     trouble: typeof body.trouble === 'string' ? body.trouble : null,
   }
@@ -108,10 +111,21 @@ export interface Scored {
  *
  * The page sends an id and an index and gets back a verdict it could not have
  * computed. This is the moment the key crosses the wire, and it is the only one.
+ *
+ * `order` is what the questions came with: the index is a position in THAT
+ * order, and the server refuses it (`dealt`) when the options have been dealt
+ * again since, rather than read it as some other option.
  */
-export async function answer(project: string, epic: string, id: string, chose: number): Promise<Scored | Failed> {
-  const asked = await ask<Record<string, unknown>>('/api/answer', { body: { project, epic, id, chose } })
-  if (!asked.ok) return { error: asked.error, kind: asked.kind }
+export async function answer(
+  project: string,
+  epic: string,
+  id: string,
+  chose: number,
+  order: string | null,
+): Promise<Scored | (Failed & { dealt?: true })> {
+  const asked = await ask<Record<string, unknown>>('/api/answer', { body: { project, epic, id, chose, order } })
+  /* 409: the options were dealt again since this page read them, and nothing was recorded. */
+  if (!asked.ok) return { error: asked.error, kind: asked.kind, ...(asked.kind === 'refused' && asked.status === 409 ? { dealt: true as const } : {}) }
   const body = asked.body ?? {}
   if (typeof body.answer !== 'number') return { error: 'it did not work, and said nothing about why', kind: 'refused' }
   return {
@@ -131,10 +145,13 @@ export async function answer(project: string, epic: string, id: string, chose: n
  * wire. Retaking genuinely puts the answers back out of reach rather than hiding
  * something the page already has.
  */
-export async function retake(project: string, epic: string): Promise<{ questions: Asked[] } | Failed> {
+export async function retake(project: string, epic: string): Promise<{ questions: Asked[]; order: string | null } | Failed> {
   const asked = await ask<Record<string, unknown>>('/api/retake', { body: { project, epic } })
   if (!asked.ok) return { error: asked.error, kind: asked.kind }
-  return { questions: Array.isArray(asked.body?.questions) ? (asked.body.questions as Asked[]) : [] }
+  return {
+    questions: Array.isArray(asked.body?.questions) ? (asked.body.questions as Asked[]) : [],
+    order: typeof asked.body?.order === 'string' ? asked.body.order : null,
+  }
 }
 
 /* ------------------------------------------------------------------ *

@@ -95,6 +95,12 @@ function shown(project = A, epic = 'modes-are-modules'): Shown[] {
   return (reply?.body as { questions: Shown[] }).questions
 }
 
+/** The name of the order the page was sent them in, which it sends back with an answer. */
+function dealt(project = A, epic = 'modes-are-modules'): string {
+  const reply = answer('GET', '/api/questions', new URLSearchParams({ project, epic }), null, null)
+  return (reply?.body as { order: string }).order
+}
+
 /**
  * Press an option the way a reader does: by its words, at whatever position
  * the page was shown it. The page never knows the file's order, so neither
@@ -103,7 +109,7 @@ function shown(project = A, epic = 'modes-are-modules'): Shown[] {
 function press(id: string, words: string, epic = 'modes-are-modules') {
   const chose = shown(A, epic).find((one) => one.id === id)?.options.indexOf(words) ?? -1
   expect(chose).toBeGreaterThanOrEqual(0)
-  const reply = answer('POST', '/api/answer', nothing, { project: A, epic, id, chose }, TICKET)
+  const reply = answer('POST', '/api/answer', nothing, { project: A, epic, id, chose, order: dealt(A, epic) }, TICKET)
   return reply?.body as { ok: boolean; right: boolean; answer: number; why: string; attempt: { chose: number; right: boolean }; asked: Shown }
 }
 
@@ -517,7 +523,7 @@ describe('reword_quiz and drop_quiz', () => {
 
   test('a drop says how many answers went with it', () => {
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0 }, TICKET)
+    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0, order: dealt() }, TICKET)
     const { text, isError } = tool('drop_quiz', { project: A, id })
     expect(isError).toBe(false)
     expect(text).toContain('1 answer')
@@ -614,9 +620,19 @@ describe('/api/answer', () => {
 
   test('an option that does not exist is refused, not scored as wrong', () => {
     const id = added()
-    const reply = answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 47 }, TICKET)
+    const reply = answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 47, order: dealt() }, TICKET)
     expect(reply?.status).toBe(400)
     expect((reply?.body as { error: string }).error).toContain('Nothing was recorded')
+  })
+
+  test('an answer that does not say which order its position is in is refused, and nothing is recorded', () => {
+    const id = added()
+    for (const order of [undefined, '', null, { a: 1 }]) {
+      const reply = answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0, order }, TICKET)
+      expect(reply?.status).toBe(400)
+      expect((reply?.body as { error: string }).error).toContain('did not say which order')
+    }
+    expect(shown()[0]).toMatchObject({ attempts: [], answer: null, why: null })
   })
 
   test('an answer to nothing is refused', () => {
@@ -635,7 +651,7 @@ describe('/api/answer', () => {
 describe('/api/retake', () => {
   test('puts the key back out of reach', () => {
     const id = added()
-    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0 }, TICKET)
+    answer('POST', '/api/answer', nothing, { project: A, epic: 'modes-are-modules', id, chose: 0, order: dealt() }, TICKET)
     const before = answer('GET', '/api/questions', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)
     expect((before?.body as { questions: { answer: number | null }[] }).questions[0]?.answer).not.toBeNull()
 

@@ -49,6 +49,19 @@ const EVERY_MS = 3000
 
 export function App() {
   const [questions, setQuestions] = useState<Asked[]>([])
+  /*
+   * The name of the order `questions` came in, sent back with every answer.
+   *
+   * State, set in the same breath as `questions` from the same reply, and
+   * never a ref: a press has to carry the name of the order that was DRAWN
+   * when it was made, and a ref would already hold the next one while the old
+   * options were still on screen. "Ask these again" in another tab deals a new
+   * order; an answer naming the old one is refused rather than read as some
+   * other option — `orderTag` in `quiz/order.ts`.
+   */
+  const [order, setOrder] = useState<string | null>(null)
+  /* What that refusal said, kept until the reader chooses again: the read that follows it would otherwise wipe it at once. */
+  const [dealt, setDealt] = useState<string | null>(null)
   const [standings, setStandings] = useState<Standing[]>([])
   const [trouble, setTrouble] = useState<string | null>(null)
   const [file, setFile] = useState<string | null>(null)
@@ -431,6 +444,7 @@ export function App() {
     if (!where_) {
       setStandings([])
       setQuestions([])
+      setOrder(null)
       setTrouble(null)
       return
     }
@@ -448,6 +462,7 @@ export function App() {
     if (standing.current.project !== where_ || standing.current.epic !== which) return
     setStandings(opened.standings)
     setQuestions(opened.questions)
+    setOrder(opened.order)
     setFile(opened.file)
     setTrouble(opened.trouble)
   }, [])
@@ -458,6 +473,8 @@ export function App() {
   useEffect(() => {
     if (where === 'listening') return
     setQuestions([])
+    setOrder(null)
+    setDealt(null)
     void refresh()
   }, [where, projectPath, epic, refresh])
 
@@ -483,12 +500,16 @@ export function App() {
       writing.current = true
       answering.current = id
       try {
-        const out = await answer(projectPath, epic, id, chose)
+        const out = await answer(projectPath, epic, id, chose, order)
         if ('error' in out) {
-          setTrouble(out.error)
+          /* Dealt again elsewhere: nothing was recorded, and the read in
+             `finally` brings the order there is now. The sentence stays. */
+          if (out.dealt) setDealt(out.error)
+          else setTrouble(out.error)
           return
         }
         setTrouble(null)
+        setDealt(null)
         setQuestions((was) => was.map((question) => (question.id === id ? out.asked : question)))
         /*
          * And the reader stays exactly where they are.
@@ -514,7 +535,7 @@ export function App() {
         void refresh()
       }
     },
-    [projectPath, epic, refresh],
+    [projectPath, epic, order, refresh],
   )
 
   /**
@@ -577,7 +598,9 @@ export function App() {
         return
       }
       setTrouble(null)
+      setDealt(null)
       setQuestions(out.questions)
+      setOrder(out.order)
     } finally {
       writing.current = false
       setBusy(false)
@@ -725,7 +748,7 @@ export function App() {
         onPoint={onPoint}
         pointed={pointed}
         onRetake={() => void onRetake()}
-        trouble={trouble}
+        trouble={trouble ?? dealt}
         busy={busy}
         room={fits}
         ladder={rungs}

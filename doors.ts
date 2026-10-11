@@ -570,7 +570,8 @@ export function answer(
    *
    * Ungated, like every read here: this answer CONTAINS NO ANSWER KEY.
    * `shownEpic` returns `Asked`, whose `answer` and `why` are null for anything
-   * nobody has answered yet, and whose options are not in the file's order. `file` says where a person edits them, and what
+   * nobody has answered yet, and whose options are not in the file's order. `order` names that
+   * order and says nothing of it (`orderTag`). `file` says where a person edits them, and what
    * is wrong with the file rides in `trouble`, in sentences that name no option.
    */
   if (path === '/api/questions' && method === 'GET') {
@@ -585,9 +586,9 @@ export function answer(
     const epic = str(query.get('epic'), MAX_EPIC)
     const { standings: rows, trouble: unusable } = standings(project)
     if (!epic) return ok({ ok: true, project, epic: null, standings: rows, questions: [], trouble: unusable })
-    const { questions, problems, trouble } = shownEpic(project, epic)
+    const { questions, problems, trouble, order } = shownEpic(project, epic)
     const wrong = problems.length ? `${fileOf(project, epic)}: ${problems.join(' ')}` : null
-    return ok({ ok: true, project, epic, file: fileOf(project, epic), standings: rows, questions, trouble: trouble ?? wrong })
+    return ok({ ok: true, project, epic, file: fileOf(project, epic), standings: rows, questions, order, trouble: trouble ?? wrong })
   }
 
   /*
@@ -653,7 +654,8 @@ export function answer(
     /*
      * The one place the answer key crosses the wire.
      *
-     * The page posts an id and the POSITION it showed the chosen option at;
+     * The page posts an id, the POSITION it showed the chosen option at and
+     * the name of the order it was showing them in;
      * `scoreShown` turns that into the file's index and scores it HERE, against the
      * file, and replies with the verdict, the key and the explanation. This
      * route is the only one that records an attempt, it is behind the ticket,
@@ -666,8 +668,10 @@ export function answer(
       if (!Number.isFinite(chose)) {
         return bad('that answer did not say which option was chosen, so nothing was recorded.')
       }
-      const out = scoreShown(project, epic, id, chose)
-      if ('error' in out) return bad(out.error)
+      /* Which dealing of the options that position is in, as the questions named it (`orderTag`).
+         409 when it is no longer the one being shown: the page reads the questions again. */
+      const out = scoreShown(project, epic, id, chose, str(body.order, MAX_ID))
+      if ('error' in out) return bad(out.error, out.dealt ? 409 : 400)
       return ok({ ok: true, ...out.scored })
     }
 
@@ -678,8 +682,8 @@ export function answer(
      */
     const out = change({ op: 'retake', project, epic })
     if (!out.ok) return bad(out.error)
-    const { questions, trouble } = shownEpic(project, epic)
-    return ok({ ok: true, said: out.said, questions, trouble })
+    const { questions, trouble, order } = shownEpic(project, epic)
+    return ok({ ok: true, said: out.said, questions, order, trouble })
   }
 
   /* An unknown path under `/api/` is ours to refuse rather than Vite's to try

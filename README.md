@@ -190,6 +190,13 @@ door — so nothing was migrated.
   write this app makes on a read, into a folder that already holds the quiz).
 - `Ask these again` replaces the salt: a second pass is in a new order, so
   positions cannot be memorised. Nothing else moves an order.
+- A position only means something in the order it was shown in, so the questions
+  come with that order's name (`order`, from `orderTag`) and `POST /api/answer`
+  sends it back. An answer naming any order but the current one — the quiz open
+  in two tabs, asked again in one, pressed in the other before its next poll —
+  is refused with 409 and a sentence, nothing is recorded, and the page reads
+  again. The name is one short string per epic, a one-way hash of the salt: it
+  says which order and nothing about what the order is.
 - "All of the above" / "None of the above" (and "Kaikki edellä mainitut", …)
   stay last. An option, question or explanation that names an option by letter
   or position ("the second option") cannot survive a shuffle, and the tools'

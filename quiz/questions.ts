@@ -9,7 +9,7 @@ import { citedText, dataFile, makeDir, put, rootOf } from '../store.ts'
 import { history, kept, record } from './history.ts'
 import { emptyQuiz, idOf, keyOf, parseQuiz, quizProblems, serialiseQuiz, writable, type Question, type Quiz } from './format.ts'
 import { migrate, type Answers, type Stored } from './migrate.ts'
-import { shownOrder, toFile, toShown } from './order.ts'
+import { orderTag, shownOrder, toFile, toShown } from './order.ts'
 import type { Asked, Attempt, Cited, HistoryEntry, QuizFile, Standing } from './types.ts'
 
 /**
@@ -263,12 +263,15 @@ function shown(one: Asked, salt: string): Asked {
  * question's options shuffled (`quiz/order.ts`). The page never sees file
  * order, nor anything it could be worked out from — the options are simply in
  * another order, and `attempts[].chose` and `answer` are positions in it.
+ *
+ * `order` names this dealing (`orderTag`), for the page to send back with an
+ * answer; null when there is nothing to answer.
  */
-export function shownEpic(projectPath: string | null | undefined, epic: string): ReturnType<typeof forEpic> {
+export function shownEpic(projectPath: string | null | undefined, epic: string): ReturnType<typeof forEpic> & { order: string | null } {
   const out = forEpic(projectPath, epic)
-  if (!out.questions.length) return out
+  if (!out.questions.length) return { ...out, order: null }
   const salt = saltOf(projectPath, epic)
-  return { ...out, questions: out.questions.map((one) => shown(one, salt)) }
+  return { ...out, questions: out.questions.map((one) => shown(one, salt)), order: orderTag(salt) }
 }
 
 /**
@@ -607,17 +610,40 @@ export function score(
   return { scored: { right: attempt.right, answer: key, why: question.why, attempt, asked: asked(question, attempts, citer(held)(question)) } }
 }
 
+/** The refusal for an answer whose position is in an order that is no longer the one being shown. */
+const DEALT =
+  'These questions have been asked again since this page read them, so their options are in a new order and the one '
+  + 'you pressed may not be where it was. Nothing was recorded. Look at the options again and choose.'
+
+/** And for one that did not say which order its position is in. */
+const UNDEALT =
+  'that answer did not say which order the options were shown in, so it cannot be told which option was meant. '
+  + 'Nothing was recorded.'
+
 /**
  * `score`, for an answer that came from the page — where `chose` is a position
  * in the SHOWN order. It is turned into the file's index here, graded and
  * filed in file order, and the reply is turned back, so the key and the choice
  * point at the options the reader is looking at.
+ *
+ * `dealing` is the order the page was showing when the option was pressed, as
+ * `shownEpic` named it. If that is not the dealing now — a retake in another
+ * tab — the answer is refused with `dealt` and nothing is recorded: the same
+ * position is very likely another option by now.
  */
-export function scoreShown(projectPath: string | null | undefined, epic: string, id: string, chose: number): ReturnType<typeof score> {
+export function scoreShown(
+  projectPath: string | null | undefined,
+  epic: string,
+  id: string,
+  chose: number,
+  dealing: string,
+): { scored: Scored } | { error: string; dealt?: true } {
   const question = open(projectPath, epic).held?.quiz.questions.find((one) => one.id === id)
   /* Nothing to translate against: `score` says why, in its own words. */
   if (!question || keyOf(question) === null) return score(projectPath, epic, id, chose)
   const salt = saltOf(projectPath, epic)
+  /* A position from another dealing is not read in this one: refused, never guessed at. */
+  if (dealing !== orderTag(salt)) return dealing ? { error: DEALT, dealt: true } : { error: UNDEALT }
   const order = shownOrder(`${salt}\n${id}`, question.options)
   /* A position that is not one is passed on as it came, and refused there. */
   const out = score(projectPath, epic, id, toFile(order, chose) ?? chose)
