@@ -85,7 +85,7 @@ describe('a write', () => {
     const opened = await openEpic(dir, EPIC)
     const shown = 'error' in opened ? -1 : opened.questions[0]!.options.indexOf('Which tab the page gets')
     carried = []
-    const scored = await answer(dir, EPIC, id, shown)
+    const scored = await answer(dir, EPIC, id, shown, 'error' in opened ? null : opened.order)
     expect('error' in scored).toBe(false)
     expect((scored as { right: boolean }).right).toBe(true)
     expect(carried).toEqual([{ method: 'POST', path: '/api/answer', ticket: TICKET, keepalive: false }])
@@ -94,7 +94,7 @@ describe('a write', () => {
 
   test('refused for its own reasons is the server’s own sentence, and the page is not called stale', async () => {
     added()
-    const out = await answer(dir, EPIC, 'no-such-question', 0)
+    const out = await answer(dir, EPIC, 'no-such-question', 0, null)
     expect(out).toMatchObject({ kind: 'refused' })
     expect((out as { error: string }).error.length).toBeGreaterThan(10)
     expect(serverStanding()).toBe('up')
@@ -103,7 +103,7 @@ describe('a write', () => {
   test('from a page older than its server is marked, and nothing is recorded', async () => {
     const id = added()
     forged = 'a-ticket-from-before-the-restart'
-    expect(await answer(dir, EPIC, id, 0)).toMatchObject({ kind: 'stale' })
+    expect(await answer(dir, EPIC, id, 0, null)).toMatchObject({ kind: 'stale' })
     expect(serverStanding()).toBe('stale')
     forged = undefined
     const opened = await openEpic(dir, EPIC)
@@ -112,10 +112,16 @@ describe('a write', () => {
 
   test('retake goes through the same door', async () => {
     const id = added()
-    await answer(dir, EPIC, id, 1)
+    const opened = await openEpic(dir, EPIC)
+    const order = 'error' in opened ? null : opened.order
+    expect('error' in (await answer(dir, EPIC, id, 1, order))).toBe(false)
     const out = await retake(dir, EPIC)
     expect('error' in out ? null : out.questions[0]?.attempts).toHaveLength(0)
     expect(carried.at(-1)).toMatchObject({ path: '/api/retake', ticket: TICKET })
+    /* It answers with the new order's name, and an answer still naming the old one is marked as such. */
+    expect('error' in out ? null : out.order).not.toBe(order)
+    expect(await answer(dir, EPIC, id, 1, order)).toMatchObject({ kind: 'refused', dealt: true })
+    expect('error' in (await answer(dir, EPIC, id, 1, 'error' in out ? null : out.order))).toBe(false)
   })
 })
 

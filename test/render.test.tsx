@@ -595,22 +595,22 @@ describe('what answering earns, and where it is drawn', () => {
 })
 
 /* ------------------------------------------------------------------------- *
- * What the scope is hiding, said in the page.
+ * A narrowed pane says nothing; an empty one says why, once.
  * ------------------------------------------------------------------------- */
 
 /**
- * The host draws the scope control in the container header and cannot count what
- * it does not render. These are the lines that keep a narrowed container from
- * quietly holding questions nobody is told about.
+ * The questions on screen are the message. Nothing is drawn about the ones a
+ * scope, the aim or the picked parts left out — that line cost a row — except
+ * where there would otherwise be nothing on screen at all.
  */
-describe('the count the host cannot draw', () => {
-  const hiding = { full: '3 more questions outside this passage', brief: '+3 elsewhere' }
+describe('what a narrowed pane says', () => {
+  const WHY_EMPTY = 'journeys is picked out and shows no document, so there is nothing here for a question to be about.'
 
-  const view = (questions: Asked[], note: typeof hiding | null) => (
+  const view = (questions: Asked[], empty: string | null) => (
     <QuizView
       epic="modes-are-modules"
       questions={questions}
-      hiding={note}
+      empty={empty}
       onAnswer={() => {}}
       onPoint={() => {}}
       pointed={null}
@@ -621,60 +621,31 @@ describe('the count the host cannot draw', () => {
     />
   )
 
-  test('a narrowed list says how many it is not showing, and in what terms', () => {
-    const { container } = render(view([unanswered], hiding))
-    expect(container.querySelector('[data-scope-note="full"]')?.textContent).toBe(hiding.full)
+  test('with questions to show: no line about what is elsewhere, whatever it is handed', () => {
+    const { container } = render(view([unanswered], WHY_EMPTY))
+    expect(container.querySelector('[data-empty-note]')).toBeNull()
+    expect(container.textContent).not.toContain('picked out')
+    expect(container.textContent).not.toMatch(/elsewhere|outside|more question/)
   })
 
-  test('an unnarrowed one says nothing, because “0 more” is a row saying nothing happened', () => {
-    const { container } = render(view([unanswered], null))
-    expect(container.querySelector('[data-scope-note]')).toBeNull()
-  })
-
-  test('an empty scope is told apart from a paper nobody has written questions about', () => {
+  test('an emptied pane is told apart from a paper nobody has written questions about, in one sentence', () => {
     /*
      * Two empty screens, and confusing them sends a reader looking for questions
      * that are sitting right there. One is a fact about the paper and asks for an
      * agent; the other is a fact about a press and is undone by another press.
      */
-    const { container: narrowed } = render(view([], hiding))
-    expect(narrowed.querySelector('[data-scope-note="empty"]')).toBeTruthy()
-    expect(narrowed.textContent).toContain(hiding.full)
+    const { container: narrowed } = render(view([], WHY_EMPTY))
+    const notes = narrowed.querySelectorAll('[data-empty-note]')
+    expect(notes).toHaveLength(1)
+    expect(notes[0]!.textContent).toBe(WHY_EMPTY)
+    /* And it is the only paragraph there: no second line. */
+    expect(narrowed.querySelectorAll('p')).toHaveLength(1)
     expect(narrowed.textContent).not.toContain('Nothing has been asked about this paper yet')
     cleanup()
 
     const { container: bare } = render(view([], null))
-    expect(bare.querySelector('[data-scope-note]')).toBeNull()
+    expect(bare.querySelector('[data-empty-note]')).toBeNull()
     expect(bare.textContent).toContain('Nothing has been asked about this paper yet')
-  })
-
-  test('a pane the AIM emptied says which containers did it, before the scope gets a word', () => {
-    /* The third empty screen. A tick on a NEIGHBOUR emptied this pane, and a
-       reader looking at it has no way to see that unless it says so — and the
-       way out is a different control from the scope's. */
-    const why = {
-      said: 'journeys is picked out and shows no document, so there is nothing here for a question to be about.',
-      remedy: 'Untick a container, pick out one that shows a document, or set this container’s aim to everything on this kehikko.',
-    }
-    const { container } = render(
-      <QuizView
-        epic="modes-are-modules"
-        questions={[]}
-        hiding={hiding}
-        aimed={why}
-        onAnswer={() => {}}
-        onPoint={() => {}}
-        pointed={null}
-        onRetake={() => {}}
-        trouble={null}
-        busy={false}
-        room={ROOMY}
-      />,
-    )
-    expect(container.querySelector('[data-aim-note="empty"]')?.textContent).toBe(why.said)
-    expect(container.querySelector('[data-aim-note="remedy"]')?.textContent).toBe(why.remedy)
-    expect(container.querySelector('[data-scope-note]')).toBeNull()
-    expect(container.textContent).not.toContain('Nothing has been asked about this paper yet')
   })
 })
 
@@ -755,17 +726,13 @@ describe('a question whose source cannot be found', () => {
   })
 })
 
-describe('the count the host cannot draw, at the paged rungs', () => {
-  const hiding = { full: '3 more questions outside this passage', brief: '+3 elsewhere' }
-
-  test('the paged rungs say it in four words, with the sentence one hover away', () => {
-    /* A forty-character line in the row of controls would take a whole extra row
-       off a 220-pixel box — the same deferral the short source label makes. */
+describe('the row of controls at the paged rungs', () => {
+  test('holds the pager, the pieces and the presses, and no line about what is not shown', () => {
     const { container } = render(
       <QuizView
         epic="modes-are-modules"
         questions={[unanswered]}
-        hiding={hiding}
+        empty="No question here is in the picked parts."
         onAnswer={() => {}}
         onPoint={() => {}}
         pointed={null}
@@ -778,8 +745,9 @@ describe('the count the host cannot draw, at the paged rungs', () => {
         part="options"
       />,
     )
-    const brief = container.querySelector('[data-scope-note="brief"]')
-    expect(brief?.textContent).toBe(hiding.brief)
-    expect(brief?.getAttribute('title')).toBe(hiding.full)
+    const row = container.querySelector('[data-controls]')
+    expect(row).toBeTruthy()
+    expect(row!.querySelectorAll('span[title]')).toHaveLength(0)
+    expect(container.textContent).not.toMatch(/elsewhere|outside|picked parts/)
   })
 })

@@ -13,10 +13,10 @@ import { NoEpic } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
 import { textWidth } from '@/view/text.ts'
 import { useFrame } from '@/view/use-frame.ts'
-import { anchorOf, focusNote, inHand, standingOn, whyUnfocused } from '@/wire/focus.ts'
-import { aimNote, aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
+import { anchorOf, inHand, stillOn, standingOn, whyUnfocused } from '@/wire/focus.ts'
+import { aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
 import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
-import { hiddenNote, narrow, offer, reachOf, scopeOf } from '@/wire/scope.ts'
+import { besideParts, narrow, offer, reachOf, scopeOf, whyUnscoped } from '@/wire/scope.ts'
 import { containersFrom } from '@/wire/use-kehikot.ts'
 
 /** Whether this page is in a frame. Unframed, it prints its own heading. */
@@ -49,6 +49,19 @@ const EVERY_MS = 3000
 
 export function App() {
   const [questions, setQuestions] = useState<Asked[]>([])
+  /*
+   * The name of the order `questions` came in, sent back with every answer.
+   *
+   * State, set in the same breath as `questions` from the same reply, and
+   * never a ref: a press has to carry the name of the order that was DRAWN
+   * when it was made, and a ref would already hold the next one while the old
+   * options were still on screen. "Ask these again" in another tab deals a new
+   * order; an answer naming the old one is refused rather than read as some
+   * other option — `orderTag` in `quiz/order.ts`.
+   */
+  const [order, setOrder] = useState<string | null>(null)
+  /* What that refusal said, kept until the reader chooses again: the read that follows it would otherwise wipe it at once. */
+  const [dealt, setDealt] = useState<string | null>(null)
   const [standings, setStandings] = useState<Standing[]>([])
   const [trouble, setTrouble] = useState<string | null>(null)
   const [file, setFile] = useState<string | null>(null)
@@ -166,7 +179,11 @@ export function App() {
      has gone away degrades to `all` rather than emptying the container — the
      host keeps the choice, so it comes back the moment they highlight something
      again. */
-  const scope = scopeOf(chosen, reach)
+  /* And as it can apply beside the picked parts: a scope standing on a document
+     no picked part owns would leave nothing, so there the parts lead —
+     `besideParts` in `wire/scope.ts`. The path is the canvas's own absolute
+     spelling, which is what a part's files are matched against. */
+  const scope = besideParts(scopeOf(chosen, reach), focus.focused, passage !== null && focus.inFocus({ file: passage.path }))
 
   /* How big the box actually is, and what therefore fits in it. Two lines here
      because the deciding is in `view/room.ts`, where it can be read as a table
@@ -209,30 +226,30 @@ export function App() {
   }, [])
 
   /*
-   * A different set of questions is a different place to be standing.
-   *
-   * A different paper, obviously: starting a reader halfway through one because
-   * that is where they were in the last is a position they never chose. And a
-   * different SCOPE for the same reason — narrowing to this document is a request
-   * to be shown that document's questions, not to be left on whichever index the
-   * old list happened to have them at.
-   *
-   * `narrowedBy` is what makes the second half honest without making it noisy. At
-   * `all` it is the constant string, so a reader scrolling through a chapter — a
-   * new passage several times a second — is never moved. Narrowed, it names the
-   * place being narrowed to, so moving to another paragraph is the one case that
-   * genuinely does change which questions exist.
+   * A different paper is a different place to be standing: starting a reader
+   * halfway through one because that is where they were in the last is a
+   * position they never chose.
    */
-  const narrowedBy = scope === 'all' ? 'all' : `${scope} ${passage ? keyOf(passage) : ''}`
-  /* And the aim, by the same argument: a different set of documents in front
-     is a different set of questions, and the reader should start at its top.
-     The string is the paths, so a context that re-states the same canvas
-     moves nobody. */
-  const aimedAt = front.everything ? 'everything' : front.documents.map((one) => one.path).join('\n')
   useEffect(() => {
     setShown(0)
     setPart('options')
-  }, [projectPath, epic, narrowedBy, aimedAt])
+  }, [projectPath, epic])
+
+  /*
+   * And within one paper, three things change which questions are in front:
+   * the reader's scope, what the canvas shows, and the picked parts. Each is
+   * named by a value that changes only when the set of questions can —
+   * `stood`, below, beside the list they decide, says where that leaves the
+   * reader.
+   *
+   * `narrowedBy`: at `all` it is the constant string, so a reader scrolling
+   * through a chapter — a new passage several times a second — is never
+   * moved. Narrowed, it names the place being narrowed to, so moving to another
+   * paragraph is the one case that genuinely does change which questions exist.
+   */
+  const narrowedBy = scope === 'all' ? 'all' : `${scope} ${passage ? keyOf(passage) : ''}`
+  /* The aim is the paths in front, so a context that re-states the same canvas moves nobody. */
+  const aimedAt = front.everything ? 'everything' : front.documents.map((one) => one.path).join('\n')
 
   /*
    * The font engine, asked once.
@@ -253,10 +270,8 @@ export function App() {
    * is what a press, an answer and the poll all act on: narrowing is a view of
    * the store and never an edit to it.
    *
-   * The count is kept and drawn in the page. The host cannot count rows it does
-   * not render, in a document it cannot read, in a frame on another origin — so a
-   * narrowing that says nothing about what it hid is a container that has quietly
-   * lost questions.
+   * Nothing is drawn about the questions a narrowing leaves out: the ones on
+   * screen are the message. Only an EMPTY pane says why — `emptied`, below.
    */
   /*
    * Two narrowings, in order: first what the canvas shows (the aim), then how
@@ -269,7 +284,6 @@ export function App() {
     () => narrow(aimed.shown, projectPath, passage, scope),
     [aimed, projectPath, passage, scope],
   )
-  const hidden = questions.length - narrowed.length
 
   /*
    * And third, the parts of the epic ticked in the host's bar: of what the
@@ -284,46 +298,63 @@ export function App() {
    * change — one whose answer is on its way, or one they have opened a piece
    * of (`inHand` in `wire/focus.ts`, which says why the question that is
    * merely on screen is not one). If the new ticks put it outside, it is
-   * `held`: still drawn, in its place, still counted outside, and the note
-   * says so. It goes when they move to another question, or tick again.
+   * `held`: still drawn, in its place, and nothing announces it. It goes when
+   * they move to another question, or tick again.
    *
-   * `on` is where they stand, which follows the question and not the index:
-   * ticking a second part beside the one being read moves nobody. A question
-   * the new ticks leave out, and that is not in their hands, is left for the
-   * top of the new list — which is how this pane is seen to follow a tick.
+   * ## Where a change leaves the reader: on their question, while it is still shown
+   *
+   * `on` is where they stand, which follows the question and not the index.
+   * When the picks, the aim or the scope change (`stood`), the question in
+   * front stays in front if the new list still has it, with whatever piece of
+   * it was open; only when it does not are they at the top of the new list, at
+   * its options — which is how this pane is seen to follow a tick.
+   *
+   * All three are decided here, in one place, because one press makes more
+   * than one of them change, and not at once. The first part picked turns the
+   * aim from what the canvas shows to everything; the last one unpicked turns
+   * it back, and the paper beside this says what it now shows a moment later,
+   * in a context of its own. The aim used to send the reader to the top by
+   * itself, after the picks had put them on their question, so the first pick
+   * and the last always landed on the first question.
    */
   const [held, setHeld] = useState<string | null>(null)
   const on = useRef<string | null>(null)
   const hand = useRef<string | null>(null)
   /* Which question an answer in flight is to. */
   const answering = useRef<string | null>(null)
-  const [ticked, setTicked] = useState(focus)
-  if (ticked !== focus) {
-    setTicked(focus)
+  const [stood, setStood] = useState({ focus, aimedAt, narrowedBy })
+  if (stood.focus !== focus || stood.aimedAt !== aimedAt || stood.narrowedBy !== narrowedBy) {
+    setStood({ focus, aimedAt, narrowedBy })
     const now = on.current
-    const keep = hand.current
-    setHeld(keep)
-    setShown(standingOn(focus.narrow(narrowed, anchorOf(projectPath), { keep: (one) => one.id === keep }).shown, now))
+    /* Only a change of picks takes a question into keeping, or lets one go. */
+    const keep = stood.focus !== focus ? hand.current : held
+    if (stood.focus !== focus) setHeld(keep)
+    const at = stillOn(focus.narrow(narrowed, anchorOf(projectPath), { keep: (one) => one.id === keep }).shown, now)
+    setShown(at ?? 0)
+    if (at === null) setPart('options')
   }
   const inParts = useMemo(
-    () => focus.narrow(narrowed, anchorOf(projectPath), { noun: 'question', keep: (one) => one.id === held }),
+    () => focus.narrow(narrowed, anchorOf(projectPath), { keep: (one) => one.id === held }),
     [focus, narrowed, projectPath, held],
   )
   const visible = inParts.shown
   const leaving = useRef<{ list: readonly Asked[]; kept: string | null }>({ list: [], kept: null })
   leaving.current = { list: visible, kept: inParts.kept ? held : null }
-  /* Worded once, and read by both the page and the geometry: `view/room.ts`
-     needs the short form's WIDTH, because it is one more item in the row of
-     controls the paged rungs measure their room against. The scope's sentence
-     wins when both narrowed, because the scope is the reader's own press and
-     the thing they will look for first. */
-  const hiding = focusNote(inParts, hiddenNote(scope, hidden) ?? aimNote(front, hidden), hidden)
-  /* Why the aim left nothing, in this module's words — or null. Held apart
-     from `hiding`, because it is drawn as the whole screen and not a line. */
+  /*
+   * Why the pane is empty although the epic has questions, in one sentence —
+   * or null, when it is not empty or nothing has been asked at all. Whichever
+   * narrowing was the first to leave nothing is the one that says so: the aim,
+   * then the reader's scope, then the picked parts. It is the only thing this
+   * page says about a narrowing; `view/quiz.tsx` draws it in the empty area.
+   */
   const emptied =
-    aimed.shown.length === 0
-      ? whyEmpty(front, questions.length, aimed.unresolved)
-      : whyUnfocused(inParts, visible.length, narrowed.length)
+    visible.length > 0
+      ? null
+      : aimed.shown.length === 0
+        ? whyEmpty(front, questions.length, aimed.unresolved)
+        : narrowed.length === 0
+          ? whyUnscoped(scope)
+          : whyUnfocused(focus.focused, visible.length, narrowed.length)
 
   /*
    * What this container is showing, told to the canvas whenever it changes.
@@ -368,10 +399,9 @@ export function App() {
     [visible, fits.source],
   )
 
-  const brief = hiding?.brief ?? null
   const rungs = useMemo(
-    () => ladder({ frame, epic: epic ?? '', cards, fits, shown, measure, note: brief }),
-    [frame, epic, cards, fits, shown, measure, brief],
+    () => ladder({ frame, epic: epic ?? '', cards, fits, shown, measure }),
+    [frame, epic, cards, fits, shown, measure],
   )
 
   const at = Math.min(Math.max(shown, 0), Math.max(0, cards.length - 1))
@@ -409,6 +439,7 @@ export function App() {
     if (!where_) {
       setStandings([])
       setQuestions([])
+      setOrder(null)
       setTrouble(null)
       return
     }
@@ -426,6 +457,7 @@ export function App() {
     if (standing.current.project !== where_ || standing.current.epic !== which) return
     setStandings(opened.standings)
     setQuestions(opened.questions)
+    setOrder(opened.order)
     setFile(opened.file)
     setTrouble(opened.trouble)
   }, [])
@@ -436,6 +468,8 @@ export function App() {
   useEffect(() => {
     if (where === 'listening') return
     setQuestions([])
+    setOrder(null)
+    setDealt(null)
     void refresh()
   }, [where, projectPath, epic, refresh])
 
@@ -461,12 +495,16 @@ export function App() {
       writing.current = true
       answering.current = id
       try {
-        const out = await answer(projectPath, epic, id, chose)
+        const out = await answer(projectPath, epic, id, chose, order)
         if ('error' in out) {
-          setTrouble(out.error)
+          /* Dealt again elsewhere: nothing was recorded, and the read in
+             `finally` brings the order there is now. The sentence stays. */
+          if (out.dealt) setDealt(out.error)
+          else setTrouble(out.error)
           return
         }
         setTrouble(null)
+        setDealt(null)
         setQuestions((was) => was.map((question) => (question.id === id ? out.asked : question)))
         /*
          * And the reader stays exactly where they are.
@@ -492,7 +530,7 @@ export function App() {
         void refresh()
       }
     },
-    [projectPath, epic, refresh],
+    [projectPath, epic, order, refresh],
   )
 
   /**
@@ -555,7 +593,9 @@ export function App() {
         return
       }
       setTrouble(null)
+      setDealt(null)
       setQuestions(out.questions)
+      setOrder(out.order)
     } finally {
       writing.current = false
       setBusy(false)
@@ -695,15 +735,12 @@ export function App() {
         file={file}
         onEdit={(at) => setEditing({ at: at ?? null })}
         questions={visible}
-        /* What the narrowing hid, in this module's own words. Drawn in the page
-           because the host cannot count rows it does not render. */
-        hiding={hiding}
-        aimed={emptied}
+        empty={emptied}
         onAnswer={(id, chose) => void onAnswer(id, chose)}
         onPoint={onPoint}
         pointed={pointed}
         onRetake={() => void onRetake()}
-        trouble={trouble}
+        trouble={trouble ?? dealt}
         busy={busy}
         room={fits}
         ladder={rungs}

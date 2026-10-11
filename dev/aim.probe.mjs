@@ -118,12 +118,12 @@ for (const size of [
     route.fulfill({ status: 200, contentType: 'text/html', body: host(size.width, size.height) }))
   await page.goto('http://localhost:4181/learning-aim', { waitUntil: 'domcontentloaded' })
   const frame = page.frameLocator('#frame')
-  await frame.locator('[data-question], [data-aim-note], [data-scope-note]').first().waitFor({ timeout: 15_000 })
+  await frame.locator('[data-question], [data-empty-note]').first().waitFor({ timeout: 15_000 })
 
   const read = async () => {
     const cards = await frame.locator('[data-question]').evaluateAll((nodes) =>
       nodes.map((n) => `${n.getAttribute('data-question')}:${n.querySelector('[data-passage]')?.getAttribute('data-source')?.split('/').pop()}:${n.querySelector('[data-passage]')?.getAttribute('data-passage')}`))
-    const note = await frame.locator('[data-aim-note], [data-scope-note]').evaluateAll((nodes) => nodes.map((n) => n.textContent.trim()))
+    const note = await frame.locator('[data-empty-note]').evaluateAll((nodes) => nodes.map((n) => n.textContent.trim()))
     return { cards, note }
   }
   const offers = () => page.evaluate(() => window.__sent.filter((m) => m.type === 'kehikot.filters').map((m) => JSON.stringify(m.groups)))

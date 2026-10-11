@@ -660,30 +660,12 @@ function headingHeight(epic: string, questions: number, width: number, measure: 
  * row that is occasionally shorter than reserved is the cheap half of that
  * trade.
  */
-function controlsHeight(count: number, width: number, measure: Measure, note: string | null): number {
+function controlsHeight(count: number, width: number, measure: Measure): number {
   const m = metrics(width, true)
   const items: number[] = []
   if (count > 1) items.push(ROW, measure(`${count} / ${count}`, OPTION.px) + 16, ROW)
   for (const part of EVERY_PART) items.push(measure(PART_LABEL[part], SMALL.px) + 12)
   items.push(measure(`${count} right`, SMALL.px))
-  /*
-   * What a scope is hiding — `+3 elsewhere` — counted only when there is
-   * something to hide, which is the one item in this row that is not reserved at
-   * its widest.
-   *
-   * The rule that makes everything else unconditional is that what the row
-   * happens to be showing must not decide which rung is shown, because that is a
-   * loop with the reader inside it. This is outside that loop: whether anything
-   * is hidden is a fact about the store and the canvas — how many questions there
-   * are, and how narrow the reader set this container — and nothing the ladder
-   * decides can change it.
-   *
-   * Reserving it always was tried and measured: at 460 wide it took a whole extra
-   * row of the box off every reader, permanently, to hold a phrase most of them
-   * will never see. This is the same trade `wholeHeight()` makes about an
-   * explanation that has not been earned yet.
-   */
-  if (note) items.push(measure(note, SMALL.px))
   items.push(measure('Ask again', OPTION.px) + 16)
   items.push(measure('Edit', OPTION.px) + 16)
 
@@ -847,18 +829,8 @@ export function ladder(input: {
   fits: Room
   shown: number
   measure: Measure
-  /**
-   * The short form of what a scope is hiding — `+3 elsewhere` — or null when
-   * nothing is hidden. It is one more item in the row of controls at the paged
-   * rungs, and the row is what the available height is measured against.
-   *
-   * A string rather than a count because this file knows nothing about scopes and
-   * should not: what it needs is how WIDE the phrase is, which is a question for
-   * `measure`. `wire/scope.ts` writes the words.
-   */
-  note?: string | null
 }): Ladder {
-  const { frame, epic, cards, fits, shown, measure, note = null } = input
+  const { frame, epic, cards, fits, shown, measure } = input
 
   /*
    * Unmeasured, or nothing to show. The same answer `room()` gives and for the
@@ -886,7 +858,7 @@ export function ladder(input: {
   }
 
   const whole = cards.map((card) => wholeHeight(card, frame.width, measure))
-  const available = frame.height - 2 * m.pagePad - controlsHeight(cards.length, frame.width, measure, note)
+  const available = frame.height - 2 * m.pagePad - controlsHeight(cards.length, frame.width, measure)
   const at = Math.min(Math.max(shown, 0), cards.length - 1)
   const rung: Rung = (whole[at] ?? 0) <= available ? 'one' : 'part'
   const card = cards[at]

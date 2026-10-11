@@ -5,7 +5,6 @@ import type { Asked } from '@/store/ask.ts'
 import type { Ladder, Part, Room } from '@/view/room.ts'
 import { PART_LABEL } from '@/view/room.ts'
 import { sourceLabel } from '@/wire/pointed.ts'
-import type { Hidden } from '@/wire/scope.ts'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button.tsx'
 
@@ -517,8 +516,7 @@ export function QuizView({
   file = null,
   onEdit,
   questions,
-  hiding = null,
-  aimed = null,
+  empty = null,
   onAnswer,
   onPoint,
   pointed,
@@ -548,29 +546,14 @@ export function QuizView({
   onEdit?: (at?: { id: string; question: string }) => void
   questions: Asked[]
   /**
-   * What the scope is hiding, already worded — `3 more questions about other
-   * documents` — or null when it is hiding nothing.
-   *
-   * A string rather than a number and a scope, because the sentence has to stay
-   * true to what `narrow()` in `wire/scope.ts` actually did, and the two are read
-   * together there. This view's job is to find it a line.
-   *
-   * It is drawn in the PAGE, and that is the point of it. The scope control lives
-   * in the container header now, where the host draws it, and a host cannot count
-   * rows it does not render, in a document it cannot read, in a frame on another
-   * origin. A container that quietly holds nine questions and shows two, with
-   * nothing on screen saying so, is a container that has lost them.
+   * Why there is nothing to show although questions exist, in one sentence —
+   * the aim, the scope or the picked parts emptied the pane (`whyEmpty`,
+   * `whyUnscoped`, `whyUnfocused` in `wire/`) — or null when nothing has been
+   * asked at all. Drawn only on the empty screen, where it costs no room and
+   * stops the pane looking broken; a pane WITH questions says nothing about the
+   * ones it is not showing.
    */
-  hiding?: Hidden | null
-  /**
-   * Why the aim emptied this pane, already worded — `whyEmpty` in
-   * `wire/aim.ts` — or null when it did not. Names the picked-out containers,
-   * the ones showing nothing, and the questions whose anchors do not resolve,
-   * because a pane emptied by a tick on a NEIGHBOUR is a pane whose emptiness
-   * has no visible cause otherwise. Drawn before the scope's sentence, since
-   * the aim narrows first.
-   */
-  aimed?: { said: string; remedy: string } | null
+  empty?: string | null
   onAnswer: (id: string, chose: number) => void
   /** A person pressed a question's source. Nothing else may call this. */
   onPoint: (id: string) => void
@@ -606,28 +589,15 @@ export function QuizView({
       <section className="flex min-w-0 flex-col gap-1.5">
         <h2 className="text-[0.8rem] font-semibold [overflow-wrap:anywhere] @sm/container:text-sm">{epic}</h2>
         {/*
-          Two empty screens, not one, and telling them apart is the whole reason
-          the count is drawn here.
-
-          "Nothing has been asked yet" is a fact about the paper and asks for an
-          agent. "The scope you chose has nothing in it" is a fact about a press,
-          it is undone by another press, and drawing the first sentence over it
-          would be this container blaming an absence on the wrong thing — a reader
-          would go looking for questions that are sitting right there.
+          Two empty screens, not one. "Nothing has been asked yet" is a fact
+          about the paper and asks for an agent. "What you narrowed to has
+          nothing in it" is a fact about a press, undone by another press, and
+          drawing the first sentence over it would send a reader looking for
+          questions that are sitting right there.
         */}
-        {aimed ? (
-          <>
-            <p data-aim-note="empty" className="text-[0.7rem] leading-4 text-muted-foreground">
-              {aimed.said}
-            </p>
-            <p data-aim-note="remedy" className="text-[0.65rem] leading-4 text-muted-foreground">
-              {aimed.remedy}
-            </p>
-          </>
-        ) : hiding ? (
-          <p data-scope-note="empty" className="text-[0.7rem] leading-4 text-muted-foreground">
-            Nothing has been asked about this, at the scope this container is set to — {hiding.full}. Widen it in the
-            container’s header.
+        {empty ? (
+          <p data-empty-note className="text-[0.7rem] leading-4 text-muted-foreground">
+            {empty}
           </p>
         ) : (
           <p className="text-[0.7rem] leading-4 text-muted-foreground">
@@ -836,28 +806,6 @@ export function QuizView({
               ))
             : null}
 
-          {/*
-            What the scope is hiding, in the row rather than on a line of its
-            own, and in four words rather than forty.
-
-            At 220 wide a sentence here would take a whole extra row from the
-            question, so this is `+3 elsewhere` with the long form on the row's
-            `title` — the same deferral by one hover that the short source label
-            already makes. `controlsHeight()` in `view/room.ts` reserves it at
-            every paged rung whether or not it is drawn, so a reader pressing the
-            scope control in the container header cannot change which rung they
-            are on.
-          */}
-          {hiding ? (
-            <span
-              data-scope-note="brief"
-              title={[hiding.full, hiding.where].filter(Boolean).join(' ')}
-              className="text-[0.65rem] whitespace-nowrap text-muted-foreground"
-            >
-              {hiding.brief}
-            </span>
-          ) : null}
-
           {answered ? (
             <>
               <span className="text-[0.65rem] whitespace-nowrap text-muted-foreground">{right} right</span>
@@ -905,28 +853,6 @@ export function QuizView({
       <div className="flex min-w-0 snap-start flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <h2 className="text-[0.8rem] font-semibold [overflow-wrap:anywhere] @sm/container:text-sm">{epic}</h2>
         <span className="text-[0.65rem] text-muted-foreground">{score}</span>
-        {/*
-          The whole sentence here, and the short one in the paged row above.
-
-          This block is a list's heading and it already wraps to two rows at 220
-          wide; one more phrase in the same wrap costs a row only where the score
-          did not already take one. It says what it is a count OF, which is what
-          a reader who did not press the scope control themselves — a container
-          restored with yesterday's preference on it — needs in order to know why
-          there are two questions where there were nine.
-
-          `headingHeight()` in `view/room.ts` does not count it, and that is the
-          same decision it makes about `trouble`: the list rung is decided from
-          what the questions are rather than from what the reader has done, and a
-          row reserved for every reader to pay for a narrowing most of them have
-          not chosen is the wrong side of that trade. The consequence is a list
-          that scrolls a few pixels more while narrowed, which is what a list does.
-        */}
-        {hiding ? (
-          <span data-scope-note="full" title={hiding.where} className="text-[0.65rem] text-muted-foreground">
-            {hiding.full}
-          </span>
-        ) : null}
       </div>
 
       {trouble ? (

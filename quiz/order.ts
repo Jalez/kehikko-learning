@@ -61,3 +61,25 @@ export const toFile = (order: readonly number[], shown: number): number | undefi
 
 /** The position this file index is shown at, or -1 when it is not an option. */
 export const toShown = (order: readonly number[], file: number): number => order.indexOf(file)
+
+/**
+ * The name of one dealing of an epic's options, which the page is sent with
+ * the questions and sends back with an answer.
+ *
+ * A position only means something in the order it was shown in, and "Ask these
+ * again" deals a new one. A page that has not yet read it — another tab, in the
+ * seconds before its next poll — would post a position from the old order and
+ * have it read in the new, which is somebody recorded as choosing an option
+ * they never pressed. So the answer says which dealing its position is in, and
+ * one that names any but the current is refused (`scoreShown`).
+ *
+ * It says WHICH and nothing about WHAT. It is one value for the whole epic, the
+ * same for every question and whatever the file holds, so there is no position
+ * in it; and it is a one-way hash of the salt under a prefix no draw uses
+ * (`draw` hashes the salt FIRST, and a salt is hex), so neither the salt nor
+ * any draw made from it can be worked back out. Derived rather than stored, so
+ * it cannot fall out of step with the salt it names.
+ */
+export function orderTag(salt: string): string {
+  return createHash('sha256').update(`the name of a dealing\n${salt}`).digest('hex').slice(0, 16)
+}

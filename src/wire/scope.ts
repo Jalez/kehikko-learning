@@ -116,16 +116,15 @@ export function reachOf(projectPath: string | null, passage: Pointing | null): R
  * be narrowed now" and which takes the control away until there is something to
  * choose between.
  *
- * ## The count is NOT in these labels
+ * ## No count in these labels, and none in the page
  *
- * The protocol allows it and notes uses it, and it is wrong here. The number a
- * reader wants is how many questions the narrowing is hiding, which changes
- * every time the canvas moves — that would be an offer re-sent several times a
- * second, on every host on the canvas, to keep a number current in a menu that
- * is usually closed. The count is drawn in the page instead, where this module
- * is already re-rendering anyway, and where there is room to say what it is a
- * count OF. The host cannot count rows it does not render; this module can, and
- * it does it in its own words in `view/quiz.tsx`.
+ * The protocol allows a count in a label and notes uses it. Here the number
+ * would change every time the canvas moves — an offer re-sent several times a
+ * second to keep a number current in a menu that is usually closed. Nor is one
+ * drawn in the page: the questions on screen are the message, and a line saying
+ * how many more exist elsewhere cost a row of a box that is often 220 pixels
+ * wide. The one thing the page says is why it is EMPTY, when a scope emptied
+ * it — `whyUnscoped` below.
  */
 export function offer(reach: Reach, greeted = true): FilterGroup[] | null {
   /*
@@ -150,9 +149,9 @@ export function offer(reach: Reach, greeted = true): FilterGroup[] | null {
   if (!reach.file) return []
   const options = [
     { id: 'all', label: 'Anywhere' },
-    { id: 'file', label: 'This document' },
+    { id: 'file', label: RUNG.file },
   ]
-  if (reach.section) options.push({ id: 'section', label: 'This passage' })
+  if (reach.section) options.push({ id: 'section', label: RUNG.section })
   return [{ id: SCOPE, label: 'scope', options, fallback: 'all' }]
 }
 
@@ -177,6 +176,34 @@ export function scopeOf(chosen: FilterChoice, reach: Reach): Scope {
   if (said === 'section' && reach.section) return 'section'
   if ((said === 'file' || said === 'section') && reach.file) return 'file'
   return 'all'
+}
+
+/** What the two narrow rungs are called in the header, spelled once. */
+const RUNG = { file: 'This document', section: 'This passage' } as const
+
+/**
+ * The scope as it can apply beside the picked parts of the epic.
+ *
+ * The scope narrows to the document the canvas points at, and the parts
+ * (`wire/focus.ts`) narrow what it leaves to the files they own. When that
+ * document is in none of the picked parts the two have nothing in common: no
+ * question can be about it and in a picked part at once. A passage is not
+ * always moved by a tick — on a kehikko with no paper it is wherever a
+ * question's source was last pressed — so the scope stood on the old chapter
+ * and every part picked after it came up empty.
+ *
+ * So there the parts lead and the scope is `all`, silently. The reader's
+ * choice is untouched: the host still holds it, its control still shows it,
+ * and it narrows again the moment the canvas points into a picked part or the
+ * parts are unpicked. Where the document IS in a picked part the scope applies
+ * as it always did — that is the reader asking for one document of the parts
+ * they picked.
+ *
+ * `inParts` is whether the pointed document is in a picked part; it is not
+ * read unless `focused`.
+ */
+export function besideParts(scope: Scope, focused: boolean, inParts: boolean): Scope {
+  return focused && !inParts ? 'all' : scope
 }
 
 /**
@@ -224,45 +251,16 @@ export function narrow<T extends Anchored>(
 }
 
 /**
- * What to say about the questions a scope is hiding, in this module's words.
+ * The one sentence for a pane the reader's own scope emptied, or null at
+ * `all`, which empties nothing.
  *
- * Here rather than in the view because it is the sentence that has to stay true
- * to what `narrow()` actually did, and the two should be read together. The host
- * cannot write it: it does not render the rows, cannot read the document, and is
- * looking at a frame on another origin.
- *
- * Null when nothing is hidden, because a line reading "0 more" is a row of chrome
- * saying nothing happened.
- *
- * ## Two spellings, for the two rooms this module gets
- *
- * The same trade as `sourceLabel()` and the retake note, and for the same reason.
- * At the `list` rung the count has a line to itself under the heading and says
- * what it is a count of. At the paged rungs it goes into the one row of controls
- * beside the pager and the score, in a box 220 pixels wide where a forty-
- * character sentence would take a whole extra row from the question — so it is
- * `+3 elsewhere`, with the long form on the row's `title`.
- *
- * `brief` is deliberately shaped so `controlsHeight()` in `view/room.ts` can
- * reserve it from the question COUNT alone, without knowing whether anything is
- * hidden. Reserving a row that is usually not drawn is the conservative
- * direction; measuring the row that is drawn would be the layout deciding its own
- * height, which is the loop that whole file is arranged to avoid.
+ * Said only where there would otherwise be nothing on screen at all: a
+ * narrowing that leaves questions says nothing about the ones it left out. It
+ * names the control by the words on it and where it is, because that press is
+ * the way back.
  */
-export interface Hidden {
-  /** For a line of its own: `3 more questions outside this passage`. */
-  full: string
-  /** For a row of controls in a 220-pixel column: `+3 elsewhere`. */
-  brief: string
-  /** Where the control that hid them is, when it is not this container's header: the tooltip. */
-  where?: string
-}
-
-export function hiddenNote(scope: Scope, hidden: number): Hidden | null {
-  if (hidden <= 0 || scope === 'all') return null
-  const many = hidden === 1 ? '1 more question' : `${hidden} more questions`
-  return {
-    full: scope === 'section' ? `${many} outside this passage` : `${many} about other documents`,
-    brief: `+${hidden} elsewhere`,
-  }
+export function whyUnscoped(scope: Scope): string | null {
+  if (scope === 'all') return null
+  const what = scope === 'section' ? 'passage' : 'document'
+  return `No question here is about this ${what}; this container’s scope is “${RUNG[scope]}”, in its header.`
 }

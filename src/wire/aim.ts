@@ -88,19 +88,16 @@ import { documentOf, type Anchored } from '@/wire/pointed.ts'
  * is a sentence with no content. So `self` is dropped before anything is
  * counted, and picking out only this container narrows nothing.
  *
- * ## Narrowing says what it hid
+ * ## A pane it empties says why, and a pane it merely narrows says nothing
  *
  * A container emptied by a tick on a neighbour has to say so, or its
- * emptiness has no visible cause. So what comes back names the picked-out
- * containers and, separately, the ones showing no document at all —
- * "journeys is picked out and shows no document" is a different sentence from
- * "none of these questions is about what paper shows", with a different
- * remedy. And a third absence, which is this module's own: a question whose
- * source names no readable file — `documentOf` in `wire/pointed.ts` — can
- * never be in front of anything, because the places a container shows are
- * real files and its source is not one. Those are counted and named too, because otherwise the
- * eighteen questions this was written against would vanish behind a tick and
- * the sentence would blame the paper.
+ * emptiness has no visible cause. `whyEmpty` is that one sentence: the
+ * picked-out containers showing no document, or showing documents no question
+ * is about, or — this module's own absence — questions whose source names no
+ * readable file (`documentOf` in `wire/pointed.ts`), which can never be in
+ * front of anything. While there ARE questions in front, nothing is said about
+ * the ones that are not: the questions on screen are the message, and a line
+ * counting the rest cost a row.
  *
  * ## An older host
  *
@@ -235,71 +232,33 @@ export function aimOffer(
 }
 
 /**
- * The sentence for a pane the aim emptied, or null when the aim did not
+ * The one sentence for a pane the aim emptied, or null when the aim did not
  * empty it.
  *
- * Three absences, each named, because each has its own remedy: a picked-out
- * container that shows nothing (pick out one that does), a shown document no
- * question is about (write one, or set the aim to everything), and a question
- * whose source names no readable file (cite it again — `reword_quiz` with `path`).
- * `held` is how many questions the epic has at all; `unresolved` how many of
- * those cannot be in front of anything.
+ * Three absences, and the sentence names whichever is the cause: every
+ * question's source names no readable file (cite them again — `reword_quiz`
+ * with `path`), a picked-out container shows nothing, or what is shown is not
+ * what any question is about. One sentence and no second line: it is drawn in
+ * a pane with nothing else in it, and its job is that the pane does not look
+ * broken. `held` is how many questions the epic has at all; `unresolved` how
+ * many of those cannot be in front of anything.
  */
-export interface Emptied {
-  /** What emptied the pane. */
-  said: string
-  /** The way out, which follows the cause: a tick to undo, a document to open, or an anchor to repair. */
-  remedy: string
-}
-
-export function whyEmpty(front: InFront, held: number, unresolved: number): Emptied | null {
+export function whyEmpty(front: InFront, held: number, unresolved: number): string | null {
   if (front.everything || held === 0) return null
-  const rotten =
-    unresolved > 0
-      ? ` ${unresolved === held ? (held === 1 ? 'It is' : 'All of them are') : `${unresolved} of them are`} about `
-        + `${unresolved === 1 ? 'a document that is' : 'documents that are'} not in this project, so ${unresolved === 1 ? 'it' : 'they'} `
-        + 'cannot be in front of anything until cited again.'
-      : ''
-  const off = 'set this container’s aim to everything on this kehikko'
-  const remedy =
-    unresolved === held
-      ? `An agent cites them again with reword_quiz, or fix the path under Sources: in the file. Until then, ${off} to see them.`
-      : front.narrowed
-        ? `Untick a container, pick out one that shows a document, or ${off}.`
-        : `Open one of their documents on this kehikko, or ${off}.`
+  if (unresolved === held) {
+    return held === 1
+      ? 'The 1 question here is about a document that is not in this project, so it cannot be in front of anything until cited again.'
+      : `The ${held} questions here are about documents that are not in this project, so they cannot be in front of anything until cited again.`
+  }
   if (front.narrowed) {
     const names = front.picked.map(nameOf)
     const one = names.length === 1
     if (front.quiet.length === front.picked.length) {
-      return {
-        said: `${list(names)} ${one ? 'is' : 'are'} picked out and ${one ? 'shows' : 'show'} no document, so there is nothing here for a question to be about.${rotten}`,
-        remedy,
-      }
+      return `${list(names)} ${one ? 'is' : 'are'} picked out and ${one ? 'shows' : 'show'} no document, so there is nothing here for a question to be about.`
     }
-    const quiet = front.quiet.map(nameOf)
-    const tail = quiet.length ? ` ${list(quiet)} ${quiet.length === 1 ? 'shows' : 'show'} no document.` : ''
-    return {
-      said: `${list(names)} ${one ? 'is' : 'are'} picked out; none of the ${count(held)} here is about what ${one ? 'it shows' : 'they show'}.${tail}${rotten}`,
-      remedy,
-    }
+    return `${list(names)} ${one ? 'is' : 'are'} picked out; none of the ${count(held)} here is about what ${one ? 'it shows' : 'they show'}.`
   }
-  return { said: `Nothing on this kehikko is showing a document any of the ${count(held)} here is about.${rotten}`, remedy }
-}
-
-/**
- * What to say about the questions the aim is hiding from a list that still
- * has some, in the two rooms this module gets — see `hiddenNote` in
- * `wire/scope.ts`, whose shape this shares so the page can draw either.
- */
-export function aimNote(front: InFront, hidden: number): { full: string; brief: string } | null {
-  if (front.everything || hidden <= 0) return null
-  const many = hidden === 1 ? '1 more question' : `${hidden} more questions`
-  return {
-    full: front.narrowed
-      ? `${many} about documents ${list(front.picked.map(nameOf))} ${front.picked.length === 1 ? 'is' : 'are'} not showing`
-      : `${many} about documents nothing here is showing`,
-    brief: `+${hidden} elsewhere`,
-  }
+  return `Nothing on this kehikko is showing a document any of the ${count(held)} here is about.`
 }
 
 /** The last word of a module id, which is what the ids look like: `kehikot.journeys` is `journeys`. */

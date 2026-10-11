@@ -59,11 +59,17 @@ function served(): Shown[] {
   return (reply?.body as { questions: Shown[] }).questions
 }
 
+/** The name of the order they were sent in: what a page holds beside them, and posts back with an answer. */
+function dealt(): string {
+  const reply = answer('GET', '/api/questions', new URLSearchParams({ project: dir, epic: EPIC }), null, null)
+  return (reply?.body as { order: string }).order
+}
+
 /** Press an option by its words, at whatever position the page shows it. */
 function press(id: string, words: string) {
   const chose = served().find((one) => one.id === id)!.options.indexOf(words)
   expect(chose).toBeGreaterThanOrEqual(0)
-  const reply = answer('POST', '/api/answer', nothing, { project: dir, epic: EPIC, id, chose }, TICKET)
+  const reply = answer('POST', '/api/answer', nothing, { project: dir, epic: EPIC, id, chose, order: dealt() }, TICKET)
   expect(reply?.status).toBe(200)
   return reply?.body as { right: boolean; answer: number; why: string; attempt: { chose: number; right: boolean }; asked: Shown }
 }
@@ -218,7 +224,7 @@ describe('a press, the reveal and what was answered before', () => {
   test('a position that is not one is refused, and nothing is recorded', () => {
     const id = add(0)
     for (const chose of [4, 47, -1]) {
-      const reply = answer('POST', '/api/answer', nothing, { project: dir, epic: EPIC, id, chose }, TICKET)
+      const reply = answer('POST', '/api/answer', nothing, { project: dir, epic: EPIC, id, chose, order: dealt() }, TICKET)
       expect(reply?.status).toBe(400)
     }
     expect(existsSync(join(folder(), 'answers.json'))).toBe(false)
@@ -245,6 +251,57 @@ describe('asking again', () => {
     const out = press(ids[1]!, WRONG(1, 2))
     expect(out.asked.options[out.attempt.chose]).toBe(WRONG(1, 2))
     expect(stored()[EPIC]![ids[1]!]).toMatchObject([{ chose: 2 }])
+  })
+
+  test('a press from a page still showing the order before the retake is refused, never read in the new order', () => {
+    /* Two tabs on one quiz. Both have read it; this is what the second one holds. */
+    const ids = Array.from({ length: MANY }, (_, n) => add(n))
+    const held = { questions: served(), order: dealt() }
+
+    /* The first tab asks them again. */
+    const again = (answer('POST', '/api/retake', nothing, { project: dir, epic: EPIC }, TICKET)?.body as { questions: Shown[]; order: string })
+    expect(again.order).not.toBe(held.order)
+    expect(dealt()).toBe(again.order)
+
+    /* The second, before its next poll, presses the RIGHT option of every question, where it sees it. */
+    let moved = 0
+    held.questions.forEach((one, n) => {
+      const chose = one.options.indexOf(RIGHT(n))
+      if (again.questions[n]!.options[chose] !== RIGHT(n)) moved += 1
+      const reply = answer('POST', '/api/answer', nothing, { project: dir, epic: EPIC, id: one.id, chose, order: held.order }, TICKET)
+      expect(reply?.status).toBe(409)
+      const said = JSON.stringify(reply?.body)
+      expect(said).toContain('Nothing was recorded')
+      expect(said).toContain('Look at the options again')
+      /* A refusal carries no verdict and no key. */
+      expect(said).not.toContain('Because of')
+      expect(said).not.toMatch(/"(answer|right|attempt|asked)"/)
+    })
+    /* Read in the new order, most of those presses would have been recorded as some other option. */
+    expect(moved).toBeGreaterThan(MANY / 2)
+    /* None was recorded as anything. */
+    expect(existsSync(join(folder(), 'answers.json')) ? Object.keys(stored()[EPIC] ?? {}) : []).toEqual([])
+    expect(served().every((one) => one.answer === null && one.attempts.length === 0)).toBe(true)
+
+    /* Having read again, the same person's press is their own words. */
+    const out = press(ids[3]!, WRONG(3, 2))
+    expect(out.asked.options[out.attempt.chose]).toBe(WRONG(3, 2))
+    expect(stored()[EPIC]![ids[3]!]).toMatchObject([{ chose: 2, right: false }])
+  })
+
+  test('the name of an order is the same on every read, and says which order without saying what it is', () => {
+    Array.from({ length: MANY }, (_, n) => add(n))
+    const tag = dealt()
+    expect(tag).toMatch(/^[0-9a-f]{16}$/)
+    expect(dealt()).toBe(tag)
+    expect(tag).not.toBe(salts()[EPIC]!)
+    expect(salts()[EPIC]!).not.toContain(tag)
+    /* A name somebody made up, or one for another epic's order, is no more use than the old one. */
+    const [first] = served()
+    for (const order of ['0000000000000000', salts()[EPIC]!, `${tag}0`]) {
+      expect(answer('POST', '/api/answer', nothing, { project: dir, epic: EPIC, id: first!.id, chose: 0, order }, TICKET)?.status).toBe(409)
+    }
+    expect(existsSync(join(folder(), 'answers.json'))).toBe(false)
   })
 
   test('another epic’s order is left alone by it', () => {
