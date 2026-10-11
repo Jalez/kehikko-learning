@@ -5,7 +5,7 @@ import { FOCUS_WHERE, partsDeclaration, type EpicPart } from 'kehikot-module-pro
 import { useFocus } from 'kehikot-module-protocol/client/react'
 
 import { MANIFEST } from '../manifest.ts'
-import { anchorOf, focusNote, inHand, standingOn, whyUnfocused } from '../src/wire/focus.ts'
+import { anchorOf, focusNote, inHand, standingOn, stillOn, whyUnfocused } from '../src/wire/focus.ts'
 import type { Anchored } from '../src/wire/pointed.ts'
 
 /**
@@ -84,6 +84,13 @@ describe('which questions the ticked parts leave', () => {
     expect(standingOn(narrowed(['intro', 'methods']).shown, 'methods-1')).toBe(2)
     expect(standingOn(narrowed(['intro']).shown, 'methods-1')).toBe(0)
     expect(standingOn(narrowed(['intro']).shown, null)).toBe(0)
+  })
+
+  test('whether their question is still shown is told apart from being at the top', () => {
+    expect(stillOn(narrowed(['intro', 'methods']).shown, 'methods-1')).toBe(2)
+    expect(stillOn(narrowed(['intro']).shown, 'intro-1')).toBe(0)
+    expect(stillOn(narrowed(['intro']).shown, 'methods-1')).toBeNull()
+    expect(stillOn(narrowed(['intro']).shown, null)).toBeNull()
   })
 })
 

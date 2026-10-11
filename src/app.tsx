@@ -13,7 +13,7 @@ import { NoEpic } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
 import { textWidth } from '@/view/text.ts'
 import { useFrame } from '@/view/use-frame.ts'
-import { anchorOf, focusNote, inHand, standingOn, whyUnfocused } from '@/wire/focus.ts'
+import { anchorOf, focusNote, inHand, stillOn, standingOn, whyUnfocused } from '@/wire/focus.ts'
 import { aimNote, aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
 import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
 import { besideParts, hiddenNote, narrow, offer, reachOf, scopeOf } from '@/wire/scope.ts'
@@ -217,30 +217,30 @@ export function App() {
   }, [])
 
   /*
-   * A different set of questions is a different place to be standing.
-   *
-   * A different paper, obviously: starting a reader halfway through one because
-   * that is where they were in the last is a position they never chose. And a
-   * different SCOPE for the same reason — narrowing to this document is a request
-   * to be shown that document's questions, not to be left on whichever index the
-   * old list happened to have them at.
-   *
-   * `narrowedBy` is what makes the second half honest without making it noisy. At
-   * `all` it is the constant string, so a reader scrolling through a chapter — a
-   * new passage several times a second — is never moved. Narrowed, it names the
-   * place being narrowed to, so moving to another paragraph is the one case that
-   * genuinely does change which questions exist.
+   * A different paper is a different place to be standing: starting a reader
+   * halfway through one because that is where they were in the last is a
+   * position they never chose.
    */
-  const narrowedBy = scope === 'all' ? 'all' : `${scope} ${passage ? keyOf(passage) : ''}`
-  /* And the aim, by the same argument: a different set of documents in front
-     is a different set of questions, and the reader should start at its top.
-     The string is the paths, so a context that re-states the same canvas
-     moves nobody. */
-  const aimedAt = front.everything ? 'everything' : front.documents.map((one) => one.path).join('\n')
   useEffect(() => {
     setShown(0)
     setPart('options')
-  }, [projectPath, epic, narrowedBy, aimedAt])
+  }, [projectPath, epic])
+
+  /*
+   * And within one paper, three things change which questions are in front:
+   * the reader's scope, what the canvas shows, and the picked parts. Each is
+   * named by a value that changes only when the set of questions can —
+   * `stood`, below, beside the list they decide, says where that leaves the
+   * reader.
+   *
+   * `narrowedBy`: at `all` it is the constant string, so a reader scrolling
+   * through a chapter — a new passage several times a second — is never
+   * moved. Narrowed, it names the place being narrowed to, so moving to another
+   * paragraph is the one case that genuinely does change which questions exist.
+   */
+  const narrowedBy = scope === 'all' ? 'all' : `${scope} ${passage ? keyOf(passage) : ''}`
+  /* The aim is the paths in front, so a context that re-states the same canvas moves nobody. */
+  const aimedAt = front.everything ? 'everything' : front.documents.map((one) => one.path).join('\n')
 
   /*
    * The font engine, asked once.
@@ -295,23 +295,37 @@ export function App() {
    * `held`: still drawn, in its place, still counted outside, and the note
    * says so. It goes when they move to another question, or tick again.
    *
-   * `on` is where they stand, which follows the question and not the index:
-   * ticking a second part beside the one being read moves nobody. A question
-   * the new ticks leave out, and that is not in their hands, is left for the
-   * top of the new list — which is how this pane is seen to follow a tick.
+   * ## Where a change leaves the reader: on their question, while it is still shown
+   *
+   * `on` is where they stand, which follows the question and not the index.
+   * When the picks, the aim or the scope change (`stood`), the question in
+   * front stays in front if the new list still has it, with whatever piece of
+   * it was open; only when it does not are they at the top of the new list, at
+   * its options — which is how this pane is seen to follow a tick.
+   *
+   * All three are decided here, in one place, because one press makes more
+   * than one of them change, and not at once. The first part picked turns the
+   * aim from what the canvas shows to everything; the last one unpicked turns
+   * it back, and the paper beside this says what it now shows a moment later,
+   * in a context of its own. The aim used to send the reader to the top by
+   * itself, after the picks had put them on their question, so the first pick
+   * and the last always landed on the first question.
    */
   const [held, setHeld] = useState<string | null>(null)
   const on = useRef<string | null>(null)
   const hand = useRef<string | null>(null)
   /* Which question an answer in flight is to. */
   const answering = useRef<string | null>(null)
-  const [ticked, setTicked] = useState(focus)
-  if (ticked !== focus) {
-    setTicked(focus)
+  const [stood, setStood] = useState({ focus, aimedAt, narrowedBy })
+  if (stood.focus !== focus || stood.aimedAt !== aimedAt || stood.narrowedBy !== narrowedBy) {
+    setStood({ focus, aimedAt, narrowedBy })
     const now = on.current
-    const keep = hand.current
-    setHeld(keep)
-    setShown(standingOn(focus.narrow(narrowed, anchorOf(projectPath), { keep: (one) => one.id === keep }).shown, now))
+    /* Only a change of picks takes a question into keeping, or lets one go. */
+    const keep = stood.focus !== focus ? hand.current : held
+    if (stood.focus !== focus) setHeld(keep)
+    const at = stillOn(focus.narrow(narrowed, anchorOf(projectPath), { keep: (one) => one.id === keep }).shown, now)
+    setShown(at ?? 0)
+    if (at === null) setPart('options')
   }
   const inParts = useMemo(
     () => focus.narrow(narrowed, anchorOf(projectPath), { noun: 'question', keep: (one) => one.id === held }),

@@ -81,11 +81,20 @@ export function whyUnfocused(narrowing: Narrowing, left: number, before: number)
 }
 
 /**
- * Where the reader stands after the ticks changed: the index, in the new
- * list, of the question they were on — or the top when they were on none.
+ * Whether the question the reader was on is still shown: its index in the new
+ * list, or null when it is not there — or they were on none.
+ */
+export function stillOn(shown: readonly { id: string }[], on: string | null): number | null {
+  const at = on === null ? -1 : shown.findIndex((question) => question.id === on)
+  return at === -1 ? null : at
+}
+
+/**
+ * Where the reader stands after the list changed: the index, in the new
+ * list, of the question they were on — or the top when it is not there.
  */
 export function standingOn(shown: readonly { id: string }[], on: string | null): number {
-  return Math.max(0, on === null ? 0 : shown.findIndex((question) => question.id === on))
+  return stillOn(shown, on) ?? 0
 }
 
 /**

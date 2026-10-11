@@ -30,6 +30,17 @@ const ASKED = {
 }
 let dir = ''
 
+const add = (question: string, file: string, quote: string) =>
+  door('POST', '/mcp', new URLSearchParams(), {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: {
+      name: 'add_quiz',
+      arguments: { project: dir, epic: EPIC, question, options: ['One thing', 'Another thing', 'A third thing'], answer: 1, why: WHY, path: `${PAPER}/chapters/${file}`, quote },
+    },
+  }, null)
+
 beforeEach(() => {
   resetServerStanding()
   mailbox.forget?.()
@@ -38,16 +49,6 @@ beforeEach(() => {
   writeFileSync(join(dir, PAPER, 'main.tex'), '\\include{chapters/3_methods}\n\\include{chapters/4_results}\n')
   writeFileSync(join(dir, PAPER, 'chapters', '3_methods.tex'), 'The methods chapter measured satisfaction first and confidence second.')
   writeFileSync(join(dir, PAPER, 'chapters', '4_results.tex'), 'The results chapter reported that satisfaction was above neutral.')
-  const add = (question: string, file: string, quote: string) =>
-    door('POST', '/mcp', new URLSearchParams(), {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/call',
-      params: {
-        name: 'add_quiz',
-        arguments: { project: dir, epic: EPIC, question, options: ['One thing', 'Another thing', 'A third thing'], answer: 1, why: WHY, path: `${PAPER}/chapters/${file}`, quote },
-      },
-    }, null)
   add(ASKED.methods[0]!, '3_methods.tex', 'measured satisfaction first')
   add(ASKED.methods[1]!, '3_methods.tex', 'confidence second')
   add(ASKED.results[0]!, '4_results.tex', 'satisfaction was above neutral')
@@ -200,5 +201,127 @@ describe('the reader’s scope beside the picked parts', () => {
     await say('kehikot.context', scoped('chapters/3_methods.tex', ['results'], 'section', highlight))
     expect(drawn()).toEqual({ methods: 0, results: 1 })
     expect(note()).toBe(`2 questions outside the picked part (Results). ${ASIDE('This passage', 'passage')}`)
+  })
+})
+
+describe('a pick leaves the reader on their question while it is still shown', () => {
+  /* A box too short for a list, so one question is in front at a time: 220 by 300, the narrow container. */
+  const root = document.documentElement
+  let height = 300
+  beforeEach(() => {
+    height = 300
+    Object.defineProperty(root, 'clientWidth', { configurable: true, get: () => 220 })
+    Object.defineProperty(root, 'clientHeight', { configurable: true, get: () => height })
+  })
+  afterEach(() => {
+    delete (root as unknown as Record<string, unknown>).clientWidth
+    delete (root as unknown as Record<string, unknown>).clientHeight
+  })
+
+  const MORE = 'What else did the results chapter report?'
+  /** The one question in front, by its words, and which piece of it is open. */
+  const front = () => {
+    const text = document.body.textContent ?? ''
+    const on = [...ASKED.methods, ...ASKED.results, MORE].filter((one) => text.includes(one))
+    return { on, part: document.querySelector('[data-part][aria-pressed="true"]')?.getAttribute('data-part') ?? null, rung: document.querySelector('[data-rung]')?.getAttribute('data-rung') }
+  }
+  const press = async (selector: string) => {
+    await act(async () => {
+      ;(document.querySelector(selector) as HTMLElement).click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+  }
+
+  test('none, one, another, none: only a question the pick leaves out moves them', async () => {
+    add(MORE, '4_results.tex', 'results chapter reported')
+    render(<App />)
+    await say('kehikot.hello', canvas('chapters/3_methods.tex', []))
+    await waitFor(() => expect(front().on).toEqual([ASKED.methods[0]!]))
+    expect(front().rung).not.toBe('list')
+
+    /* On to the second Methods question. */
+    await press('[data-page="on"]')
+    expect(front().on).toEqual([ASKED.methods[1]!])
+
+    /* None to one, and the question in front is in the part: nobody is moved. It used to be the first again. */
+    await say('kehikot.context', canvas('chapters/3_methods.tex', ['methods']))
+    expect(front().on).toEqual([ASKED.methods[1]!])
+
+    /* Another part instead, which does not hold it: the top of that part's questions. */
+    await say('kehikot.context', canvas('chapters/3_methods.tex', ['results']))
+    expect(front().on).toEqual([ASKED.results[0]!])
+    await press('[data-page="on"]')
+    expect(front().on).toEqual([MORE])
+
+    /* One to none, the paper on that chapter: still shown, so still in front. */
+    await say('kehikot.context', canvas('chapters/4_results.tex', []))
+    expect(front().on).toEqual([MORE])
+
+    /* And a moment later the paper says what it shows now that nothing is picked — every chapter,
+       in a context of its own. That is the aim changing with no pick beside it, which used to be
+       the top of the list; the question is still shown, so it is still in front. */
+    const both = [
+      { module: 'kehikot.paper', selected: false, showing: { refs: [], documents: [place('main.tex'), place('chapters/3_methods.tex'), place('chapters/4_results.tex')] } },
+      { module: 'kehikot.learning', selected: false, showing: { refs: [], documents: [] } },
+    ]
+    await say('kehikot.context', canvas('main.tex', [], false, { containers: both }))
+    expect(front().on).toEqual([MORE])
+    expect(document.body.textContent).toContain('4 / 4')
+
+    /* And a different chapter with nothing picked is a different place, as before: its top. */
+    await say('kehikot.context', canvas('chapters/3_methods.tex', []))
+    expect(front().on).toEqual([ASKED.methods[0]!])
+    expect(document.documentElement.innerHTML).not.toContain(WHY)
+  })
+
+  test('the reader’s own scope, pressed while on a question: on it still when it is about that document, at the top when it is not', async () => {
+    render(<App />)
+    const paper = (scope: string) => canvas('chapters/3_methods.tex', [], false, { filters: { scope }, containers: [
+      { module: 'kehikot.paper', selected: false, showing: { refs: [], documents: [place('chapters/3_methods.tex'), place('chapters/4_results.tex')] } },
+      { module: 'kehikot.learning', selected: false, showing: { refs: [], documents: [] } },
+    ] })
+    await say('kehikot.hello', paper('all'))
+    await waitFor(() => expect(front().on).toEqual([ASKED.methods[0]!]))
+    await press('[data-page="on"]')
+    expect(front().on).toEqual([ASKED.methods[1]!])
+    /* “This document”, and the document pointed at is the one this question is about. */
+    await say('kehikot.context', paper('file'))
+    expect(front().on).toEqual([ASKED.methods[1]!])
+    /* Back to anywhere, on to the Results question, and “This document” again: it is not about Methods. */
+    await say('kehikot.context', paper('all'))
+    expect(front().on).toEqual([ASKED.methods[1]!])
+    await press('[data-page="on"]')
+    expect(front().on).toEqual([ASKED.results[0]!])
+    await say('kehikot.context', paper('file'))
+    expect(front().on).toEqual([ASKED.methods[0]!])
+  })
+
+  test('none to one that leaves the question out: the top of the picked part, at its options', async () => {
+    render(<App />)
+    await say('kehikot.hello', canvas('chapters/3_methods.tex', []))
+    await waitFor(() => expect(front().on).toEqual([ASKED.methods[0]!]))
+    await press('[data-page="on"]')
+    await say('kehikot.context', canvas('chapters/3_methods.tex', ['results']))
+    expect(front().on).toEqual([ASKED.results[0]!])
+    expect(note()).toContain('2 outside parts')
+  })
+
+  test('a piece of the question opened: the first pick does not close it, in the part or out of it', async () => {
+    /* Shorter still, so the question is a piece of its own, behind a chip. */
+    height = 200
+    render(<App />)
+    await say('kehikot.hello', canvas('chapters/3_methods.tex', []))
+    await waitFor(() => expect(document.querySelector('[data-page="on"]')).not.toBeNull())
+    await press('[data-page="on"]')
+    await press('[data-part="question"]')
+    expect(front()).toMatchObject({ on: [ASKED.methods[1]!], part: 'question' })
+
+    await say('kehikot.context', canvas('chapters/3_methods.tex', ['methods']))
+    expect(front()).toMatchObject({ on: [ASKED.methods[1]!], part: 'question' })
+
+    /* Out of the part now, and in their hands: held, as a pick has held it since the parts were followed. */
+    await say('kehikot.context', canvas('chapters/3_methods.tex', ['results']))
+    expect(front()).toMatchObject({ on: [ASKED.methods[1]!], part: 'question' })
+    expect(document.querySelector('[data-scope-note]')?.getAttribute('title')).toContain('The one you are on is among them')
   })
 })
