@@ -16,7 +16,7 @@ import { useFrame } from '@/view/use-frame.ts'
 import { anchorOf, focusNote, inHand, standingOn, whyUnfocused } from '@/wire/focus.ts'
 import { aimNote, aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
 import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
-import { hiddenNote, narrow, offer, reachOf, scopeOf } from '@/wire/scope.ts'
+import { besideParts, hiddenNote, narrow, offer, reachOf, scopeOf } from '@/wire/scope.ts'
 import { containersFrom } from '@/wire/use-kehikot.ts'
 
 /** Whether this page is in a frame. Unframed, it prints its own heading. */
@@ -166,7 +166,15 @@ export function App() {
      has gone away degrades to `all` rather than emptying the container — the
      host keeps the choice, so it comes back the moment they highlight something
      again. */
-  const scope = scopeOf(chosen, reach)
+  /* And as it can apply beside the picked parts: a scope standing on a document
+     no picked part owns would leave nothing, so it is put aside and the note
+     says so — `besideParts` in `wire/scope.ts`. The path is the canvas's own
+     absolute spelling, which is what a part's files are matched against. */
+  const { scope, aside } = besideParts(
+    scopeOf(chosen, reach),
+    focus.focused,
+    passage !== null && focus.inFocus({ file: passage.path }),
+  )
 
   /* How big the box actually is, and what therefore fits in it. Two lines here
      because the deciding is in `view/room.ts`, where it can be read as a table
@@ -317,7 +325,7 @@ export function App() {
      controls the paged rungs measure their room against. The scope's sentence
      wins when both narrowed, because the scope is the reader's own press and
      the thing they will look for first. */
-  const hiding = focusNote(inParts, hiddenNote(scope, hidden) ?? aimNote(front, hidden), hidden)
+  const hiding = focusNote(inParts, hiddenNote(scope, hidden) ?? aimNote(front, hidden), hidden, aside)
   /* Why the aim left nothing, in this module's words — or null. Held apart
      from `hiding`, because it is drawn as the whole screen and not a line. */
   const emptied =

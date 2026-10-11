@@ -150,9 +150,9 @@ export function offer(reach: Reach, greeted = true): FilterGroup[] | null {
   if (!reach.file) return []
   const options = [
     { id: 'all', label: 'Anywhere' },
-    { id: 'file', label: 'This document' },
+    { id: 'file', label: RUNG.file },
   ]
-  if (reach.section) options.push({ id: 'section', label: 'This passage' })
+  if (reach.section) options.push({ id: 'section', label: RUNG.section })
   return [{ id: SCOPE, label: 'scope', options, fallback: 'all' }]
 }
 
@@ -177,6 +177,36 @@ export function scopeOf(chosen: FilterChoice, reach: Reach): Scope {
   if (said === 'section' && reach.section) return 'section'
   if ((said === 'file' || said === 'section') && reach.file) return 'file'
   return 'all'
+}
+
+/** What the two narrow rungs are called in the header, spelled once: the offer and the sentence below both say them. */
+const RUNG = { file: 'This document', section: 'This passage' } as const
+
+/**
+ * The scope as it can apply beside the picked parts of the epic.
+ *
+ * The scope narrows to the document the canvas points at, and the parts
+ * (`wire/focus.ts`) narrow what it leaves to the files they own. When that
+ * document is in none of the picked parts the two have nothing in common: no
+ * question can be about it and in a picked part at once. A passage is not
+ * moved by a tick — it is where the canvas was last pointed, often a chapter
+ * the reader has since left — so the scope stood on the old chapter and every
+ * part picked after it came up empty, under "No question here is in the picked
+ * parts".
+ *
+ * So there the scope is `all`, and `aside` says so: the reader chose that
+ * scope, the host still holds it, and it narrows again the moment the canvas
+ * points into a picked part or the parts are unpicked. Where the document IS
+ * in a picked part the scope applies as it always did — that is the reader
+ * asking for one document of the parts they picked.
+ *
+ * `inParts` is whether the pointed document is in a picked part; it is not
+ * read unless `focused`.
+ */
+export function besideParts(scope: Scope, focused: boolean, inParts: boolean): { scope: Scope; aside: string | null } {
+  if (scope === 'all' || !focused || inParts) return { scope, aside: null }
+  const what = scope === 'section' ? 'passage' : 'document'
+  return { scope: 'all', aside: `This container’s scope, “${RUNG[scope]}”, is not narrowing: that ${what} is outside the picked parts.` }
 }
 
 /**

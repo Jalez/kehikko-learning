@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { filtersSchema, type Passage as Pointing } from 'kehikot-module-protocol'
 
-import { hiddenNote, narrow, offer, reachOf, scopeOf, SCOPE } from '../src/wire/scope.ts'
+import { besideParts, hiddenNote, narrow, offer, reachOf, scopeOf, SCOPE } from '../src/wire/scope.ts'
 import type { Anchored } from '../src/wire/pointed.ts'
 
 /**
@@ -197,5 +197,28 @@ describe('what the page says about the questions it is not showing', () => {
 
   test('one question is one question', () => {
     expect(hiddenNote('file', 1)?.full).toBe('1 more question about other documents')
+  })
+})
+
+describe('the scope beside the picked parts of the epic', () => {
+  test('nothing picked, or the pointed document in a picked part: the scope as the reader set it', () => {
+    for (const scope of ['all', 'file', 'section'] as const) {
+      expect(besideParts(scope, false, false)).toEqual({ scope, aside: null })
+      expect(besideParts(scope, true, true)).toEqual({ scope, aside: null })
+    }
+    expect(besideParts('all', true, false)).toEqual({ scope: 'all', aside: null })
+  })
+
+  test('the pointed document in no picked part: nothing in common, so it is put aside — and said, in the header’s own words', () => {
+    const file = besideParts('file', true, false)
+    expect(file.scope).toBe('all')
+    expect(file.aside).toContain('“This document”')
+    const section = besideParts('section', true, false)
+    expect(section.scope).toBe('all')
+    expect(section.aside).toContain('“This passage”')
+    /* The words are the offer's, so the sentence names the control a reader can see. */
+    const labels = offer({ file: true, section: true })![0]!.options.map((option) => option.label)
+    expect(labels).toContain('This document')
+    expect(labels).toContain('This passage')
   })
 })

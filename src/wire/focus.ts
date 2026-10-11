@@ -53,13 +53,18 @@ interface Narrowing {
  * Otherwise the protocol's sentence, after theirs. The short form — a row of
  * controls 220 pixels wide — stays one phrase: theirs with the two counts
  * added, or `3 outside parts`.
+ *
+ * `aside` is the sentence about a scope the reader chose that cannot apply
+ * beside these parts (`besideParts` in `wire/scope.ts`), or null. It goes
+ * last: the count is what they look for, and this is why it is the parts'
+ * count alone.
  */
-export function focusNote(narrowing: Narrowing, other: Hidden | null, hidden: number): Hidden | null {
+export function focusNote(narrowing: Narrowing, other: Hidden | null, hidden: number, aside: string | null = null): Hidden | null {
   if (!narrowing.sentence) return other
   const kept = narrowing.kept ? ' The one you are on is among them, and stays until you leave it.' : ''
   const away = narrowing.outside - narrowing.kept
   return {
-    full: `${other ? `${other.full}. ` : ''}${narrowing.sentence}${kept}`,
+    full: `${other ? `${other.full}. ` : ''}${narrowing.sentence}${kept}${aside ? ` ${aside}` : ''}`,
     brief: other ? `+${hidden + away} elsewhere` : `${narrowing.outside} outside parts`,
     where: FOCUS_WHERE,
   }

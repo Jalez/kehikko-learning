@@ -79,7 +79,11 @@ const parts = (...picked: string[]) => [
 const file = (name: string) => `${dir}/${PAPER}/${name}`
 const place = (name: string) => ({ path: file(name), page: null, from: null, to: null, quoted: '' })
 /** A canvas with a paper on it showing `shown`, the passage on the same file, and these parts ticked. */
-const canvas = (shown: string, picked: string[], selected = false) => ({
+const canvas = (shown: string, picked: string[], selected = false, more: Record<string, unknown> = {}) => ({
+  ...base(shown, picked, selected),
+  ...more,
+})
+const base = (shown: string, picked: string[], selected: boolean) => ({
   project: 'thesis',
   projectPath: dir,
   epic: EPIC,
@@ -148,5 +152,53 @@ describe('the questions follow the ticked parts, whatever the paper beside them 
     await say('kehikot.hello', canvas('main.tex', ['methods']))
     await waitFor(() => expect(drawn()).toEqual({ methods: 2, results: 0 }))
     expect(document.querySelector('[data-aim-note]')).toBeNull()
+  })
+})
+
+describe('the reader’s scope beside the picked parts', () => {
+  const ASIDE = (rung: string, what: string) => `This container’s scope, “${rung}”, is not narrowing: that ${what} is outside the picked parts.`
+  /* The reader set this container to "This document" in its header; the host keeps that and says it on every context. */
+  const scoped = (shown: string, picked: string[], scope = 'file', passage: Record<string, unknown> = {}) =>
+    canvas(shown, picked, false, { filters: { scope }, passage: { ...place('chapters/3_methods.tex'), ...passage } })
+
+  test('“This document” on a passage left in another chapter: the picked part’s questions, and the note says the scope is put aside', async () => {
+    render(<App />)
+    /* Nothing picked, the passage in Methods: that document's questions, as the scope has always done. */
+    await say('kehikot.hello', scoped('chapters/3_methods.tex', []))
+    await waitFor(() => expect(drawn()).toEqual({ methods: 2, results: 0 }))
+    expect(note()).toBe('1 more question about other documents')
+
+    /* Results is picked. Nothing re-points the canvas, so the passage is still in Methods — a
+       document no picked part owns. This was an empty pane saying no question is in the part. */
+    await say('kehikot.context', scoped('chapters/3_methods.tex', ['results']))
+    expect(drawn()).toEqual({ methods: 0, results: 1 })
+    expect(note()).toBe(`2 questions outside the picked part (Results). ${ASIDE('This document', 'document')}`)
+    expect(document.querySelector('[data-aim-note]')).toBeNull()
+
+    /* The part the passage IS in: the scope applies again, and nothing is said about it. */
+    await say('kehikot.context', scoped('chapters/3_methods.tex', ['methods']))
+    expect(drawn()).toEqual({ methods: 2, results: 0 })
+    expect(note()).toBe('1 more question about other documents. 0 questions outside the picked part (Methods).')
+
+    /* Both picked, the passage in one of them: the reader asked for one document, and gets it — said. */
+    await say('kehikot.context', scoped('chapters/3_methods.tex', ['methods', 'results']))
+    expect(drawn()).toEqual({ methods: 2, results: 0 })
+    expect(note()).toBe('1 more question about other documents. 0 questions outside the 2 picked parts (Methods, Results).')
+
+    /* Nothing picked again: the scope was kept all along. */
+    await say('kehikot.context', scoped('chapters/3_methods.tex', []))
+    expect(drawn()).toEqual({ methods: 2, results: 0 })
+    expect(note()).toBe('1 more question about other documents')
+    expect(document.documentElement.innerHTML).not.toContain(WHY)
+  })
+
+  test('“This passage” on a highlight left in another chapter: the same, in its own words', async () => {
+    render(<App />)
+    const highlight = { from: 4, to: 30, quoted: 'methods chapter measured' }
+    await say('kehikot.hello', scoped('chapters/3_methods.tex', [], 'section', highlight))
+    await waitFor(() => expect(drawn()).toEqual({ methods: 1, results: 0 }))
+    await say('kehikot.context', scoped('chapters/3_methods.tex', ['results'], 'section', highlight))
+    expect(drawn()).toEqual({ methods: 0, results: 1 })
+    expect(note()).toBe(`2 questions outside the picked part (Results). ${ASIDE('This passage', 'passage')}`)
   })
 })
