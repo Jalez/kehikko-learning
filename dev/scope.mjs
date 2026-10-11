@@ -212,9 +212,10 @@ try {
       }
       return frame.locator('[data-question]').count()
     }
+    /* A narrowed pane with questions in it says nothing about the rest; only an empty one says why. */
     const note = async () => {
-      const said = frame.locator('[data-scope-note]')
-      return (await said.count()) ? ((await said.first().getAttribute('title')) ?? (await said.first().textContent())) : null
+      const said = frame.locator('[data-empty-note]')
+      return (await said.count()) ? await said.first().textContent() : null
     }
 
     const settle = () => page.waitForTimeout(400)
@@ -245,17 +246,15 @@ try {
     console.log(`  pointing at a selection → offer ${selection}`)
     if (selection !== 'scope:all/file/section') say(`a selection offered "${selection}"`)
 
-    /* 3 and 4. The choice comes back, the list narrows, and the page says by how
-       much. `this document` keeps the two questions in that chapter. */
+    /* 3 and 4. The choice comes back and the list narrows, with no line about
+       what it left out. `this document` keeps the two questions in that chapter. */
     await page.evaluate((passage) => window.__context({ passage, filters: { scope: 'file' } }), at(BRIDGE, 1050, 1150))
     await settle()
     const byFile = await shown()
     const fileNote = await note()
-    console.log(`  narrowed to this document → ${byFile} questions drawn, page says “${fileNote}”`)
+    console.log(`  narrowed to this document → ${byFile} questions drawn, page says ${fileNote === null ? 'nothing about the rest' : `“${fileNote}”`}`)
     if (byFile !== 2) say(`narrowing to one chapter of two drew ${byFile} questions, not 2`)
-    if (fileNote !== '1 more question about other documents') {
-      say(`narrowed by document, the page said “${fileNote}” rather than counting what it hid`)
-    }
+    if (fileNote !== null) say(`narrowed by document with questions to show, the page still said “${fileNote}”`)
 
     /* `this passage` keeps only the question whose anchor the selection touches
        — which is what tells the range comparison from the path comparison. */
@@ -263,11 +262,9 @@ try {
     await settle()
     const bySection = await shown()
     const sectionNote = await note()
-    console.log(`  narrowed to this passage → ${bySection} questions drawn, page says “${sectionNote}”`)
+    console.log(`  narrowed to this passage → ${bySection} questions drawn, page says ${sectionNote === null ? 'nothing about the rest' : `“${sectionNote}”`}`)
     if (bySection !== 1) say(`narrowing to one paragraph drew ${bySection} questions, not 1`)
-    if (sectionNote !== '2 more questions outside this passage') {
-      say(`narrowed by passage, the page said “${sectionNote}” rather than counting what it hid`)
-    }
+    if (sectionNote !== null) say(`narrowed by passage with questions to show, the page still said “${sectionNote}”`)
 
     /* 5. The selection goes away with the choice still stored. The rung cannot be
        honoured, so it degrades to everything — a reader who cleared a highlight
@@ -295,4 +292,4 @@ if (wrong.length) {
   console.error(`\nTHE OFFER IS WRONG:\n  ${wrong.join('\n  ')}`)
   process.exit(1)
 }
-console.log('\noffers only the rungs that exist, narrows by the passage on the canvas, and says what it hid')
+console.log('\noffers only the rungs that exist, narrows by the passage on the canvas, and draws no line about the rest')

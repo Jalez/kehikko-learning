@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { aimNote, aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '../src/wire/aim.ts'
+import { aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '../src/wire/aim.ts'
 
 /**
  * The consumer rule, as a table of canvases.
@@ -81,7 +81,6 @@ describe('what is in front, by the protocol’s rule', () => {
     expect(front.everything).toBe(true)
     expect(front.narrowed).toBe(false)
     expect(ids(inFront(QUESTIONS, PROJECT, front).shown)).toEqual(['q1', 'q3a', 'q3b', 'q5'])
-    expect(aimNote(front, 0)).toBeNull()
   })
 
   test('a container somebody picked out narrows whether or not a part is ticked', () => {
@@ -162,13 +161,10 @@ describe('what is in front, by the protocol’s rule', () => {
     expect(front.narrowed).toBe(true)
     expect(front.quiet).toEqual(['kehikot.journeys'])
     expect(inFront(QUESTIONS, PROJECT, front).shown).toEqual([])
-    expect(whyEmpty(front, 4, 0)).toEqual({
-      said: 'journeys is picked out and shows no document, so there is nothing here for a question to be about.',
-      remedy: 'Untick a container, pick out one that shows a document, or set this container’s aim to everything on this kehikko.',
-    })
+    expect(whyEmpty(front, 4, 0)).toBe('journeys is picked out and shows no document, so there is nothing here for a question to be about.')
   })
 
-  test('nothing picked out and nothing shown that any question is about: the remedy is a document, not a tick', () => {
+  test('nothing picked out and nothing shown that any question is about: one sentence, and it does not blame a tick', () => {
     const front = inFrontOf({
       self: SELF,
       passage: null,
@@ -176,13 +172,10 @@ describe('what is in front, by the protocol’s rule', () => {
       aim: 'follow',
     })
     expect(inFront(QUESTIONS, PROJECT, front).shown).toEqual([])
-    expect(whyEmpty(front, 4, 0)).toEqual({
-      said: 'Nothing on this kehikko is showing a document any of the 4 questions here is about.',
-      remedy: 'Open one of their documents on this kehikko, or set this container’s aim to everything on this kehikko.',
-    })
+    expect(whyEmpty(front, 4, 0)).toBe('Nothing on this kehikko is showing a document any of the 4 questions here is about.')
   })
 
-  test('a picked-out container showing a document nothing here is about says so, and names the quiet one', () => {
+  test('a picked-out container showing a document nothing here is about says so, in one sentence', () => {
     const front = inFrontOf({
       self: SELF,
       passage: null,
@@ -193,9 +186,7 @@ describe('what is in front, by the protocol’s rule', () => {
       aim: 'follow',
     })
     expect(inFront(QUESTIONS, PROJECT, front).shown).toEqual([])
-    expect(whyEmpty(front, 4, 0)?.said).toBe(
-      'paper and journeys are picked out; none of the 4 questions here is about what they show. journeys shows no document.',
-    )
+    expect(whyEmpty(front, 4, 0)).toBe('paper and journeys are picked out; none of the 4 questions here is about what they show.')
   })
 
   test('the aim turned off: everything, whatever is picked', () => {
@@ -272,13 +263,15 @@ describe('a question whose anchor does not resolve', () => {
     const out = inFront(ROTTEN, PROJECT, front)
     expect(out.shown).toEqual([])
     expect(out.unresolved).toBe(2)
-    expect(whyEmpty(front, 2, 2)).toEqual({
-      said:
-        'paper is picked out; none of the 2 questions here is about what it shows. All of them are about documents '
-        + 'that are not in this project, so they cannot be in front of anything until cited again.',
-      /* The remedy follows the cause: no tick will bring these back. */
-      remedy: 'An agent cites them again with reword_quiz, or fix the path under Sources: in the file. Until then, set this container’s aim to everything on this kehikko to see them.',
-    })
+    /* The sentence follows the cause: no tick will bring these back, so it is not the paper's doing. */
+    expect(whyEmpty(front, 2, 2)).toBe(
+      'The 2 questions here are about documents that are not in this project, so they cannot be in front of anything until cited again.',
+    )
+    expect(whyEmpty(front, 1, 1)).toBe(
+      'The 1 question here is about a document that is not in this project, so it cannot be in front of anything until cited again.',
+    )
+    /* Some of them only: the canvas is the cause, and that is what is said. */
+    expect(whyEmpty(front, 4, 2)).toBe('paper is picked out; none of the 4 questions here is about what it shows.')
   })
 
   test('is never told to the canvas as something this container is showing', () => {
@@ -329,26 +322,5 @@ describe('the offer and the note', () => {
     expect(aimOf({ aim: 'something-from-a-later-version' })).toBe('follow')
     expect(aimOf({})).toBe('follow')
     expect(aimOf(null)).toBe('follow')
-  })
-
-  test('a narrowed list with questions still in it says how many it is not showing', () => {
-    const picked = inFrontOf({
-      self: SELF,
-      passage: null,
-      containers: [container('kehikot.paper', true, [place(CH3)])],
-      aim: 'follow',
-    })
-    expect(aimNote(picked, 2)).toEqual({
-      full: '2 more questions about documents paper is not showing',
-      brief: '+2 elsewhere',
-    })
-    const union = inFrontOf({
-      self: SELF,
-      passage: null,
-      containers: [container('kehikot.paper', false, [place(CH3)])],
-      aim: 'follow',
-    })
-    expect(aimNote(union, 1)?.full).toBe('1 more question about documents nothing here is showing')
-    expect(aimNote(union, 0)).toBeNull()
   })
 })

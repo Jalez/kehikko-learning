@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { filtersSchema, type Passage as Pointing } from 'kehikot-module-protocol'
 
-import { besideParts, hiddenNote, narrow, offer, reachOf, scopeOf, SCOPE } from '../src/wire/scope.ts'
+import { besideParts, narrow, offer, reachOf, scopeOf, SCOPE, whyUnscoped } from '../src/wire/scope.ts'
 import type { Anchored } from '../src/wire/pointed.ts'
 
 /**
@@ -161,7 +161,7 @@ describe('what the scope leaves on screen', () => {
   })
 
   test('a range that touches nothing keeps nothing, rather than quietly widening', () => {
-    /* The container says so in its own words instead — see `hiddenNote`. A
+    /* The container says so in its own words instead — see `whyUnscoped`. A
        narrowing that silently gave up would be a control that does nothing on
        some paragraphs and something on others. */
     expect(narrow(QUESTIONS, PROJECT, at(BRIDGE, 2000, 3000), 'section')).toEqual([])
@@ -183,42 +183,29 @@ describe('what the scope leaves on screen', () => {
   })
 })
 
-describe('what the page says about the questions it is not showing', () => {
-  test('nothing hidden says nothing', () => {
-    expect(hiddenNote('file', 0)).toBeNull()
-    expect(hiddenNote('all', 7)).toBeNull()
+describe('what the page says about a scope', () => {
+  test('one sentence when it emptied the pane, naming the control by the words on it', () => {
+    expect(whyUnscoped('file')).toBe('No question here is about this document; this container’s scope is “This document”, in its header.')
+    expect(whyUnscoped('section')).toBe('No question here is about this passage; this container’s scope is “This passage”, in its header.')
+    const labels = offer({ file: true, section: true })![0]!.options.map((option) => option.label)
+    expect(labels).toContain('This document')
+    expect(labels).toContain('This passage')
   })
 
-  test('the long form says what it is a count of, and the short one fits a row of controls', () => {
-    expect(hiddenNote('file', 3)?.full).toBe('3 more questions about other documents')
-    expect(hiddenNote('section', 3)?.full).toBe('3 more questions outside this passage')
-    expect(hiddenNote('section', 3)?.brief).toBe('+3 elsewhere')
-  })
-
-  test('one question is one question', () => {
-    expect(hiddenNote('file', 1)?.full).toBe('1 more question about other documents')
+  test('`all` empties nothing, so it has nothing to say', () => {
+    expect(whyUnscoped('all')).toBeNull()
   })
 })
 
 describe('the scope beside the picked parts of the epic', () => {
   test('nothing picked, or the pointed document in a picked part: the scope as the reader set it', () => {
     for (const scope of ['all', 'file', 'section'] as const) {
-      expect(besideParts(scope, false, false)).toEqual({ scope, aside: null })
-      expect(besideParts(scope, true, true)).toEqual({ scope, aside: null })
+      expect(besideParts(scope, false, false)).toBe(scope)
+      expect(besideParts(scope, true, true)).toBe(scope)
     }
-    expect(besideParts('all', true, false)).toEqual({ scope: 'all', aside: null })
   })
 
-  test('the pointed document in no picked part: nothing in common, so it is put aside — and said, in the header’s own words', () => {
-    const file = besideParts('file', true, false)
-    expect(file.scope).toBe('all')
-    expect(file.aside).toContain('“This document”')
-    const section = besideParts('section', true, false)
-    expect(section.scope).toBe('all')
-    expect(section.aside).toContain('“This passage”')
-    /* The words are the offer's, so the sentence names the control a reader can see. */
-    const labels = offer({ file: true, section: true })![0]!.options.map((option) => option.label)
-    expect(labels).toContain('This document')
-    expect(labels).toContain('This passage')
+  test('the pointed document in no picked part: nothing in common, so the parts lead', () => {
+    for (const scope of ['all', 'file', 'section'] as const) expect(besideParts(scope, true, false)).toBe('all')
   })
 })

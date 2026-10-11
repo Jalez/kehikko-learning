@@ -456,14 +456,16 @@ question cites a path and some words, and this module reads the SOURCE file,
 never the typeset pages, so it cannot say which sheet a sentence lands on. The missing half is on
 this side.
 
-**The count stays in the page.** A host cannot count rows it does not render, in
-a document it cannot read, in a frame on another origin — so a narrowed container
-says what it is hiding in its own words: `3 more questions outside this passage`
-in a list heading, `+3 elsewhere` with the sentence on its `title` where the box
-is 220 wide. An empty scope says so, and says it differently from a paper nobody
-has written questions about yet. `src/wire/scope.ts` carries the argument;
-`dev/scope.mjs` drives a host and checks that the offer arrives, changes with the
-canvas, and narrows what is drawn.
+**A narrowed pane says nothing about the rest; an empty one says why.** The
+questions on screen are the message, so no line counts the ones a scope, the
+canvas or the picked parts left out — the host's bar already says which parts
+are picked, and in a 220-pixel box that line cost a row. The one exception is a
+pane that would otherwise be EMPTY although the epic has questions: it says why
+in one sentence, in the empty area, so it does not look broken — and says it
+differently from a paper nobody has written questions about yet.
+`src/wire/scope.ts` carries the argument; `dev/scope.mjs` drives a host and
+checks that the offer arrives, changes with the canvas, and narrows what is
+drawn.
 
 **`only unanswered` is refused, not postponed.** A quiz whose list silently loses
 a card the moment it is answered takes away the one thing a reader comes back

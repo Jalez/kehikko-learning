@@ -13,10 +13,10 @@ import { NoEpic } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
 import { textWidth } from '@/view/text.ts'
 import { useFrame } from '@/view/use-frame.ts'
-import { anchorOf, focusNote, inHand, stillOn, standingOn, whyUnfocused } from '@/wire/focus.ts'
-import { aimNote, aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
+import { anchorOf, inHand, stillOn, standingOn, whyUnfocused } from '@/wire/focus.ts'
+import { aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
 import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
-import { besideParts, hiddenNote, narrow, offer, reachOf, scopeOf } from '@/wire/scope.ts'
+import { besideParts, narrow, offer, reachOf, scopeOf, whyUnscoped } from '@/wire/scope.ts'
 import { containersFrom } from '@/wire/use-kehikot.ts'
 
 /** Whether this page is in a frame. Unframed, it prints its own heading. */
@@ -180,14 +180,10 @@ export function App() {
      host keeps the choice, so it comes back the moment they highlight something
      again. */
   /* And as it can apply beside the picked parts: a scope standing on a document
-     no picked part owns would leave nothing, so it is put aside and the note
-     says so — `besideParts` in `wire/scope.ts`. The path is the canvas's own
-     absolute spelling, which is what a part's files are matched against. */
-  const { scope, aside } = besideParts(
-    scopeOf(chosen, reach),
-    focus.focused,
-    passage !== null && focus.inFocus({ file: passage.path }),
-  )
+     no picked part owns would leave nothing, so there the parts lead —
+     `besideParts` in `wire/scope.ts`. The path is the canvas's own absolute
+     spelling, which is what a part's files are matched against. */
+  const scope = besideParts(scopeOf(chosen, reach), focus.focused, passage !== null && focus.inFocus({ file: passage.path }))
 
   /* How big the box actually is, and what therefore fits in it. Two lines here
      because the deciding is in `view/room.ts`, where it can be read as a table
@@ -274,10 +270,8 @@ export function App() {
    * is what a press, an answer and the poll all act on: narrowing is a view of
    * the store and never an edit to it.
    *
-   * The count is kept and drawn in the page. The host cannot count rows it does
-   * not render, in a document it cannot read, in a frame on another origin — so a
-   * narrowing that says nothing about what it hid is a container that has quietly
-   * lost questions.
+   * Nothing is drawn about the questions a narrowing leaves out: the ones on
+   * screen are the message. Only an EMPTY pane says why — `emptied`, below.
    */
   /*
    * Two narrowings, in order: first what the canvas shows (the aim), then how
@@ -290,7 +284,6 @@ export function App() {
     () => narrow(aimed.shown, projectPath, passage, scope),
     [aimed, projectPath, passage, scope],
   )
-  const hidden = questions.length - narrowed.length
 
   /*
    * And third, the parts of the epic ticked in the host's bar: of what the
@@ -305,8 +298,8 @@ export function App() {
    * change — one whose answer is on its way, or one they have opened a piece
    * of (`inHand` in `wire/focus.ts`, which says why the question that is
    * merely on screen is not one). If the new ticks put it outside, it is
-   * `held`: still drawn, in its place, still counted outside, and the note
-   * says so. It goes when they move to another question, or tick again.
+   * `held`: still drawn, in its place, and nothing announces it. It goes when
+   * they move to another question, or tick again.
    *
    * ## Where a change leaves the reader: on their question, while it is still shown
    *
@@ -341,24 +334,27 @@ export function App() {
     if (at === null) setPart('options')
   }
   const inParts = useMemo(
-    () => focus.narrow(narrowed, anchorOf(projectPath), { noun: 'question', keep: (one) => one.id === held }),
+    () => focus.narrow(narrowed, anchorOf(projectPath), { keep: (one) => one.id === held }),
     [focus, narrowed, projectPath, held],
   )
   const visible = inParts.shown
   const leaving = useRef<{ list: readonly Asked[]; kept: string | null }>({ list: [], kept: null })
   leaving.current = { list: visible, kept: inParts.kept ? held : null }
-  /* Worded once, and read by both the page and the geometry: `view/room.ts`
-     needs the short form's WIDTH, because it is one more item in the row of
-     controls the paged rungs measure their room against. The scope's sentence
-     wins when both narrowed, because the scope is the reader's own press and
-     the thing they will look for first. */
-  const hiding = focusNote(inParts, hiddenNote(scope, hidden) ?? aimNote(front, hidden), hidden, aside)
-  /* Why the aim left nothing, in this module's words — or null. Held apart
-     from `hiding`, because it is drawn as the whole screen and not a line. */
+  /*
+   * Why the pane is empty although the epic has questions, in one sentence —
+   * or null, when it is not empty or nothing has been asked at all. Whichever
+   * narrowing was the first to leave nothing is the one that says so: the aim,
+   * then the reader's scope, then the picked parts. It is the only thing this
+   * page says about a narrowing; `view/quiz.tsx` draws it in the empty area.
+   */
   const emptied =
-    aimed.shown.length === 0
-      ? whyEmpty(front, questions.length, aimed.unresolved)
-      : whyUnfocused(inParts, visible.length, narrowed.length)
+    visible.length > 0
+      ? null
+      : aimed.shown.length === 0
+        ? whyEmpty(front, questions.length, aimed.unresolved)
+        : narrowed.length === 0
+          ? whyUnscoped(scope)
+          : whyUnfocused(focus.focused, visible.length, narrowed.length)
 
   /*
    * What this container is showing, told to the canvas whenever it changes.
@@ -403,10 +399,9 @@ export function App() {
     [visible, fits.source],
   )
 
-  const brief = hiding?.brief ?? null
   const rungs = useMemo(
-    () => ladder({ frame, epic: epic ?? '', cards, fits, shown, measure, note: brief }),
-    [frame, epic, cards, fits, shown, measure, brief],
+    () => ladder({ frame, epic: epic ?? '', cards, fits, shown, measure }),
+    [frame, epic, cards, fits, shown, measure],
   )
 
   const at = Math.min(Math.max(shown, 0), Math.max(0, cards.length - 1))
@@ -740,10 +735,7 @@ export function App() {
         file={file}
         onEdit={(at) => setEditing({ at: at ?? null })}
         questions={visible}
-        /* What the narrowing hid, in this module's own words. Drawn in the page
-           because the host cannot count rows it does not render. */
-        hiding={hiding}
-        aimed={emptied}
+        empty={emptied}
         onAnswer={(id, chose) => void onAnswer(id, chose)}
         onPoint={onPoint}
         pointed={pointed}
