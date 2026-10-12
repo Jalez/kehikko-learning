@@ -732,7 +732,7 @@ describe('the row of controls at the paged rungs', () => {
       <QuizView
         epic="modes-are-modules"
         questions={[unanswered]}
-        empty="No question here is in the picked parts."
+        empty="No question is in the picked part."
         onAnswer={() => {}}
         onPoint={() => {}}
         pointed={null}
