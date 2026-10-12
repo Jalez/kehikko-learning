@@ -45,7 +45,7 @@ function get(path: string, { method = 'GET', ticket = null as string | null, bod
     const request = {
       url: path,
       method,
-      headers: { ...(ticket === null ? {} : { 'x-module-ticket': ticket }) },
+      headers: { ...(body === null ? {} : { 'content-type': 'application/json' }), ...(ticket === null ? {} : { 'x-module-ticket': ticket }) },
       on(event: string, listener: (chunk?: never) => void) {
         ;(listeners[event] ??= []).push(listener)
         return request
@@ -138,7 +138,7 @@ describe('what the shared doors serve without being asked for the file', () => {
       expect(page.text).not.toContain(dir)
       /* The only JSON in it is the ticket and the build, and the build is four plain facts. */
       const islands = [...page.text.matchAll(/<script id="([^"]+)" type="application\/json">/g)].map((match) => match[1])
-      expect(islands).toEqual(['ticket', 'build'])
+      expect(islands).toEqual(['ticket', 'build', 'origins'])
       expect(page.headers['cache-control']).toBe('no-store')
       expect(page.headers['content-security-policy']).toContain('frame-ancestors')
     }
