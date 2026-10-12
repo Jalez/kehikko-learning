@@ -514,7 +514,7 @@ a store that already holds the history, which is the position this leaves it in.
 ## The MCP door, which is the point
 
 The realistic author of these questions is an agent that has just read a chapter.
-Four tools, matching `kehikko-checklist`'s shape:
+Five tools, matching `kehikko-checklist`'s shape:
 
 | tool | what it does |
 |---|---|
@@ -522,11 +522,31 @@ Four tools, matching `kehikko-checklist`'s shape:
 | `add_quiz` | one question, at the end of the epic's file: `project`, `epic`, `question`, `options`, `answer`, `why`, `path`, `quote`. Refused unless the quoted words are in the file exactly once |
 | `reword_quiz` | sharpen one, keeping its id — and its answers, unless the options or key change; `path` and `quote` cite it again |
 | `drop_quiz` | take one out of the file; undoable from the editor's History |
+| `quiz_state` | whether questions have been answered, and nothing else about them: `project`, and optionally `epic`, `id` / `ids`, `state` |
 
 They read and write the same Markdown a person edits, so `quizzes` also prints
 whether each source still holds and anything wrong with the file. No byte
 offsets are taken: a caller that still sends `start` and `end` is not refused,
 and they are ignored.
+
+**`quiz_state` is the one to wait on.** `quizzes` is prose for an author, and
+whether a question was answered is a line in the middle of it. `quiz_state`
+answers only that, for the ids it is given or for every question, and a
+`state` narrows the list. Its `structuredContent` is
+`{ project, epic, state, questions: [{ id, epic, state, right, attempts, at }] }`,
+and its text is the same thing as one line a question, the id and then the state:
+
+```
+  b13a66fc answered wrong, 2 attempts, last 2026-10-12T09:14:03.000Z, in bridge
+  5e0c1d2a unanswered, in bridge
+  deadbeef unknown
+```
+
+A state is `answered`, `unanswered`, `not_asked` (the file does not tick exactly
+one option for it, so no page shows it) or `unknown` — an id nothing has, which
+is said rather than passed off as not answered yet. With no `epic` it looks in
+every epic of the project. It carries the verdict on the last attempt and never
+a question's words, its options or which one is the key.
 
 **There is deliberately no tool that answers a question.** The division of labour
 is the module: an agent has just read the chapter and knows what a reader should
