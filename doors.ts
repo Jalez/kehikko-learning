@@ -274,7 +274,8 @@ function tools() {
         + 'an id nothing has comes back as `unknown`, which is not `unanswered`. Given both, they are asked about '
         + 'together, each id once. An `ids` that is given narrows even when it is empty: `ids: []` answers for no '
         + 'question, and only with neither `id` nor `ids` is every question listed. Give `state` to list only the '
-        + 'questions in that state. The same answer is in `structuredContent`, for a program.',
+        + 'questions in that state. The same answer is in `structuredContent`, for a program, with `done`: true when '
+        + 'every question asked about is answered. It reads and writes nothing.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -303,12 +304,21 @@ function tools() {
           },
         },
       },
+      /* It reads and nothing else: a caller that asks a person before running an unmarked tool need not ask for this one. */
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       outputSchema: {
         type: 'object',
         properties: {
           project: { type: 'string' },
           epic: { type: ['string', 'null'], description: 'The epic that was asked about, or null for every epic.' },
           state: { type: ['string', 'null'], description: 'The state the list was narrowed to, or null.' },
+          done: {
+            type: 'boolean',
+            description:
+              'True when at least one question was asked about and every one of them is answered. Judged before '
+              + '`state` narrows the list, so it means the same whatever is listed; an unknown, unanswered or '
+              + 'not_asked question makes it false.',
+          },
           questions: {
             type: 'array',
             items: {
@@ -325,7 +335,7 @@ function tools() {
             },
           },
         },
-        required: ['project', 'epic', 'state', 'questions'],
+        required: ['project', 'epic', 'state', 'done', 'questions'],
       },
     },
   ]
@@ -478,6 +488,10 @@ function stateAnswer(project: string, args: Record<string, unknown>): { said: st
       })
     : states
   const questions = wanted.filter((one) => only === null || one.state === only || one.state === 'unknown')
+  /* "Is this done?", as one word a caller can wait on. Over everything asked about, not over what
+     `state` left of it: narrowed to `answered`, a list is all answered and says nothing. */
+  const answered = wanted.filter((one) => one.state === 'answered').length
+  const done = wanted.length > 0 && answered === wanted.length
   const unknown = questions.filter((one) => one.state === 'unknown').map((one) => `"${one.id}"`)
 
   const where = epic ? `about ${epic} in ${project}` : `in ${project}`
@@ -495,6 +509,9 @@ function stateAnswer(project: string, args: Record<string, unknown>): { said: st
           ? `None of the ${narrowed ? 'questions asked about' : `${states.length} question${states.length === 1 ? '' : 's'}`} ${where} is ${only}.`
           : `No questions have been written ${where}.`,
     ...lines,
+    wanted.length
+      ? `Done: ${done ? 'yes' : 'no'} — ${answered} of the ${wanted.length} asked about ${wanted.length === 1 ? 'is' : 'are'} answered.`
+      : 'Done: no — no question was asked about.',
     ...(unknown.length
       ? [
           '',
@@ -503,7 +520,7 @@ function stateAnswer(project: string, args: Record<string, unknown>): { said: st
         ]
       : []),
   ].join('\n')
-  return { said, structuredContent: { project, epic, state: only, questions } }
+  return { said, structuredContent: { project, epic, state: only, done, questions } }
 }
 
 /**

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -428,7 +428,7 @@ describe('quiz_state', () => {
   /** One call, as a program reads it: the records, and the whole reply to look for leaks in. */
   function states(args: Record<string, unknown> = {}) {
     const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'quiz_state', arguments: { project: A, ...args } } }, null)
-    const result = (reply?.body as { result: { content: { text: string }[]; isError?: boolean; structuredContent?: { epic: string | null; state: string | null; questions: Stated[] } } }).result
+    const result = (reply?.body as { result: { content: { text: string }[]; isError?: boolean; structuredContent?: { epic: string | null; state: string | null; done: boolean; questions: Stated[] } } }).result
     return { text: result.content[0]?.text ?? '', isError: result.isError === true, said: result.structuredContent, questions: result.structuredContent?.questions ?? [], whole: JSON.stringify(reply?.body) }
   }
 
@@ -574,10 +574,54 @@ describe('quiz_state', () => {
     expect(states({ ids: Array.from({ length: 2000 }, (_, n) => `q${n}`) }).questions).toHaveLength(2000)
   })
 
+  test('done is one word to wait on: true only when every question asked about is answered, whatever state narrows the list to', () => {
+    const first = added()
+    const second = added({ question: 'And what does a host read?' })
+    const waiting = states({ ids: [first, second] })
+    expect(waiting.said?.done).toBe(false)
+    expect(waiting.text).toContain('Done: no — 0 of the 2 asked about are answered.')
+
+    press(first, WRONG)
+    /* A wrong answer is an answer: the question was answered, and `right` says how. */
+    expect(states({ id: first }).said?.done).toBe(true)
+    expect(states({ id: first }).text).toContain('Done: yes — 1 of the 1 asked about is answered.')
+    expect(states({ ids: [first, second] }).said?.done).toBe(false)
+    /* Narrowed to the answered ones the list is all answered, and done still speaks of everything asked about. */
+    const narrowed = states({ epic: 'modes-are-modules', state: 'answered' })
+    expect(narrowed.questions.map((one) => one.id)).toEqual([first])
+    expect(narrowed.said?.done).toBe(false)
+    expect(narrowed.text).toContain('Done: no — 1 of the 2 asked about are answered.')
+
+    press(second, RIGHT)
+    expect(states({ epic: 'modes-are-modules' }).said?.done).toBe(true)
+    expect(states({ epic: 'modes-are-modules', state: 'unanswered' }).said).toMatchObject({ done: true, questions: [] })
+    /* A typo is never done, and neither is asking about nothing. */
+    expect(states({ ids: [first, second, 'deadbeef'] }).said?.done).toBe(false)
+    expect(states({ ids: [] }).said?.done).toBe(false)
+    expect(states({ ids: [] }).text).toContain('Done: no — no question was asked about.')
+    expect(states({ epic: 'nothing-here' }).said?.done).toBe(false)
+  })
+
+  test('is marked as a tool that only reads, in the form MCP has for it, and reading it writes nothing', () => {
+    const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
+    const tools = (reply?.body as { result: { tools: { name: string; annotations?: Record<string, boolean> }[] } }).result.tools
+    expect(tools.find((one) => one.name === 'quiz_state')?.annotations).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false })
+    /* No tool that writes claims to be one that only reads. */
+    for (const name of ['add_quiz', 'reword_quiz', 'drop_quiz']) expect(tools.find((one) => one.name === name)?.annotations?.readOnlyHint).not.toBe(true)
+
+    const id = added()
+    const folder = join(A, KEHIKOT_DIR, 'learning')
+    const before = readdirSync(folder).sort().map((name) => [name, readFileSync(join(folder, name), 'utf8')])
+    states()
+    states({ id })
+    states({ epic: 'modes-are-modules', state: 'unanswered' })
+    expect(readdirSync(folder).sort().map((name) => [name, readFileSync(join(folder, name), 'utf8')])).toEqual(before)
+  })
+
   test('says what its answer holds, so a client can rely on the shape', () => {
     const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
     const tools = (reply?.body as { result: { tools: { name: string; outputSchema?: { required: string[] } }[] } }).result.tools
-    expect(tools.find((one) => one.name === 'quiz_state')?.outputSchema?.required).toEqual(['project', 'epic', 'state', 'questions'])
+    expect(tools.find((one) => one.name === 'quiz_state')?.outputSchema?.required).toEqual(['project', 'epic', 'state', 'done', 'questions'])
   })
 
   test('answers in the shape it declares: every property is one the outputSchema names, of a type it allows', () => {

@@ -533,14 +533,22 @@ and they are ignored.
 whether a question was answered is a line in the middle of it. `quiz_state`
 answers only that, for the ids it is given or for every question, and a
 `state` narrows the list. Its `structuredContent` is
-`{ project, epic, state, questions: [{ id, epic, state, right, attempts, at }] }`,
-and its text is the same thing as one line a question, the id and then the state:
+`{ project, epic, state, done, questions: [{ id, epic, state, right, attempts, at }] }`,
+and its text is the same thing as one line a question, the id and then the state,
+and then one line that starts `Done: yes` or `Done: no`:
 
 ```
   b13a66fc answered wrong, 2 attempts, last 2026-10-12T09:14:03.000Z, in bridge
   5e0c1d2a unanswered, in bridge
   deadbeef unknown
+Done: no — 1 of the 3 asked about are answered.
 ```
+
+`done` is the one word to wait on: true when at least one question was asked
+about and every one of them is answered, right or wrong. It is judged before
+`state` narrows the list, so it means the same whatever is listed. The tool is
+marked `readOnlyHint` in its `annotations`, and it is: asking it writes nothing,
+not even the order the page deals the options in.
 
 A state is `answered`, `unanswered`, `not_asked` (the file does not tick exactly
 one option for it, so no page shows it) or `unknown` — an id nothing has, which
