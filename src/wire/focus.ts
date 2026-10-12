@@ -24,7 +24,9 @@ import type { Anchored } from '@/wire/pointed.ts'
  * line about them and counts nothing that is outside them: the questions on
  * screen are the message. A question kept because it is in the reader's hands
  * (`inHand`) is simply there. Only a pane the picks left EMPTY says so, in one
- * sentence (`whyUnfocused`), so that it does not look broken.
+ * sentence — the protocol's, which `narrow(...).empty` hands back
+ * (`emptySaid(parts, NOUN)`: `No question is in the picked part.`) — so that it
+ * does not look broken.
  *
  * The editor does not come through here: Edit shows the whole file. Nor does
  * the MCP door: an agent has no canvas and sees every question.
@@ -42,14 +44,8 @@ export function anchorOf(projectPath: string | null): (question: Anchored) => An
   return (question) => (question.source ? { file: `${projectPath ?? ''}/${question.source.path}` } : null)
 }
 
-/**
- * The one sentence for a pane the picked parts emptied: there ARE questions
- * the aim and the scope would show (`before`), and none of them is in a picked
- * part (`left`). Null otherwise — then the page's other sentences apply.
- */
-export function whyUnfocused(focused: boolean, left: number, before: number): string | null {
-  return focused && left === 0 && before > 0 ? 'No question here is in the picked parts.' : null
-}
+/** What one item is called in the protocol's sentence for a pane the picked parts emptied. */
+export const NOUN = 'question'
 
 /**
  * Whether the question the reader was on is still shown: its index in the new

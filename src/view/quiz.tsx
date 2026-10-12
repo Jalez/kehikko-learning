@@ -548,7 +548,7 @@ export function QuizView({
   /**
    * Why there is nothing to show although questions exist, in one sentence —
    * the aim, the scope or the picked parts emptied the pane (`whyEmpty`,
-   * `whyUnscoped`, `whyUnfocused` in `wire/`) — or null when nothing has been
+   * `whyUnscoped` in `wire/`, and the protocol's for the picked parts) — or null when nothing has been
    * asked at all. Drawn only on the empty screen, where it costs no room and
    * stops the pane looking broken; a pane WITH questions says nothing about the
    * ones it is not showing.

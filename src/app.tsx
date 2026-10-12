@@ -13,7 +13,7 @@ import { NoEpic } from '@/view/nowhere.tsx'
 import { ladder, partsOf, room, roughly, type Card, type Part } from '@/view/room.ts'
 import { textWidth } from '@/view/text.ts'
 import { useFrame } from '@/view/use-frame.ts'
-import { anchorOf, inHand, stillOn, standingOn, whyUnfocused } from '@/wire/focus.ts'
+import { NOUN, anchorOf, inHand, stillOn, standingOn } from '@/wire/focus.ts'
 import { aimOf, aimOffer, inFront, inFrontOf, showing, whyEmpty, type Shown } from '@/wire/aim.ts'
 import { keyOf, pointedQuestion, pointingAt, sourceLabel } from '@/wire/pointed.ts'
 import { besideParts, narrow, offer, reachOf, scopeOf, whyUnscoped } from '@/wire/scope.ts'
@@ -334,7 +334,7 @@ export function App() {
     if (at === null) setPart('options')
   }
   const inParts = useMemo(
-    () => focus.narrow(narrowed, anchorOf(projectPath), { keep: (one) => one.id === held }),
+    () => focus.narrow(narrowed, anchorOf(projectPath), { noun: NOUN, keep: (one) => one.id === held }),
     [focus, narrowed, projectPath, held],
   )
   const visible = inParts.shown
@@ -354,7 +354,8 @@ export function App() {
         ? whyEmpty(front, questions.length, aimed.unresolved)
         : narrowed.length === 0
           ? whyUnscoped(scope)
-          : whyUnfocused(focus.focused, visible.length, narrowed.length)
+          : /* The protocol's sentence, when the picked parts are what emptied the pane. */
+            inParts.empty || null
 
   /*
    * What this container is showing, told to the canvas whenever it changes.

@@ -171,8 +171,8 @@ describe('an empty pane says why, in one sentence, and nothing else does', () =>
     await waitFor(() => expect(drawn()).toEqual({ methods: 2, results: 0 }))
     await say('kehikot.context', withIntro(true))
     expect(drawn()).toEqual({ methods: 0, results: 0 })
-    expect(note()).toBe('No question here is in the picked parts.')
-    expect(lines()).toEqual(['No question here is in the picked parts.'])
+    expect(note()).toBe('No question is in the picked part.')
+    expect(lines()).toEqual(['No question is in the picked part.'])
   })
 
   test('the reader’s scope on a document no question is about', async () => {

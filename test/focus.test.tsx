@@ -5,7 +5,7 @@ import { partsDeclaration, type EpicPart } from 'kehikot-module-protocol'
 import { useFocus } from 'kehikot-module-protocol/client/react'
 
 import { MANIFEST } from '../manifest.ts'
-import { anchorOf, inHand, standingOn, stillOn, whyUnfocused } from '../src/wire/focus.ts'
+import { NOUN, anchorOf, inHand, standingOn, stillOn } from '../src/wire/focus.ts'
 import type { Anchored } from '../src/wire/pointed.ts'
 
 /**
@@ -42,7 +42,7 @@ const parts = (...picked: string[]): EpicPart[] => [
 
 function narrowed(picked: string[], held: string | null = null, questions = QUESTIONS) {
   const { result } = renderHook(() => useFocus({ parts: parts(...picked), epic: 'thesis' }))
-  return result.current.narrow(questions, anchorOf(PROJECT), { noun: 'question', keep: (one) => one.id === held })
+  return result.current.narrow(questions, anchorOf(PROJECT), { noun: NOUN, keep: (one) => one.id === held })
 }
 const ids = (list: readonly Anchored[]) => list.map((one) => one.id)
 
@@ -51,7 +51,7 @@ describe('which questions the ticked parts leave', () => {
     const out = narrowed([])
     expect(out.shown).toEqual(QUESTIONS)
     expect(out).toMatchObject({ outside: 0 })
-    expect(whyUnfocused(false, 0, 7)).toBeNull()
+    expect(out.empty).toBe('')
   })
 
   test('one part: the questions whose source is a file it owns; the rest are counted', () => {
@@ -108,14 +108,27 @@ describe('what a change of ticks may not take away', () => {
 })
 
 describe('what the page says about the picked parts', () => {
-  test('one sentence, and only when they are what emptied the pane', () => {
+  test('one sentence, the protocol’s, and only when they are what emptied the pane', () => {
     const none = narrowed(['methods'], null, QUESTIONS.slice(0, 2))
     expect(none.shown).toEqual([])
-    expect(whyUnfocused(true, none.shown.length, 2)).toBe('No question here is in the picked parts.')
+    expect(none.empty).toBe('No question is in the picked part.')
+    expect(narrowed(['methods', 'intro'], null, []).empty).toBe('')
+    /* Two parts picked, said in their own number. */
+    const elsewhere: EpicPart[] = ['a', 'b'].map((id) => ({ id, heading: id, refs: [], picked: true, files: ['chapters/9_nowhere.tex'] }))
+    const { result } = renderHook(() => useFocus({ parts: elsewhere, epic: 'thesis' }))
+    expect(result.current.narrow(QUESTIONS, anchorOf(PROJECT), { noun: NOUN }).empty).toBe('No question is in the picked parts.')
     /* The aim or the scope had already left nothing: theirs to say. */
-    expect(whyUnfocused(true, 0, 0)).toBeNull()
+    expect(narrowed(['methods'], null, []).empty).toBe('')
     /* Questions on screen: nothing is said about the ones that are not. */
-    expect(whyUnfocused(true, 2, 7)).toBeNull()
+    expect(narrowed(['intro']).empty).toBe('')
+  })
+
+  test('the same sentence from a host that sends a part’s documents', () => {
+    const documents: EpicPart[] = [{ id: 'methods', heading: 'Methods', refs: [], picked: true, documents: ['.kehikot/paper/thesis/chapters/3_methods.tex'], files: [] }]
+    const { result } = renderHook(() => useFocus({ parts: documents, epic: 'thesis', projectPath: PROJECT }))
+    const out = result.current.narrow(QUESTIONS.slice(0, 2), anchorOf(PROJECT), { noun: NOUN })
+    expect(out.shown).toEqual([])
+    expect(out.empty).toBe('No question is in the picked part.')
   })
 })
 
