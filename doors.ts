@@ -9,12 +9,14 @@ import {
   MAX_OPTIONS,
   MAX_PATH,
   MAX_QUESTION,
+  MAX_QUESTIONS,
   MAX_QUOTE,
   MAX_WHY,
   MIN_OPTIONS,
   change,
   epicsOf,
   fileOf,
+  questionStates,
   quizHistory,
   readQuiz,
   scoreShown,
@@ -24,6 +26,7 @@ import {
   withKey,
   writeQuiz,
   type Keyed,
+  type QuestionState,
 } from './quiz/questions.ts'
 import { poke, watchQuizzes } from './quiz/live.ts'
 import { MAX_PROJECT, defaultProject, usablePath } from './quiz/projects.ts'
@@ -111,14 +114,18 @@ const PROJECT_PROPERTY = {
   },
 } as const
 
+/** The states `quiz_state` can be narrowed to. `unknown` is not one: it is what an id nothing has is called. */
+const STATES = ['answered', 'unanswered', 'not_asked'] as const
+
 /**
- * The four tools, which are the whole of what an agent can do here.
+ * The five tools, which are the whole of what an agent can do here.
  *
  * **There is no tool that answers a question.** That omission is the module:
  * an agent writes the questions; a PERSON answers them, because the entire
  * value of the record is that it says what a person understood. And `quizzes`
  * withholds the key by default for the same reason the page does — an agent
  * standing beside a reader with the answer key will, being helpful, tell them.
+ * `quiz_state` never carries it at all.
  */
 function tools() {
   return [
@@ -257,6 +264,80 @@ function tools() {
         required: ['id'],
       },
     },
+    {
+      name: 'quiz_state',
+      description:
+        'Whether questions have been answered, and nothing else about them: one line and one record per question, '
+        + 'with its id, its state and, once a reader has answered, whether the last answer was right, how many attempts '
+        + 'count and when the last was made. Never the question, its options or which option is correct. Ask it instead '
+        + 'of `quizzes` when the question is "has this been answered yet?": give `id` or `ids` to ask about those, and '
+        + 'an id nothing has comes back as `unknown`, which is not `unanswered`. Given both, they are asked about '
+        + 'together, each id once. An `ids` that is given narrows even when it is empty: `ids: []` answers for no '
+        + 'question, and only with neither `id` nor `ids` is every question listed. Give `state` to list only the '
+        + 'questions in that state. The same answer is in `structuredContent`, for a program, with `done`: true when '
+        + 'every question asked about is answered. It reads and writes nothing.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          ...PROJECT_PROPERTY,
+          epic: {
+            type: 'string',
+            description:
+              'The epic whose questions are meant, as list_epics spells it. Omit it to look in every epic of the '
+              + 'project: an id is unique in an epic’s file, not in a project, so one id can then come back twice.',
+          },
+          id: { type: 'string', maxLength: MAX_ID, description: 'One question id, as the quizzes tool prints it. Asked about together with ids.' },
+          ids: {
+            type: 'array',
+            items: { type: 'string', maxLength: MAX_ID },
+            maxItems: MAX_QUESTIONS,
+            description:
+              `Several question ids, up to ${MAX_QUESTIONS} in one call; more are refused, not cut short. An empty array `
+              + 'answers for no question. With neither id nor ids, every question is listed.',
+          },
+          state: {
+            type: 'string',
+            enum: [...STATES],
+            description:
+              'List only questions in this state. `not_asked` is a question the file does not tick exactly one option '
+              + 'for, which no page shows. An id that was asked for and is unknown is always reported.',
+          },
+        },
+      },
+      /* It reads and nothing else: a caller that asks a person before running an unmarked tool need not ask for this one. */
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          project: { type: 'string' },
+          epic: { type: ['string', 'null'], description: 'The epic that was asked about, or null for every epic.' },
+          state: { type: ['string', 'null'], description: 'The state the list was narrowed to, or null.' },
+          done: {
+            type: 'boolean',
+            description:
+              'True when at least one question was asked about and every one of them is answered. Judged before '
+              + '`state` narrows the list, so it means the same whatever is listed; an unknown, unanswered or '
+              + 'not_asked question makes it false.',
+          },
+          questions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                epic: { type: ['string', 'null'], description: 'Null only for an unknown id asked about with no epic.' },
+                state: { type: 'string', enum: [...STATES, 'unknown'] },
+                right: { type: ['boolean', 'null'], description: 'The verdict on the last attempt. Null unless answered.' },
+                attempts: { type: 'integer' },
+                at: { type: ['string', 'null'], description: 'When the last attempt was made (ISO). Null unless answered.' },
+              },
+              required: ['id', 'epic', 'state', 'right', 'attempts', 'at'],
+            },
+          },
+        },
+        required: ['project', 'epic', 'state', 'done', 'questions'],
+      },
+    },
   ]
 }
 
@@ -357,6 +438,89 @@ function epicText(project: string, epic: string, reveal: boolean): string {
     + `${right} right. They are ${fileOf(project, epic)}, which a person may edit by hand.`
   const wrong = problems.length ? `\n\nWrong with the file:\n${problems.map((problem) => `  - ${problem}`).join('\n')}` : ''
   return `${head}\n\n${lines.join('\n\n')}${wrong}`
+}
+
+/** One question's state as `quiz_state` says it: a `QuestionState`, or an id nothing has. */
+type Stated = QuestionState | { id: string; epic: string | null; state: 'unknown'; right: null; attempts: 0; at: null }
+
+/**
+ * Whether questions were answered, for a caller that will not read prose: the
+ * records, and the same thing as one line each whose second word is the state.
+ * It reads through `questionStates`, which holds no key to give away.
+ */
+function stateAnswer(project: string, args: Record<string, unknown>): { said: string; structuredContent: unknown } {
+  const given = (value: unknown) => value !== undefined && value !== null
+  if (given(args.ids) && !Array.isArray(args.ids)) {
+    throw new Error('quiz_state was given ids that are not an array. Give one id as id, several as an ARRAY in ids, or neither to list every question.')
+  }
+  const only = args.state === undefined || args.state === null || args.state === '' ? null : STATES.find((one) => one === args.state)
+  if (only === undefined) {
+    throw new Error(
+      `quiz_state was given a state that is not one of ${STATES.join(', ')}. Omit it to list every question whatever its state.`,
+    )
+  }
+  const epic = str(args.epic, MAX_EPIC) || null
+  const several = (args.ids as unknown[] | null | undefined) ?? []
+  if (several.length > MAX_QUESTIONS) {
+    throw new Error(
+      `quiz_state was given ${several.length} ids and answers for at most ${MAX_QUESTIONS} in one call. Ask about them in several calls.`,
+    )
+  }
+  const narrowed = given(args.id) || given(args.ids)
+  const asked = [...(given(args.id) ? [args.id] : []), ...several].map((id) => str(id, MAX_ID + 1))
+  /* An id is one word (`ID_LINE` in quiz/format.ts), and each line of the answer relies on it. */
+  if (asked.some((id) => !id || id.length > MAX_ID || /\s/.test(id))) {
+    throw new Error(
+      `quiz_state was given an id that is not a question’s id: it is blank, has whitespace in it, is longer than ${MAX_ID} `
+      + 'characters or is not a string. Give each id as the quizzes tool prints it, or omit id and ids to list every question.',
+    )
+  }
+  const ids = [...new Set(asked)]
+
+  const { states, trouble, nowhere } = questionStates(project, epic)
+  if (nowhere) throw new Error(noProjectText('quiz_state'))
+  if (trouble) throw new Error(trouble)
+
+  const wanted: Stated[] = narrowed
+    ? ids.flatMap((id): Stated[] => {
+        const found = states.filter((one) => one.id === id)
+        return found.length ? found : [{ id, epic, state: 'unknown', right: null, attempts: 0, at: null }]
+      })
+    : states
+  const questions = wanted.filter((one) => only === null || one.state === only || one.state === 'unknown')
+  /* "Is this done?", as one word a caller can wait on. Over everything asked about, not over what
+     `state` left of it: narrowed to `answered`, a list is all answered and says nothing. */
+  const answered = wanted.filter((one) => one.state === 'answered').length
+  const done = wanted.length > 0 && answered === wanted.length
+  const unknown = questions.filter((one) => one.state === 'unknown').map((one) => `"${one.id}"`)
+
+  const where = epic ? `about ${epic} in ${project}` : `in ${project}`
+  const lines = questions.map((one) =>
+    one.state === 'answered'
+      ? `  ${one.id} answered ${one.right ? 'right' : 'wrong'}, ${one.attempts} attempt${one.attempts === 1 ? '' : 's'}, last ${one.at}, in ${one.epic}`
+      : `  ${one.id} ${one.state}${one.epic && one.state !== 'unknown' ? `, in ${one.epic}` : ''}`,
+  )
+  const said = [
+    questions.length
+      ? `${questions.length} question${questions.length === 1 ? '' : 's'} ${where}${only ? `, only those ${only}` : ''} — id, then its state:`
+      : narrowed && !ids.length
+        ? `quiz_state was given no ids to ask about, so this answers for no question ${where}. Omit id and ids to list every question.`
+        : states.length
+          ? `None of the ${narrowed ? 'questions asked about' : `${states.length} question${states.length === 1 ? '' : 's'}`} ${where} is ${only}.`
+          : `No questions have been written ${where}.`,
+    ...lines,
+    wanted.length
+      ? `Done: ${done ? 'yes' : 'no'} — ${answered} of the ${wanted.length} asked about ${wanted.length === 1 ? 'is' : 'are'} answered.`
+      : 'Done: no — no question was asked about.',
+    ...(unknown.length
+      ? [
+          '',
+          `There is no question ${unknown.join(', ')} ${where}: unknown is not unanswered. Questions are addressed by `
+          + 'the id the quizzes tool prints beside each one.',
+        ]
+      : []),
+  ].join('\n')
+  return { said, structuredContent: { project, epic, state: only, done, questions } }
 }
 
 /**
@@ -508,7 +672,7 @@ function mcp(rpc: Rpc): Reply {
 
     /* Whether this is a tool at all is settled BEFORE the project is: a caller
        who misremembered the tool's name should be told that. */
-    if (name !== 'quizzes' && name !== 'add_quiz' && name !== 'reword_quiz' && name !== 'drop_quiz') {
+    if (name !== 'quizzes' && name !== 'add_quiz' && name !== 'reword_quiz' && name !== 'drop_quiz' && name !== 'quiz_state') {
       const shown = name.length > 60 ? `${name.slice(0, 60)}…` : name
       return text(`no tool "${shown}" here`, true)
     }
@@ -522,6 +686,10 @@ function mcp(rpc: Rpc): Reply {
         const epic = str(args.epic, MAX_EPIC)
         if (!epic) return text(standingsText(project))
         return text(epicText(project, epic, args.reveal === true))
+      }
+      if (name === 'quiz_state') {
+        const { said, structuredContent } = stateAnswer(project, args)
+        return reply({ content: [{ type: 'text', text: said }], structuredContent })
       }
       const said = call(name, args, project)
       /* An editor open on this project hears of an agent's write at once. */

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -141,10 +141,10 @@ describe('the MCP door', () => {
     expect(reply?.body).toBeNull()
   })
 
-  test('the four tools, and no more', () => {
+  test('the five tools, and no more', () => {
     const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
     const tools = (reply?.body as { result?: { tools?: { name: string }[] } }).result?.tools ?? []
-    expect(tools.map((t) => t.name).sort()).toEqual(['add_quiz', 'drop_quiz', 'quizzes', 'reword_quiz'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['add_quiz', 'drop_quiz', 'quiz_state', 'quizzes', 'reword_quiz'])
   })
 
   test('there is deliberately no tool that answers a question', () => {
@@ -189,7 +189,7 @@ describe('the project argument', () => {
   })
 
   test('every tool refuses without one, and says what to pass', () => {
-    for (const name of ['quizzes', 'add_quiz', 'reword_quiz', 'drop_quiz']) {
+    for (const name of ['quizzes', 'add_quiz', 'reword_quiz', 'drop_quiz', 'quiz_state']) {
       const { text, isError } = tool(name, { ...good(), project: undefined, id: 'deadbeef' })
       expect(isError).toBe(true)
       expect(text).toContain('needs a project')
@@ -412,6 +412,258 @@ describe('quizzes', () => {
     expect(tool('quizzes', { project: A, epic: 'modes-are-modules' }).text).toContain('The question in project one')
     expect(tool('quizzes', { project: A, epic: 'modes-are-modules' }).text).not.toContain('The question in project two')
     expect(tool('quizzes', { project: B, epic: 'modes-are-modules' }).text).toContain('The question in project two')
+  })
+})
+
+describe('quiz_state', () => {
+  interface Stated {
+    id: string
+    epic: string | null
+    state: string
+    right: boolean | null
+    attempts: number
+    at: string | null
+  }
+
+  /** One call, as a program reads it: the records, and the whole reply to look for leaks in. */
+  function states(args: Record<string, unknown> = {}) {
+    const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'quiz_state', arguments: { project: A, ...args } } }, null)
+    const result = (reply?.body as { result: { content: { text: string }[]; isError?: boolean; structuredContent?: { epic: string | null; state: string | null; done: boolean; questions: Stated[] } } }).result
+    return { text: result.content[0]?.text ?? '', isError: result.isError === true, said: result.structuredContent, questions: result.structuredContent?.questions ?? [], whole: JSON.stringify(reply?.body) }
+  }
+
+  test('says whether one question was answered, by its id, and how the last answer went', () => {
+    const id = added()
+    const before = states({ id })
+    expect(before.isError).toBe(false)
+    expect(before.questions).toEqual([{ id, epic: 'modes-are-modules', state: 'unanswered', right: null, attempts: 0, at: null }])
+    expect(before.text).toContain(`  ${id} unanswered, in modes-are-modules`)
+
+    press(id, WRONG)
+    const wrong = states({ id })
+    expect(wrong.questions[0]).toMatchObject({ id, state: 'answered', right: false, attempts: 1 })
+    expect(Number.isNaN(Date.parse(wrong.questions[0]?.at ?? ''))).toBe(false)
+    expect(wrong.text).toContain(`  ${id} answered wrong, 1 attempt, last ${wrong.questions[0]?.at}, in modes-are-modules`)
+
+    press(id, RIGHT)
+    const right = states({ ids: [id], epic: 'modes-are-modules' })
+    expect(right.questions[0]).toMatchObject({ id, state: 'answered', right: true, attempts: 2 })
+    expect(right.text).toContain(`  ${id} answered right, 2 attempts`)
+  })
+
+  test('carries no question, no option, no key and no explanation, answered or not', () => {
+    const id = added()
+    const other = added({ question: 'And what does a host read?' })
+    press(id, WRONG)
+    for (const args of [{}, { ids: [id, other] }, { state: 'answered' }, { epic: 'modes-are-modules' }]) {
+      const { whole } = states(args)
+      for (const words of ['What does a manifest settle?', 'And what does a host read?', RIGHT, WRONG, 'Who owns the repository', 'only half a host reads', 'chapters/bridge.tex']) {
+        expect(whole).not.toContain(words)
+      }
+      expect(whole).not.toContain('"answer"')
+      expect(whole).not.toContain('"chose"')
+    }
+  })
+
+  test('an id nothing has is unknown, which is not unanswered, and the ones beside it are still answered for', () => {
+    const id = added()
+    const { text, isError, questions } = states({ ids: ['deadbeef', id], epic: 'modes-are-modules' })
+    expect(isError).toBe(false)
+    expect(questions.map((one) => [one.id, one.state])).toEqual([['deadbeef', 'unknown'], [id, 'unanswered']])
+    expect(text).toContain('  deadbeef unknown')
+    expect(text).toContain('There is no question "deadbeef" about modes-are-modules')
+    expect(text).toContain('unknown is not unanswered')
+    /* In another epic it is unknown too: the epic named is the one looked in. */
+    expect(states({ id, epic: 'bridge' }).questions).toEqual([{ id, epic: 'bridge', state: 'unknown', right: null, attempts: 0, at: null }])
+    /* And a filter never hides the typo. */
+    expect(states({ id: 'deadbeef', state: 'answered' }).questions.map((one) => one.state)).toEqual(['unknown'])
+  })
+
+  test('lists the questions in one state, without their words', () => {
+    const first = added()
+    const second = added({ question: 'And what does a host read?' })
+    expect(states({ epic: 'modes-are-modules', state: 'answered' }).text).toContain('None of the 2 questions about modes-are-modules')
+    press(first, RIGHT)
+    expect(states({ epic: 'modes-are-modules' }).questions.map((one) => [one.id, one.state])).toEqual([[first, 'answered'], [second, 'unanswered']])
+    const answered = states({ epic: 'modes-are-modules', state: 'answered' })
+    expect(answered.said).toMatchObject({ epic: 'modes-are-modules', state: 'answered' })
+    expect(answered.questions.map((one) => one.id)).toEqual([first])
+    expect(states({ epic: 'modes-are-modules', state: 'unanswered' }).questions.map((one) => one.id)).toEqual([second])
+    /* A filter narrows the ids asked about as well. */
+    expect(states({ ids: [first, second], state: 'unanswered' }).questions.map((one) => one.id)).toEqual([second])
+  })
+
+  test('with no epic it looks in every epic, and an id two files hold comes back once for each', () => {
+    mkdirSync(join(A, KEHIKOT_DIR, 'learning'), { recursive: true })
+    const file = (ticked: string) => `## Which half does a host read? [^a]\n<!-- id: shared -->\n- the page\n- ${ticked}the manifest\n\nSources:\n[^a]: chapters/bridge.tex | "the only half a host reads"\n`
+    writeFileSync(join(A, KEHIKOT_DIR, 'learning', 'bridge.md'), file('[x] '))
+    writeFileSync(join(A, KEHIKOT_DIR, 'learning', 'wire.md'), file(''))
+    const id = added()
+    expect(states().questions.map((one) => [one.epic, one.id, one.state])).toEqual([
+      ['bridge', 'shared', 'unanswered'],
+      ['modes-are-modules', id, 'unanswered'],
+      ['wire', 'shared', 'not_asked'],
+    ])
+    expect(states({ id: 'shared' }).questions.map((one) => one.epic)).toEqual(['bridge', 'wire'])
+    expect(states({ state: 'not_asked' }).text).toContain('  shared not_asked, in wire')
+    /* An unknown id asked about with no epic has no epic to be in. */
+    expect(states({ id: 'deadbeef' }).questions[0]).toMatchObject({ epic: null, state: 'unknown' })
+  })
+
+  test('asking the questions again makes them unanswered again', () => {
+    const id = added()
+    press(id, RIGHT)
+    expect(states({ id }).questions[0]?.state).toBe('answered')
+    answer('POST', '/api/retake', nothing, { project: A, epic: 'modes-are-modules' }, TICKET)
+    expect(states({ id }).questions[0]).toMatchObject({ state: 'unanswered', right: null, attempts: 0, at: null })
+  })
+
+  test('a project or an epic with nothing in it says so, and is not an error', () => {
+    const { text, isError, questions } = states({ epic: 'nothing-here' })
+    expect(isError).toBe(false)
+    expect(questions).toEqual([])
+    expect(text).toContain('No questions have been written about nothing-here')
+    expect(existsSync(join(A, KEHIKOT_DIR))).toBe(false)
+  })
+
+  test('refuses ids that are not an array and a state it does not have, naming the ones it does', () => {
+    const id = added()
+    const joined = states({ ids: `${id}, deadbeef` })
+    expect(joined.isError).toBe(true)
+    expect(joined.text).toContain('ids that are not an array')
+    expect(joined.said).toBeUndefined()
+    const state = states({ state: 'done' })
+    expect(state.isError).toBe(true)
+    expect(state.text).toContain('not one of answered, unanswered, not_asked')
+  })
+
+  test('id and ids given together are asked about as one set, each id once', () => {
+    const first = added()
+    const second = added({ question: 'And what does a host read?' })
+    expect(states({ id: first, ids: [second, first] }).questions.map((one) => one.id)).toEqual([first, second])
+  })
+
+  test('ids that is given narrows even when it is empty; only neither id nor ids lists every question', () => {
+    const id = added()
+    for (const args of [{ ids: [] }, { ids: [], state: 'unanswered' }, { ids: [], epic: 'modes-are-modules' }]) {
+      const none = states(args)
+      expect(none.isError).toBe(false)
+      expect(none.questions).toEqual([])
+      expect(none.text).toContain('given no ids to ask about')
+    }
+    /* Null is "not given", for id and ids as it is for state. */
+    expect(states({ id: null, ids: null, state: null }).questions.map((one) => one.id)).toEqual([id])
+    expect(states().questions.map((one) => one.id)).toEqual([id])
+  })
+
+  test('refuses a blank id and one with whitespace in it, rather than listing everything or breaking the line', () => {
+    added()
+    for (const args of [{ id: '' }, { id: '   ' }, { ids: [''] }, { ids: ['  ', ''] }, { id: 'dead beef' }, { ids: ['deadbeef', 'dead\tbeef'] }, { ids: [{}] }, { id: 'x'.repeat(65) }]) {
+      const refused = states(args)
+      expect(refused.isError).toBe(true)
+      expect(refused.text).toContain('not a question’s id')
+      expect(refused.said).toBeUndefined()
+    }
+  })
+
+  test('refuses more ids than it answers for in one call, naming how many that is', () => {
+    const many = states({ ids: Array.from({ length: 2001 }, (_, n) => `q${n}`) })
+    expect(many.isError).toBe(true)
+    expect(many.text).toContain('2001 ids')
+    expect(many.text).toContain('at most 2000')
+    expect(states({ ids: Array.from({ length: 2000 }, (_, n) => `q${n}`) }).questions).toHaveLength(2000)
+  })
+
+  test('done is one word to wait on: true only when every question asked about is answered, whatever state narrows the list to', () => {
+    const first = added()
+    const second = added({ question: 'And what does a host read?' })
+    const waiting = states({ ids: [first, second] })
+    expect(waiting.said?.done).toBe(false)
+    expect(waiting.text).toContain('Done: no — 0 of the 2 asked about are answered.')
+
+    press(first, WRONG)
+    /* A wrong answer is an answer: the question was answered, and `right` says how. */
+    expect(states({ id: first }).said?.done).toBe(true)
+    expect(states({ id: first }).text).toContain('Done: yes — 1 of the 1 asked about is answered.')
+    expect(states({ ids: [first, second] }).said?.done).toBe(false)
+    /* Narrowed to the answered ones the list is all answered, and done still speaks of everything asked about. */
+    const narrowed = states({ epic: 'modes-are-modules', state: 'answered' })
+    expect(narrowed.questions.map((one) => one.id)).toEqual([first])
+    expect(narrowed.said?.done).toBe(false)
+    expect(narrowed.text).toContain('Done: no — 1 of the 2 asked about are answered.')
+
+    press(second, RIGHT)
+    expect(states({ epic: 'modes-are-modules' }).said?.done).toBe(true)
+    expect(states({ epic: 'modes-are-modules', state: 'unanswered' }).said).toMatchObject({ done: true, questions: [] })
+    /* A typo is never done, and neither is asking about nothing. */
+    expect(states({ ids: [first, second, 'deadbeef'] }).said?.done).toBe(false)
+    expect(states({ ids: [] }).said?.done).toBe(false)
+    expect(states({ ids: [] }).text).toContain('Done: no — no question was asked about.')
+    expect(states({ epic: 'nothing-here' }).said?.done).toBe(false)
+  })
+
+  test('is marked as a tool that only reads, in the form MCP has for it, and reading it writes nothing', () => {
+    const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
+    const tools = (reply?.body as { result: { tools: { name: string; annotations?: Record<string, boolean> }[] } }).result.tools
+    expect(tools.find((one) => one.name === 'quiz_state')?.annotations).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false })
+    /* No tool that writes claims to be one that only reads. */
+    for (const name of ['add_quiz', 'reword_quiz', 'drop_quiz']) expect(tools.find((one) => one.name === name)?.annotations?.readOnlyHint).not.toBe(true)
+
+    const id = added()
+    const folder = join(A, KEHIKOT_DIR, 'learning')
+    const before = readdirSync(folder).sort().map((name) => [name, readFileSync(join(folder, name), 'utf8')])
+    states()
+    states({ id })
+    states({ epic: 'modes-are-modules', state: 'unanswered' })
+    expect(readdirSync(folder).sort().map((name) => [name, readFileSync(join(folder, name), 'utf8')])).toEqual(before)
+  })
+
+  test('says what its answer holds, so a client can rely on the shape', () => {
+    const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
+    const tools = (reply?.body as { result: { tools: { name: string; outputSchema?: { required: string[] } }[] } }).result.tools
+    expect(tools.find((one) => one.name === 'quiz_state')?.outputSchema?.required).toEqual(['project', 'epic', 'state', 'done', 'questions'])
+  })
+
+  test('answers in the shape it declares: every property is one the outputSchema names, of a type it allows', () => {
+    interface Schema {
+      type?: string | string[]
+      enum?: unknown[]
+      properties?: Record<string, Schema>
+      required?: string[]
+      items?: Schema
+    }
+    const fits = (value: unknown, schema: Schema): boolean => {
+      const is = (type: string) =>
+        type === 'null'
+          ? value === null
+          : type === 'array'
+            ? Array.isArray(value)
+            : type === 'integer'
+              ? Number.isInteger(value)
+              : type === 'object'
+                ? typeof value === 'object' && value !== null && !Array.isArray(value)
+                : typeof value === type
+      if (!schema.type || ![schema.type].flat().some(is)) return false
+      if (schema.enum && !schema.enum.includes(value)) return false
+      if (Array.isArray(value)) return schema.items !== undefined && value.every((one) => fits(one, schema.items!))
+      if (typeof value !== 'object' || value === null) return true
+      const held = value as Record<string, unknown>
+      const named = schema.properties ?? {}
+      return (schema.required ?? []).every((key) => key in held) && Object.keys(held).every((key) => named[key] !== undefined && fits(held[key], named[key]))
+    }
+    const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
+    const schema = (reply?.body as { result: { tools: { name: string; outputSchema?: Schema }[] } }).result.tools.find((one) => one.name === 'quiz_state')!.outputSchema!
+
+    const answered = added()
+    const waiting = added({ question: 'And what does a host read?' })
+    press(answered, WRONG)
+    const { said, questions } = states({ ids: [answered, waiting, 'deadbeef'] })
+    expect(questions.map((one) => one.state)).toEqual(['answered', 'unanswered', 'unknown'])
+    expect(fits(said, schema)).toBe(true)
+    expect(fits(states({ epic: 'modes-are-modules', state: 'answered' }).said, schema)).toBe(true)
+    /* And the check is one that can fail. */
+    expect(fits({ ...said, questions: [{ ...questions[0], chose: 1 }] }, schema)).toBe(false)
+    expect(fits({ ...said, questions: [{ ...questions[0], attempts: '1' }] }, schema)).toBe(false)
   })
 })
 

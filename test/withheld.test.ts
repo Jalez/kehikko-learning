@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -302,6 +302,102 @@ describe('what the shared doors serve without being asked for the file', () => {
     expect(said(old)).toBe('{}\n')
     /* Asking twice is the same answer: nothing to average an order out of. */
     expect((await get(`/api/questions?${where()}`)).text).toBe(rewritten.text)
+  })
+
+  test('quiz_state, served: whether a question was answered, and never the key, its position, the order or what the order is made from', async () => {
+    /* Twelve more, the right option FIRST in the file, as authors write them. */
+    const MANY = 12
+    const right = (n: number) => `the right one, ${n}`
+    const inFile = (n: number) => [right(n), `a wrong one, ${n}`, `another wrong one, ${n}`, `a third wrong one, ${n}`]
+    const call = (name: string, args: Record<string, unknown>) =>
+      get('/mcp', { method: 'POST', body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { project: dir, epic: EPIC, ...args } } } })
+    for (let n = 0; n < MANY; n += 1) {
+      const wrote = await call('add_quiz', { question: `Asked ${n}?`, options: inFile(n), answer: 0, why: WHY, path: 'chapters/bridge.tex', quote: 'the manifest is the smallest half of this program' })
+      expect((JSON.parse(wrote.text) as { result: { isError?: boolean } }).result.isError).not.toBe(true)
+    }
+    interface State {
+      result: { content: { text: string }[]; structuredContent: { done: boolean; questions: Record<string, unknown>[] } }
+    }
+    const state = async (args: Record<string, unknown> = {}) => {
+      const got = await call('quiz_state', args)
+      expect(got.status).toBe(200)
+      return { got, body: JSON.parse(got.text) as State }
+    }
+    /* What may never be in it, whoever has answered what: no option's words, no question, no
+       explanation, no file, and none of the names a key or a choice goes by. */
+    const wordless = (got: Got) => {
+      keyless(got)
+      const all = said(got)
+      for (const words of ['the right one', 'wrong one', 'Asked ', 'What does a manifest settle?', 'Which tab the page gets', 'What colour', 'Who owns', 'chapters/bridge.tex', 'smallest half']) {
+        expect(all).not.toContain(words)
+      }
+      for (const name of ['"answer"', '"chose"', '"options"', '"order"', '"why"', '"key"', '"correct"', '"salt"', 'order.json']) expect(all).not.toContain(name)
+    }
+
+    /* Before anyone has answered, and before the page has asked: nothing has been dealt, and asking does not deal. */
+    const fresh = await state()
+    wordless(fresh.got)
+    expect(existsSync(join(dir, KEHIKOT_DIR, 'learning', 'order.json'))).toBe(false)
+    expect(fresh.body.result.structuredContent.done).toBe(false)
+    expect(fresh.body.result.structuredContent.questions).toHaveLength(MANY + 1)
+    for (const question of fresh.body.result.structuredContent.questions) {
+      expect(Object.keys(question).sort()).toEqual(['at', 'attempts', 'epic', 'id', 'right', 'state'])
+      expect(question).toMatchObject({ epic: EPIC, state: 'unanswered', right: null, attempts: 0, at: null })
+    }
+
+    /* The page asks, so there is an order and a salt now. Neither is in what quiz_state says. */
+    const asked = JSON.parse((await get(`/api/questions?${where()}`)).text) as { order: string; questions: { id: string; options: string[] }[] }
+    const salt = (JSON.parse(readFileSync(join(dir, KEHIKOT_DIR, 'learning', 'order.json'), 'utf8')) as Record<string, string>)[EPIC]!
+    const dealt = await state()
+    wordless(dealt.got)
+    expect(said(dealt.got)).not.toContain(salt)
+    expect(said(dealt.got)).not.toContain(asked.order)
+    expect(dealt.got.text).toBe(fresh.got.text)
+
+    /* The answer does not depend on where the key is. Every key is moved from first to last; what
+       quiz_state says of questions nobody has answered is the same to the byte, so there is
+       nothing in it the key, or its position in the file or on the page, could be read from. */
+    for (let n = 0; n < MANY; n += 1) {
+      const moved = await call('reword_quiz', { id: asked.questions[n + 1]!.id, options: [...inFile(n).slice(1), right(n)], answer: 3 })
+      expect((JSON.parse(moved.text) as { result: { isError?: boolean } }).result.isError).not.toBe(true)
+    }
+    expect((await state()).got.text).toBe(fresh.got.text)
+
+    /* Somebody answers three: one right and two wrong. quiz_state says so and still names no option —
+       not the one chosen, not the one that was right, not a position in either order. */
+    const now = JSON.parse((await get(`/api/questions?${where()}`)).text) as { order: string; questions: { id: string; options: string[] }[] }
+    const press = async (at: number, words: string) => {
+      const question = now.questions[at]!
+      const pressed = await get('/api/answer', { method: 'POST', ticket: TICKET, body: { project: dir, epic: EPIC, id: question.id, chose: question.options.indexOf(words), order: now.order } })
+      expect(pressed.status).toBe(200)
+    }
+    await press(1, right(0))
+    await press(2, 'a wrong one, 1')
+    await press(3, 'a third wrong one, 2')
+    const after = await state()
+    wordless(after.got)
+    expect(said(after.got)).not.toContain(salt)
+    expect(said(after.got)).not.toContain(now.order)
+    const [, one, two, three, four] = after.body.result.structuredContent.questions
+    expect(one).toMatchObject({ state: 'answered', right: true, attempts: 1 })
+    expect(two).toMatchObject({ state: 'answered', right: false, attempts: 1 })
+    expect(three).toMatchObject({ state: 'answered', right: false, attempts: 1 })
+    expect(four).toMatchObject({ state: 'unanswered', right: null, attempts: 0, at: null })
+    for (const question of after.body.result.structuredContent.questions) {
+      expect(Object.keys(question).sort()).toEqual(['at', 'attempts', 'epic', 'id', 'right', 'state'])
+    }
+    /* The two wrong answers chose different options, at different places, and read the same but for the id and the time. */
+    const bare = (question: Record<string, unknown> | undefined) => ({ ...question, id: '', at: '' })
+    expect(bare(two)).toEqual(bare(three))
+    /* The top of the answer is five plain things, and the listing declares exactly those. */
+    expect(Object.keys(after.body.result.structuredContent).sort()).toEqual(['done', 'epic', 'project', 'questions', 'state'])
+    /* A refusal carries nothing either. */
+    wordless(await call('quiz_state', { state: 'done' }))
+    wordless(await call('quiz_state', { ids: 'x' }))
+    /* And it is listed as a tool that only reads; the listing itself holds no key. */
+    const listed = await get('/mcp', { method: 'POST', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } })
+    keyless(listed)
+    expect(said(listed)).not.toContain(salt)
   })
 
   test('an answer refused for naming an old order is told nothing: no verdict, no key, no order, and the new name only by reading again', async () => {

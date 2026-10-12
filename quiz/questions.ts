@@ -359,6 +359,52 @@ export function epicsOf(projectPath: string | null | undefined, id: string): str
   return epics(projectPath).filter((epic) => open(projectPath, epic).held?.quiz.questions.some((one) => one.id === id))
 }
 
+/**
+ * Where one question stands, for a caller that asked only that. Not a word of
+ * the question, no option and no key: `right` is the verdict on the last
+ * attempt, which the reader has already been shown.
+ */
+export interface QuestionState {
+  id: string
+  epic: string
+  /** `not_asked`: the file does not tick exactly one option for it, so no page shows it. */
+  state: 'answered' | 'unanswered' | 'not_asked'
+  /** Null until it is answered. */
+  right: boolean | null
+  /** How many attempts still count (see `counted`). */
+  attempts: number
+  /** When the last of them was made, as it was recorded. */
+  at: string | null
+}
+
+/**
+ * Every question of one epic — or, with no epic, of every epic in the project —
+ * and whether it has been answered, in the order the files have them.
+ */
+export function questionStates(projectPath: string | null | undefined, epic: string | null): { states: QuestionState[] } & Read {
+  const first = open(projectPath, epic ?? '')
+  if (!first.held) return { states: [], trouble: first.trouble, nowhere: first.nowhere }
+  const states: QuestionState[] = []
+  for (const one of epic === null ? epics(projectPath) : [epic]) {
+    const { held, trouble } = one === epic ? first : open(projectPath, one)
+    if (!held) return { states: [], trouble, nowhere: false }
+    const answers = held.all[one] ?? {}
+    for (const question of held.quiz.questions) {
+      const attempts = keyOf(question) === null ? [] : counted(question, answers[question.id])
+      const last = attempts.at(-1)
+      states.push({
+        id: question.id,
+        epic: one,
+        state: keyOf(question) === null ? 'not_asked' : last ? 'answered' : 'unanswered',
+        right: last?.right ?? null,
+        attempts: attempts.length,
+        at: last?.at ?? null,
+      })
+    }
+  }
+  return { states, trouble: null, nowhere: false }
+}
+
 /* ------------------------------------------------------------------------ *
  * Writing
  * ------------------------------------------------------------------------ */
