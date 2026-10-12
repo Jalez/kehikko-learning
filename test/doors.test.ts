@@ -537,10 +537,89 @@ describe('quiz_state', () => {
     expect(state.text).toContain('not one of answered, unanswered, not_asked')
   })
 
+  test('id and ids given together are asked about as one set, each id once', () => {
+    const first = added()
+    const second = added({ question: 'And what does a host read?' })
+    expect(states({ id: first, ids: [second, first] }).questions.map((one) => one.id)).toEqual([first, second])
+  })
+
+  test('ids that is given narrows even when it is empty; only neither id nor ids lists every question', () => {
+    const id = added()
+    for (const args of [{ ids: [] }, { ids: [], state: 'unanswered' }, { ids: [], epic: 'modes-are-modules' }]) {
+      const none = states(args)
+      expect(none.isError).toBe(false)
+      expect(none.questions).toEqual([])
+      expect(none.text).toContain('given no ids to ask about')
+    }
+    /* Null is "not given", for id and ids as it is for state. */
+    expect(states({ id: null, ids: null, state: null }).questions.map((one) => one.id)).toEqual([id])
+    expect(states().questions.map((one) => one.id)).toEqual([id])
+  })
+
+  test('refuses a blank id and one with whitespace in it, rather than listing everything or breaking the line', () => {
+    added()
+    for (const args of [{ id: '' }, { id: '   ' }, { ids: [''] }, { ids: ['  ', ''] }, { id: 'dead beef' }, { ids: ['deadbeef', 'dead\tbeef'] }, { ids: [{}] }, { id: 'x'.repeat(65) }]) {
+      const refused = states(args)
+      expect(refused.isError).toBe(true)
+      expect(refused.text).toContain('not a question’s id')
+      expect(refused.said).toBeUndefined()
+    }
+  })
+
+  test('refuses more ids than it answers for in one call, naming how many that is', () => {
+    const many = states({ ids: Array.from({ length: 2001 }, (_, n) => `q${n}`) })
+    expect(many.isError).toBe(true)
+    expect(many.text).toContain('2001 ids')
+    expect(many.text).toContain('at most 2000')
+    expect(states({ ids: Array.from({ length: 2000 }, (_, n) => `q${n}`) }).questions).toHaveLength(2000)
+  })
+
   test('says what its answer holds, so a client can rely on the shape', () => {
     const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
     const tools = (reply?.body as { result: { tools: { name: string; outputSchema?: { required: string[] } }[] } }).result.tools
     expect(tools.find((one) => one.name === 'quiz_state')?.outputSchema?.required).toEqual(['project', 'epic', 'state', 'questions'])
+  })
+
+  test('answers in the shape it declares: every property is one the outputSchema names, of a type it allows', () => {
+    interface Schema {
+      type?: string | string[]
+      enum?: unknown[]
+      properties?: Record<string, Schema>
+      required?: string[]
+      items?: Schema
+    }
+    const fits = (value: unknown, schema: Schema): boolean => {
+      const is = (type: string) =>
+        type === 'null'
+          ? value === null
+          : type === 'array'
+            ? Array.isArray(value)
+            : type === 'integer'
+              ? Number.isInteger(value)
+              : type === 'object'
+                ? typeof value === 'object' && value !== null && !Array.isArray(value)
+                : typeof value === type
+      if (!schema.type || ![schema.type].flat().some(is)) return false
+      if (schema.enum && !schema.enum.includes(value)) return false
+      if (Array.isArray(value)) return schema.items !== undefined && value.every((one) => fits(one, schema.items!))
+      if (typeof value !== 'object' || value === null) return true
+      const held = value as Record<string, unknown>
+      const named = schema.properties ?? {}
+      return (schema.required ?? []).every((key) => key in held) && Object.keys(held).every((key) => named[key] !== undefined && fits(held[key], named[key]))
+    }
+    const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
+    const schema = (reply?.body as { result: { tools: { name: string; outputSchema?: Schema }[] } }).result.tools.find((one) => one.name === 'quiz_state')!.outputSchema!
+
+    const answered = added()
+    const waiting = added({ question: 'And what does a host read?' })
+    press(answered, WRONG)
+    const { said, questions } = states({ ids: [answered, waiting, 'deadbeef'] })
+    expect(questions.map((one) => one.state)).toEqual(['answered', 'unanswered', 'unknown'])
+    expect(fits(said, schema)).toBe(true)
+    expect(fits(states({ epic: 'modes-are-modules', state: 'answered' }).said, schema)).toBe(true)
+    /* And the check is one that can fail. */
+    expect(fits({ ...said, questions: [{ ...questions[0], chose: 1 }] }, schema)).toBe(false)
+    expect(fits({ ...said, questions: [{ ...questions[0], attempts: '1' }] }, schema)).toBe(false)
   })
 })
 

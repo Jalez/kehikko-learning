@@ -271,8 +271,10 @@ function tools() {
         + 'with its id, its state and, once a reader has answered, whether the last answer was right, how many attempts '
         + 'count and when the last was made. Never the question, its options or which option is correct. Ask it instead '
         + 'of `quizzes` when the question is "has this been answered yet?": give `id` or `ids` to ask about those, and '
-        + 'an id nothing has comes back as `unknown`, which is not `unanswered`. Give `state` to list only the questions '
-        + 'in that state. The same answer is in `structuredContent`, for a program.',
+        + 'an id nothing has comes back as `unknown`, which is not `unanswered`. Given both, they are asked about '
+        + 'together, each id once. An `ids` that is given narrows even when it is empty: `ids: []` answers for no '
+        + 'question, and only with neither `id` nor `ids` is every question listed. Give `state` to list only the '
+        + 'questions in that state. The same answer is in `structuredContent`, for a program.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -283,11 +285,14 @@ function tools() {
               'The epic whose questions are meant, as list_epics spells it. Omit it to look in every epic of the '
               + 'project: an id is unique in an epic’s file, not in a project, so one id can then come back twice.',
           },
-          id: { type: 'string', description: 'One question id, as the quizzes tool prints it.' },
+          id: { type: 'string', maxLength: MAX_ID, description: 'One question id, as the quizzes tool prints it. Asked about together with ids.' },
           ids: {
             type: 'array',
             items: { type: 'string', maxLength: MAX_ID },
-            description: 'Several question ids. With neither id nor ids, every question is listed.',
+            maxItems: MAX_QUESTIONS,
+            description:
+              `Several question ids, up to ${MAX_QUESTIONS} in one call; more are refused, not cut short. An empty array `
+              + 'answers for no question. With neither id nor ids, every question is listed.',
           },
           state: {
             type: 'string',
@@ -434,7 +439,8 @@ type Stated = QuestionState | { id: string; epic: string | null; state: 'unknown
  * It reads through `questionStates`, which holds no key to give away.
  */
 function stateAnswer(project: string, args: Record<string, unknown>): { said: string; structuredContent: unknown } {
-  if (args.ids !== undefined && !Array.isArray(args.ids)) {
+  const given = (value: unknown) => value !== undefined && value !== null
+  if (given(args.ids) && !Array.isArray(args.ids)) {
     throw new Error('quiz_state was given ids that are not an array. Give one id as id, several as an ARRAY in ids, or neither to list every question.')
   }
   const only = args.state === undefined || args.state === null || args.state === '' ? null : STATES.find((one) => one === args.state)
@@ -444,13 +450,28 @@ function stateAnswer(project: string, args: Record<string, unknown>): { said: st
     )
   }
   const epic = str(args.epic, MAX_EPIC) || null
-  const ids = [...new Set([args.id, ...((args.ids as unknown[] | undefined) ?? []).slice(0, MAX_QUESTIONS)].map((id) => str(id, MAX_ID)).filter(Boolean))]
+  const several = (args.ids as unknown[] | null | undefined) ?? []
+  if (several.length > MAX_QUESTIONS) {
+    throw new Error(
+      `quiz_state was given ${several.length} ids and answers for at most ${MAX_QUESTIONS} in one call. Ask about them in several calls.`,
+    )
+  }
+  const narrowed = given(args.id) || given(args.ids)
+  const asked = [...(given(args.id) ? [args.id] : []), ...several].map((id) => str(id, MAX_ID + 1))
+  /* An id is one word (`ID_LINE` in quiz/format.ts), and each line of the answer relies on it. */
+  if (asked.some((id) => !id || id.length > MAX_ID || /\s/.test(id))) {
+    throw new Error(
+      `quiz_state was given an id that is not a question’s id: it is blank, has whitespace in it, is longer than ${MAX_ID} `
+      + 'characters or is not a string. Give each id as the quizzes tool prints it, or omit id and ids to list every question.',
+    )
+  }
+  const ids = [...new Set(asked)]
 
   const { states, trouble, nowhere } = questionStates(project, epic)
   if (nowhere) throw new Error(noProjectText('quiz_state'))
   if (trouble) throw new Error(trouble)
 
-  const wanted: Stated[] = ids.length
+  const wanted: Stated[] = narrowed
     ? ids.flatMap((id): Stated[] => {
         const found = states.filter((one) => one.id === id)
         return found.length ? found : [{ id, epic, state: 'unknown', right: null, attempts: 0, at: null }]
@@ -468,9 +489,11 @@ function stateAnswer(project: string, args: Record<string, unknown>): { said: st
   const said = [
     questions.length
       ? `${questions.length} question${questions.length === 1 ? '' : 's'} ${where}${only ? `, only those ${only}` : ''} — id, then its state:`
-      : states.length
-        ? `None of the ${ids.length ? 'questions asked about' : `${states.length} question${states.length === 1 ? '' : 's'}`} ${where} is ${only}.`
-        : `No questions have been written ${where}.`,
+      : narrowed && !ids.length
+        ? `quiz_state was given no ids to ask about, so this answers for no question ${where}. Omit id and ids to list every question.`
+        : states.length
+          ? `None of the ${narrowed ? 'questions asked about' : `${states.length} question${states.length === 1 ? '' : 's'}`} ${where} is ${only}.`
+          : `No questions have been written ${where}.`,
     ...lines,
     ...(unknown.length
       ? [
