@@ -285,6 +285,8 @@ export const MANIFEST: Manifest = manifestSchema.parse({
     url: '/mcp',
     transport: 'http',
     about: 'Write the questions a reader of a paper should be able to answer, anchored to the passage they are about.',
+    /* Nothing here can be turned to: a question is answered where it stands. What a caller can ask is whether one was answered. */
+    subjects: [{ kind: 'question', about: 'One question of an epic’s quiz, by the id the quizzes tool prints. Done once a person has answered it.', done: 'quiz_state' }],
   },
   extensions: { emits: [], consumes: [] },
   /**

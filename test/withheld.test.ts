@@ -389,8 +389,8 @@ describe('what the shared doors serve without being asked for the file', () => {
     /* The two wrong answers chose different options, at different places, and read the same but for the id and the time. */
     const bare = (question: Record<string, unknown> | undefined) => ({ ...question, id: '', at: '' })
     expect(bare(two)).toEqual(bare(three))
-    /* The top of the answer is five plain things, and the listing declares exactly those. */
-    expect(Object.keys(after.body.result.structuredContent).sort()).toEqual(['done', 'epic', 'project', 'questions', 'state'])
+    /* The top of the answer is six plain things, and the listing declares exactly those. */
+    expect(Object.keys(after.body.result.structuredContent).sort()).toEqual(['done', 'epic', 'items', 'project', 'questions', 'state'])
     /* A refusal carries nothing either. */
     wordless(await call('quiz_state', { state: 'done' }))
     wordless(await call('quiz_state', { ids: 'x' }))

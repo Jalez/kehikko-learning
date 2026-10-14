@@ -1,4 +1,4 @@
-import { linesOf } from 'kehikot-module-protocol'
+import { DONE_OUTPUT_SCHEMA, doneAnswer, doorContext, linesOf, type DoneState } from 'kehikot-module-protocol'
 import { establishBuild, mintTicket, refuseTicket, type Reply } from 'kehikot-module-protocol/serve'
 
 import { ID, MANIFEST, VERSION } from './manifest.ts'
@@ -304,11 +304,25 @@ function tools() {
           },
         },
       },
-      /* It reads and nothing else: a caller that asks a person before running an unmarked tool need not ask for this one. */
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       outputSchema: {
         type: 'object',
         properties: {
+          ...DONE_OUTPUT_SCHEMA.properties,
+          /* The protocol's items, with this module's own facts on each, as `questions` has them. */
+          items: {
+            ...DONE_OUTPUT_SCHEMA.properties.items,
+            items: {
+              type: 'object',
+              properties: {
+                ...DONE_OUTPUT_SCHEMA.properties.items.items.properties,
+                epic: { type: ['string', 'null'] },
+                right: { type: ['boolean', 'null'] },
+                attempts: { type: 'integer' },
+                at: { type: ['string', 'null'] },
+              },
+              required: ['id', 'state'],
+            },
+          },
           project: { type: 'string' },
           epic: { type: ['string', 'null'], description: 'The epic that was asked about, or null for every epic.' },
           state: { type: ['string', 'null'], description: 'The state the list was narrowed to, or null.' },
@@ -335,11 +349,25 @@ function tools() {
             },
           },
         },
-        required: ['project', 'epic', 'state', 'done', 'questions'],
+        required: ['project', 'epic', 'state', 'done', 'items', 'questions'],
       },
     },
-  ]
+  ].map((tool) => ({ ...tool, annotations: ANNOTATIONS[tool.name as keyof typeof ANNOTATIONS] }))
 }
+
+/**
+ * What each tool says it does, in MCP's own words (`toolEffect` reads them). `quizzes` and
+ * `quiz_state` only read; `add_quiz` appends and removes nothing; `reword_quiz` overwrites the words
+ * of a question; `drop_quiz` removes one. The two that change a file say `openWorldHint: false`:
+ * they touch one file of this project and nothing else.
+ */
+const ANNOTATIONS = {
+  quizzes: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  quiz_state: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  add_quiz: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  reword_quiz: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  drop_quiz: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+} as const
 
 /* ------------------------------------------------------------------ *
  * The answers, in words
@@ -520,7 +548,13 @@ function stateAnswer(project: string, args: Record<string, unknown>): { said: st
         ]
       : []),
   ].join('\n')
-  return { said, structuredContent: { project, epic, state: only, done, questions } }
+  /* The protocol's "is this done?" answer (`mcp.subjects`): each question's state in the one vocabulary. `questions` stays, with the
+     module's own words, for a caller written before `items` existed. */
+  const DONE_STATE: Record<Stated['state'], DoneState> = { answered: 'done', unanswered: 'waiting', not_asked: 'unavailable', unknown: 'unknown' }
+  const items = doneAnswer(
+    questions.map((one) => ({ id: one.id, state: DONE_STATE[one.state], epic: one.epic, right: one.right, attempts: one.attempts, at: one.at })),
+  ).items
+  return { said, structuredContent: { project, epic, state: only, done, items, questions } }
 }
 
 /**
@@ -678,8 +712,9 @@ function mcp(rpc: Rpc): Reply {
     }
 
     try {
-      const gave = args.project !== undefined && args.project !== null && args.project !== ''
-      const project = gave ? usablePath(args.project) : defaultProject()
+      /* `project`, or `projectPath` as a few callers spell it; the one spelling the schema advertises is `project`. */
+      const given = doorContext(args).project
+      const project = given ? usablePath(given) : defaultProject()
       if (!project) return text(noProjectText(name), true)
 
       if (name === 'quizzes') {
