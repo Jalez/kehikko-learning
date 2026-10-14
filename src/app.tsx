@@ -95,7 +95,7 @@ export function App() {
     )
   }, [])
 
-  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell } = useKehikot(
+  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell, header, press, pressed } = useKehikot(
     ID,
     onGoto,
   )
@@ -725,6 +725,10 @@ export function App() {
         file={file}
         at={editing.at}
         onUnsaved={setUnsaved}
+        header={header}
+        press={press}
+        /* Drawn by the page itself where nobody frames it, or no host has pressed one of these items yet. */
+        fallback={where !== 'hosted' || !pressed}
         onDone={() => {
           setEditing(false)
           void refresh()

@@ -93,6 +93,12 @@ const open = async (files: Files, onDone = () => {}) => {
 const type = (area: HTMLTextAreaElement, value: string) => fireEvent.change(area, { target: { value } })
 const saved = (container: HTMLElement) => waitFor(() => expect(container.querySelector('[data-save]')?.getAttribute('data-save')).toBe('saved'))
 
+/** The page's own way to the header's items, which is what draws them when nothing frames it: open the menu, press one. */
+const choose = async (label: string) => {
+  if (!document.querySelector('[role="menu"]')) await act(async () => void fireEvent.click(screen.getByLabelText(/^Menu/)))
+  await act(async () => void fireEvent.click(screen.getByText(label)))
+}
+
 describe('the press that opens it', () => {
   test('the answering view asks for no file: it only offers the press', () => {
     const { state } = fake()
@@ -164,7 +170,7 @@ describe('typing', () => {
     const { area } = await later(files, () => (left += 1))
     type(area, 'typed and not yet saved\n')
     expect(state.saves).toHaveLength(0)
-    await act(async () => fireEvent.click(screen.getByText('Done')))
+    await choose('Done')
     await waitFor(() => expect(left).toBe(1))
     expect(state.disk).toBe('typed and not yet saved\n')
   })
@@ -180,7 +186,7 @@ describe('leaving with a save pending', () => {
     type(area, 'first\n')
     await waitFor(() => expect(state.saves).toHaveLength(1))
     type(area, 'first, and more typed while it was being saved\n')
-    await act(async () => fireEvent.click(screen.getByText('Done')))
+    await choose('Done')
     expect(left).toBe(0)
     state.gate = null
     await act(async () => release())
@@ -195,11 +201,11 @@ describe('leaving with a save pending', () => {
     const { area, container } = await later(files, () => (left += 1))
     state.fail = 'the disk is full'
     type(area, 'typed, and it cannot be written\n')
-    await act(async () => fireEvent.click(screen.getByText('Done')))
+    await choose('Done')
     expect(left).toBe(0)
     expect(container.textContent).toContain('Press Done again to leave without it')
     expect(container.querySelector('[data-save]')?.textContent).toContain('the disk is full')
-    await act(async () => fireEvent.click(screen.getByText('Done')))
+    await choose('Done')
     expect(left).toBe(1)
     expect(state.disk).toBe(TEXT)
   })
@@ -308,7 +314,8 @@ describe('a save refused because the file moved', () => {
     type(area, 'what I typed, and more\n')
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(state.saves).toHaveLength(before)
-    expect((screen.getByText('Done') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByLabelText(/^Menu/))
+    expect((screen.getByText('Done').closest('button') as HTMLButtonElement).disabled).toBe(true)
   })
 
   test('“Take what is on disk” drops the edits', async () => {
@@ -333,7 +340,7 @@ describe('the history', () => {
     const { state, files } = fake()
     const { area, container } = await open(files)
     expect(state.calls).not.toContain('history')
-    await act(async () => fireEvent.click(screen.getByText('History')))
+    await choose('History')
     await waitFor(() => expect(container.querySelector('[data-history]')?.textContent).toContain('Question q1 reworded'))
     await act(async () => fireEvent.click(screen.getByLabelText('undo Question q1 reworded')))
     await waitFor(() => expect(area.value).toBe('the file as it was before\n'))
@@ -456,5 +463,91 @@ describe('while this app’s own server is away', () => {
     type(area, 'only here\n')
     await waitFor(() => expect(container.querySelector('[data-away]')?.textContent).toContain('Copy it now'))
     expect(area.value).toBe('only here\n')
+  })
+})
+
+describe('the header: what this editor declares, and nothing it draws itself', () => {
+  const hosted = async (files: Files) => {
+    const declared: unknown[][] = []
+    const press = { current: (() => 'not yet') as (p: { item: string; value?: string | boolean }) => string | void }
+    const view = render(
+      <QuizEditor
+        files={files}
+        project="/p"
+        epic="thesis"
+        file={null}
+        onDone={() => {}}
+        saveDelay={0}
+        editor={FakeEditor}
+        header={(items) => declared.push(items)}
+        press={press}
+        fallback={false}
+      />,
+    )
+    await waitFor(() => expect(view.container.querySelector('textarea')).toBeTruthy())
+    return { ...view, declared, press, area: view.container.querySelector('textarea') as HTMLTextAreaElement }
+  }
+
+  test('Done and History are runs and the page draws no row and no menu of its own; narrow, Pane is a switch', async () => {
+    const { declared, container } = await hosted(fake().files)
+    const last = declared.at(-1) as { id: string; kind: string }[]
+    expect(last.map((one) => `${one.kind}:${one.id}`)).toEqual(['switch:pane', 'run:done', 'run:history'])
+    expect(container.querySelector('[data-header-fallback]')).toBeNull()
+    expect(screen.queryByText('Done')).toBeNull()
+    expect(screen.queryByText('Source')).toBeNull()
+    expect(container.querySelector('[data-save]')?.className).toContain('sr-only')
+  })
+
+  test('typing, saving and an idle editor declare nothing again', async () => {
+    const { declared, area, container } = await hosted(fake().files)
+    await saved(container)
+    const before = declared.length
+    type(area, 'one\n')
+    await saved(container)
+    type(area, 'one two\n')
+    await saved(container)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(declared).toHaveLength(before)
+  })
+
+  test('a press on each item does what its control did', async () => {
+    const { state, files } = fake()
+    let left = 0
+    const press = { current: (() => 'not yet') as (p: { item: string; value?: string | boolean }) => string | void }
+    const declared: unknown[][] = []
+    const view = render(
+      <QuizEditor files={files} project="/p" epic="thesis" file={null} onDone={() => (left += 1)} saveDelay={0} editor={FakeEditor} header={(items) => declared.push(items)} press={press} fallback={false} />,
+    )
+    await waitFor(() => expect(view.container.querySelector('textarea')).toBeTruthy())
+    /* Pane: the preview comes in front. */
+    await act(async () => void press.current({ item: 'pane', value: 'preview' }))
+    expect(view.container.querySelector('[data-preview]')?.className).toContain('block')
+    expect(((declared.at(-1) as { id: string; value?: string }[]).find((one) => one.id === 'pane'))?.value).toBe('preview')
+    expect(press.current({ item: 'pane', value: 'sideways' })).toContain('Source or Preview')
+    /* History: opens, is asked for once, and says so on its own label. */
+    await act(async () => void press.current({ item: 'history' }))
+    await waitFor(() => expect(view.container.querySelector('[data-history]')).toBeTruthy())
+    expect(state.calls.filter((one) => one === 'history')).toHaveLength(1)
+    expect(((declared.at(-1) as { id: string; label: string }[]).find((one) => one.id === 'history'))?.label).toBe('Hide history')
+    /* Done leaves. */
+    await act(async () => void press.current({ item: 'done' }))
+    await waitFor(() => expect(left).toBe(1))
+    expect(press.current({ item: 'nope' })).toContain('Nothing here')
+  })
+
+  test('a failed save is said on Done, and the sentence is in the page', async () => {
+    const { state, files } = fake()
+    const { declared, area, container } = await hosted(files)
+    state.fail = 'the disk is full'
+    type(area, 'x\n')
+    await waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain('the disk is full'))
+    const done = (declared.at(-1) as { id: string; state?: string; result?: string }[]).find((one) => one.id === 'done')
+    expect(done).toMatchObject({ state: 'failed', result: 'not saved' })
+  })
+
+  test('with no host to draw them, the page offers one ⋯ and the same items behind it', async () => {
+    const { container } = await open(fake().files)
+    expect(container.querySelectorAll('[data-header-fallback]')).toHaveLength(1)
+    expect(container.querySelector('[data-header-fallback] button')?.textContent).toBe('⋯')
   })
 })
