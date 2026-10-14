@@ -37,6 +37,8 @@ export function headerOf(state: HeaderState): HeaderItemInput[] {
       id: 'pane',
       label: 'Pane',
       icon: 'columns-2',
+      /* A view switch: which pane is in front changes nothing a person kept, so an agent may press it. */
+      agents: true,
       value: state.pane,
       options: [
         { id: 'source', label: 'Source' },
@@ -59,6 +61,8 @@ export function headerOf(state: HeaderState): HeaderItemInput[] {
     id: 'history',
     label: state.history ? 'Hide history' : 'History',
     icon: 'history',
+    /* Reads the file's write history into view; nothing is changed. Undo, which changes the file, is not an item. */
+    agents: true,
     ...(state.reading ? { disabled: 'The questions have not been read yet.' } : state.busy ? { disabled: 'Something is being done just now.' } : {}),
   })
   return items.map((item) => (item.label.length > LIMITS.HEADER_LABEL ? { ...item, label: item.label.slice(0, LIMITS.HEADER_LABEL) } : item))
