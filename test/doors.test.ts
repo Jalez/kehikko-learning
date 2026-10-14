@@ -3,9 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { KEHIKOT_DIR } from 'kehikot-module-protocol'
+import { KEHIKOT_DIR, doneAnswerSchema, toolEffect } from 'kehikot-module-protocol'
 
 import { TICKET, answer } from '../doors.ts'
+import { MANIFEST } from '../manifest.ts'
 
 /**
  * Both doors, without a browser and without a socket.
@@ -621,7 +622,26 @@ describe('quiz_state', () => {
   test('says what its answer holds, so a client can rely on the shape', () => {
     const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
     const tools = (reply?.body as { result: { tools: { name: string; outputSchema?: { required: string[] } }[] } }).result.tools
-    expect(tools.find((one) => one.name === 'quiz_state')?.outputSchema?.required).toEqual(['project', 'epic', 'state', 'done', 'questions'])
+    expect(tools.find((one) => one.name === 'quiz_state')?.outputSchema?.required).toEqual(['project', 'epic', 'state', 'done', 'items', 'questions'])
+  })
+
+  test('answers "is this done?" in the protocol’s one shape, beside its own records', () => {
+    const id = added({ question: 'Which door answers whether this is done?' })
+    const { said } = states({ ids: [id, 'deadbeef'] })
+    expect(doneAnswerSchema.parse(said).items.map((one) => [one.id, one.state])).toEqual([[id, 'waiting'], ['deadbeef', 'unknown']])
+  })
+
+  test('says in MCP’s own words what every tool does, and declares the subject it can be asked about', () => {
+    const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
+    const tools = (reply?.body as { result: { tools: { name: string; annotations?: object }[] } }).result.tools
+    expect(Object.fromEntries(tools.map((one) => [one.name, toolEffect(one)]))).toEqual({
+      quizzes: 'reads',
+      quiz_state: 'reads',
+      add_quiz: 'writes',
+      reword_quiz: 'destroys',
+      drop_quiz: 'destroys',
+    })
+    expect(MANIFEST.mcp?.subjects).toEqual([expect.objectContaining({ kind: 'question', done: 'quiz_state' })])
   })
 
   test('answers in the shape it declares: every property is one the outputSchema names, of a type it allows', () => {

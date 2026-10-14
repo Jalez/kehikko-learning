@@ -1,12 +1,16 @@
 import { linesOf } from 'kehikot-module-protocol'
 import { useServerStanding } from 'kehikot-module-protocol/client/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 
 import type { Files, HistoryEntry } from '@/store/ask.ts'
 import { placeOf } from './place.ts'
 import { MarkdownEditor, type Editor } from '@/view/markdown-editor.tsx'
 import { useQuiz } from '@/view/use-quiz.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { HeaderFallback } from '@/view/header-fallback.tsx'
+import { headerOf } from '@/view/header.ts'
+import type { HeaderItemInput } from 'kehikot-module-protocol'
+import type { PressHandler } from '@/wire/use-kehikot.ts'
 
 import { parseQuiz, quizProblems } from '../../quiz/format.ts'
 
@@ -65,6 +69,9 @@ export function QuizEditor({
   at = null,
   editor: EditorPane = MarkdownEditor,
   onUnsaved,
+  header,
+  press,
+  fallback = header === undefined,
 }: {
   files: Files
   project: string
@@ -78,6 +85,12 @@ export function QuizEditor({
   editor?: Editor
   /** Told whenever "there are words here that are not on disk" changes, and `false` on the way out. */
   onUnsaved?: (unsaved: boolean) => void
+  /** Declare the container's header items (`kehikot.header`). Without it, nobody frames this editor and it draws its own way to them. */
+  header?: (items: HeaderItemInput[]) => void
+  /** Where the host's presses on those items arrive. */
+  press?: MutableRefObject<PressHandler>
+  /** Draw the "⋯" menu in the page: nobody frames it, or no host that draws the header has pressed one yet. */
+  fallback?: boolean
 }) {
   const doc = useQuiz({ files, project, epic, ...(saveDelay === undefined ? {} : { saveDelay }) })
   const [tab, setTab] = useState<'source' | 'preview'>('source')
@@ -151,40 +164,83 @@ export function QuizEditor({
       setEntries(await files.history(project, epic))
     })
 
+  /* Whether the two panes are side by side (672px, the `@2xl` container), where there is nothing to switch. Read from the
+     section's own width, and acted on only where it crosses, so a resize declares nothing between. */
+  const shell = useRef<HTMLElement>(null)
+  const [narrow, setNarrow] = useState(true)
+  useEffect(() => {
+    const el = shell.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const look = () => setNarrow(el.clientWidth < 672)
+    look()
+    const watch = new ResizeObserver(look)
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [])
+
+  /* The header: a pure function of what is not typed text, declared again only when its JSON differs. */
+  const items = headerOf({
+    pane: narrow ? tab : null,
+    history: entries !== null,
+    busy,
+    conflict: doc.conflict,
+    failed: doc.state === 'failed',
+    reading: doc.text === null,
+  })
+  const itemsKey = JSON.stringify(items)
+  useEffect(() => {
+    header?.(items)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [header, itemsKey])
+  useEffect(() => () => header?.([]), [header])
+
+  const onPress: PressHandler = ({ item, value }) => {
+    if (item === 'pane') {
+      if (value !== 'source' && value !== 'preview') return 'Pane is Source or Preview.'
+      setTab(value)
+      return
+    }
+    if (item === 'done') {
+      if (doc.conflict) return 'These questions changed on disk: choose which version stays first.'
+      if (busy) return 'Something is being done just now.'
+      void done()
+      return
+    }
+    if (item === 'history') {
+      if (doc.text === null) return 'The questions have not been read yet.'
+      void history()
+      return
+    }
+    return `Nothing here is called ${item}.`
+  }
+  /* The newest handler is the one the host's presses reach; the editor going away takes it back. */
+  const handler = useRef(onPress)
+  handler.current = onPress
+  useEffect(() => {
+    if (!press) return
+    press.current = (pressing) => handler.current(pressing)
+    return () => {
+      press.current = () => 'No questions are open for editing here.'
+    }
+  }, [press])
+
   return (
-    <section data-editor="open" className="flex h-[calc(100dvh-1rem)] min-h-40 min-w-0 flex-col gap-1.5 @sm/container:h-[calc(100dvh-1.5rem)]">
-      <div className="flex min-w-0 flex-wrap items-center gap-1">
-        {/* Leaving with a conflict unanswered would drop one side without anybody choosing it. */}
-        <Button type="button" size="container" variant="outline" className="whitespace-nowrap" disabled={busy || doc.conflict} onClick={() => void done()}>
-          Done
-        </Button>
-        <div role="tablist" className="flex gap-1 @2xl/container:hidden">
-          {(['source', 'preview'] as const).map((one) => (
-            <button
-              key={one}
-              type="button"
-              role="tab"
-              aria-selected={tab === one}
-              data-tab={one}
-              onClick={() => setTab(one)}
-              className={
-                tab === one
-                  ? 'rounded bg-accent px-1.5 py-0.5 text-[0.65rem] font-medium whitespace-nowrap text-accent-foreground'
-                  : 'rounded px-1.5 py-0.5 text-[0.65rem] whitespace-nowrap text-muted-foreground hover:bg-accent/50'
-              }
-            >
-              {one === 'source' ? 'Source' : 'Preview'}
-            </button>
-          ))}
-        </div>
-        <span data-save={doc.state} role="status" className="min-w-0 flex-1 text-[0.65rem] text-muted-foreground [overflow-wrap:anywhere]" title={file ?? undefined}>
+    <section ref={shell} data-editor="open" className="relative flex h-[calc(100dvh-1rem)] min-h-40 min-w-0 flex-col gap-1.5 @sm/container:h-[calc(100dvh-1.5rem)]">
+      {/* Source / Preview, Done, History and the save status are the container's header (`header.ts`): no row of their own here. */}
+      <span data-save={doc.state} role="status" className="sr-only">
+        {said}
+      </span>
+      {fallback ? <HeaderFallback items={items} onPress={onPress} className="absolute top-0 right-0" /> : null}
+      {doc.state === 'failed' ? (
+        <p role="alert" className="min-w-0 pr-6 text-[0.65rem] leading-4 text-wrong [overflow-wrap:anywhere]" title={file ?? undefined}>
           {said}
-          {doc.watching === 'detached' ? <span data-watch="detached"> · not hearing changes on disk — reconnecting</span> : null}
-        </span>
-        <Button type="button" size="container" variant="ghost" className="whitespace-nowrap" aria-expanded={entries !== null} disabled={busy || doc.text === null} onClick={() => void history()}>
-          History
-        </Button>
-      </div>
+        </p>
+      ) : null}
+      {doc.watching === 'detached' ? (
+        <p data-watch="detached" className="min-w-0 pr-6 text-[0.65rem] leading-4 text-muted-foreground">
+          not hearing changes on disk — reconnecting
+        </p>
+      ) : null}
 
       {doc.conflict ? (
         <div role="alert" data-conflict="open" className="flex min-w-0 flex-wrap items-center gap-1 rounded border border-wrong/40 bg-wrong/5 px-2 py-1 text-[0.7rem] leading-4">
