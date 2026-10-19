@@ -23,8 +23,8 @@ const EPIC = 'modes-are-modules'
 const WHY = 'The manifest is the only half a host reads.'
 let dir = ''
 
-/** Where the manifest was also served before protocol 1.0.0. Not a door any more: asked here so that stays true. */
-const OLD_WELL_KNOWN = '/.well-known/roadmap-module.json'
+/** An address the manifest was once served at. Not a door any more: asked here so that stays true. */
+const OLD_WELL_KNOWN = '/.well-known/former-module.json'
 
 /* The options exactly as `vite.config.ts` passes them. */
 const handler = doorsHandler({ manifest: MANIFEST, answer, stream, build: BUILD, page: { title: 'Learning', ticket: TICKET } })

@@ -55,7 +55,7 @@ const EXECUTABLE =
   process.env.CHROME
   ?? '/Users/jaakkorajala/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell'
 const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7950'
-const PROJECT = process.env.KEHIKOT ?? process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/kehikko'
+const PROJECT = process.env.KEHIKOT ?? '/Users/jaakkorajala/Projects/kehikko'
 const EPIC = process.env.EPIC ?? 'modes-are-modules'
 
 /* The two container sizes this module is actually given, run one after the
