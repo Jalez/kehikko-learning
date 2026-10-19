@@ -87,7 +87,6 @@ describe('defaultProject', () => {
   beforeEach(() => {
     delete process.env.LEARNING_PROJECT
     delete process.env.KEHIKOT_PROJECT
-    delete process.env.ROADMAP_PROJECT
   })
 
   afterEach(() => {
@@ -110,17 +109,6 @@ describe('defaultProject', () => {
   test('KEHIKOT_PROJECT is honoured on its own', () => {
     process.env.KEHIKOT_PROJECT = '/from/the/host/'
     expect(defaultProject()).toBe('/from/the/host')
-  })
-
-  test('ROADMAP_PROJECT, its name before the rename, is the fallback', () => {
-    process.env.ROADMAP_PROJECT = '/from/an/old/host'
-    try {
-      expect(defaultProject()).toBe('/from/an/old/host')
-      process.env.KEHIKOT_PROJECT = '/from/the/host'
-      expect(defaultProject()).toBe('/from/the/host')
-    } finally {
-      delete process.env.ROADMAP_PROJECT
-    }
   })
 
   test('an unusable value is not a default', () => {

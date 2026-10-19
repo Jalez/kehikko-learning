@@ -41,7 +41,6 @@ beforeEach(() => {
   writeFileSync(join(B, 'chapters', 'bridge.tex'), 'So the manifest is the smallest half of this program, and the only half a host reads.')
   delete process.env.LEARNING_PROJECT
   delete process.env.KEHIKOT_PROJECT
-  delete process.env.ROADMAP_PROJECT
 })
 
 afterEach(() => {

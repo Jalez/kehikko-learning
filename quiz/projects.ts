@@ -129,8 +129,8 @@ export function usablePath(value: unknown): string | null {
  *
  * `LEARNING_PROJECT` is different in kind from all three, because it is not the
  * program guessing. It is a person who runs this app for exactly one project
- * saying so, once, in an environment they control. `KEHIKOT_PROJECT` (or `ROADMAP_PROJECT`, its name before the
- * rename) is honoured after it because somebody running a host and this module together in one
+ * saying so, once, in an environment they control. `KEHIKOT_PROJECT` is honoured
+ * after it because somebody running a host and this module together in one
  * project has already said it once, and making them say it twice is how the two
  * end up disagreeing.
  *
@@ -138,5 +138,5 @@ export function usablePath(value: unknown): string | null {
  * null, the door refuses, and the refusal names what to pass.
  */
 export function defaultProject(): string | null {
-  return usablePath(process.env.LEARNING_PROJECT) ?? usablePath(process.env.KEHIKOT_PROJECT) ?? usablePath(process.env.ROADMAP_PROJECT)
+  return usablePath(process.env.LEARNING_PROJECT) ?? usablePath(process.env.KEHIKOT_PROJECT)
 }
