@@ -88,7 +88,7 @@ const EXECUTABLE =
   ?? '/Users/jaakkorajala/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell'
 
 const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7950'
-const KEHIKOT = process.env.KEHIKOT ?? process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/kehikko'
+const KEHIKOT = process.env.KEHIKOT ?? '/Users/jaakkorajala/Projects/kehikko'
 /* Its own epic, so this never touches what the other two probes assert on. */
 const EPIC = 'ladder-probe'
 

@@ -46,7 +46,7 @@ const EXECUTABLE =
   ?? '/Users/jaakkorajala/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell'
 
 const ORIGIN = process.env.ORIGIN ?? 'http://127.0.0.1:7950'
-const KEHIKOT = process.env.KEHIKOT ?? process.env.ROADMAP ?? '/Users/jaakkorajala/Projects/kehikko'
+const KEHIKOT = process.env.KEHIKOT ?? '/Users/jaakkorajala/Projects/kehikko'
 
 /* The two backgrounds, out of `src/index.css`. Asserted as strings rather than
    as "not the other one", so that a palette change fails here loudly instead of
