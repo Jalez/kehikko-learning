@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { KEHIKOT_DIR, WELL_KNOWN } from 'kehikot-module-protocol'
 import { doorsHandler, type DoorRequest, type DoorResponse } from 'kehikot-module-protocol/serve'
 
-import { BUILD, MANIFEST, TICKET, answer, stream } from '../doors.ts'
+import { BUILD, MANIFEST, TICKET, answerAt as answer, stream } from '../doors.ts'
 
 /**
  * The answer-withholding rule, asked of the doors AS THEY ARE SERVED.

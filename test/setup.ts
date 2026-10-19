@@ -9,3 +9,6 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
  * from what it says in a browser.
  */
 GlobalRegistrator.register()
+
+/* The host's `is-project` answer, which every door asks before it works on a folder. */
+import './host.ts'

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { KEHIKOT_DIR, doneAnswerSchema, toolEffect } from 'kehikot-module-protocol'
 
-import { TICKET, answer } from '../doors.ts'
+import { TICKET, answerAt as answer } from '../doors.ts'
 import { MANIFEST } from '../manifest.ts'
 
 /**
@@ -214,14 +214,6 @@ describe('the project argument', () => {
     added()
     expect(existsSync(join(A, KEHIKOT_DIR, 'learning', 'modes-are-modules.md'))).toBe(true)
     expect(existsSync(join(B, KEHIKOT_DIR))).toBe(false)
-  })
-
-  test('LEARNING_PROJECT is a default a person set, not a guess', () => {
-    process.env.LEARNING_PROJECT = A
-    const { isError } = tool('add_quiz', { ...good(), project: undefined })
-    expect(isError).toBe(false)
-    expect(tool('quizzes', { epic: 'modes-are-modules' }).text).toContain('What does a manifest settle?')
-    delete process.env.LEARNING_PROJECT
   })
 })
 

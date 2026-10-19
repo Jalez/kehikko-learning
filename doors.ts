@@ -1,5 +1,5 @@
 import { DONE_OUTPUT_SCHEMA, doneAnswer, doorContext, linesOf, type DoneState } from 'kehikot-module-protocol'
-import { establishBuild, mintTicket, refuseTicket, type Reply } from 'kehikot-module-protocol/serve'
+import { DOOR_PROJECT_SAYS, establishBuild, mintTicket, refuseTicket, resolveDoorProject, type Reply } from 'kehikot-module-protocol/serve'
 
 import { ID, MANIFEST, VERSION } from './manifest.ts'
 import {
@@ -29,7 +29,7 @@ import {
   type QuestionState,
 } from './quiz/questions.ts'
 import { poke, watchQuizzes } from './quiz/live.ts'
-import { MAX_PROJECT, defaultProject, usablePath } from './quiz/projects.ts'
+import { MAX_PROJECT, usablePath } from './quiz/projects.ts'
 import type { QuizChange } from './quiz/types.ts'
 
 /**
@@ -714,7 +714,7 @@ function mcp(rpc: Rpc): Reply {
     try {
       /* `project`, or `projectPath` as a few callers spell it; the one spelling the schema advertises is `project`. */
       const given = doorContext(args).project
-      const project = given ? usablePath(given) : defaultProject()
+      const project = given ? usablePath(given) : null
       if (!project) return text(noProjectText(name), true)
 
       if (name === 'quizzes') {
@@ -748,7 +748,7 @@ function mcp(rpc: Rpc): Reply {
  *
  * `null` means "this path is not ours", and the caller passes it on to Vite.
  */
-export function answer(
+export function answerAt(
   method: string,
   path: string,
   query: URLSearchParams,
@@ -918,10 +918,85 @@ export function stream(
      the header's, and an `EventSource` never sends one. */
   const refused = refuseTicket(query.get('ticket'), TICKET, 'that did not come from this app’s own page')
   if (refused) return { reply: refused }
-  const project = usablePath(query.get('project'))
-  if (!project) return { reply: bad('that did not say which project.') }
-  const watched = watchQuizzes(project, emit)
-  return 'error' in watched ? { reply: bad(watched.error) } : watched
+  const named = query.get('project')
+  if (!usablePath(named)) return { reply: bad('that did not say which project.') }
+  /* Watching starts once the host has vouched for the folder: nothing is opened under a path it does not hold. */
+  let closed = false
+  let stop: () => void = () => {}
+  void resolveDoorProject(named as string).then((at) => {
+    if (closed || !at.ok) return
+    const watched = watchQuizzes(at.path, emit)
+    if (!('error' in watched)) stop = watched.close
+  })
+  return {
+    close: () => {
+      closed = true
+      stop()
+    },
+  }
+}
+
+/**
+ * Every door, asked of the host first.
+ *
+ * `answerAt` works on a project path as written; this is the one that decides which path that is.
+ * A project is its id, not its folder: a path a caller learnt may be a folder the project has left,
+ * or a folder that is somebody else's now. So the project a caller names — in a tool call, in a
+ * request from the page, or the environment's default — is put to the host (`resolveDoorProject`),
+ * and `answerAt` is only ever given the path the host vouched for. A refusal is the shared sentence;
+ * with no host to ask, nothing is read and nothing is written.
+ */
+export async function answer(
+  method: string,
+  path: string,
+  query: URLSearchParams,
+  body: Record<string, unknown> | null,
+  ticket: string | null,
+): Promise<Reply | null> {
+  if (path === '/mcp' && method === 'POST' && body && body.method === 'tools/call') {
+    const params = (body.params ?? {}) as { name?: unknown; arguments?: Record<string, unknown> }
+    const args = { ...(params.arguments ?? {}) }
+    const given = doorContext(args).project ?? process.env.LEARNING_PROJECT ?? process.env.KEHIKOT_PROJECT ?? null
+    if (!TOOLS.has(String(params.name ?? '')) || !given) return answerAt(method, path, query, body, ticket)
+    const at = await resolveDoorProject(given)
+    if (!at.ok) {
+      return ok({ jsonrpc: '2.0', id: body.id ?? null, result: { content: [{ type: 'text', text: at.why }], isError: true } })
+    }
+    delete args.projectPath
+    const reply = answerAt(method, path, query, { ...body, params: { ...params, arguments: { ...args, project: at.path } } }, ticket)
+    if (at.movedFrom) addToAnswer(reply, DOOR_PROJECT_SAYS.followed(at.movedFrom, at.path))
+    return reply
+  }
+
+  if (path.startsWith('/api/') && path !== '/api/watch' && ticket === TICKET) {
+    const reads = method === 'GET'
+    const named = reads ? query.get('project') : body?.project
+    if (typeof named === 'string' && named.trim()) {
+      const at = await resolveDoorProject(named)
+      if (!at.ok) return bad(at.why)
+      let reply: Reply | null
+      if (reads) {
+        const asked = new URLSearchParams(query)
+        asked.set('project', at.path)
+        reply = answerAt(method, path, asked, body, ticket)
+      } else {
+        reply = answerAt(method, path, query, { ...body, project: at.path }, ticket)
+      }
+      if (at.movedFrom && reply && typeof reply.body === 'object' && reply.body) {
+        reply = { ...reply, body: { ...reply.body, said: DOOR_PROJECT_SAYS.followed(at.movedFrom, at.path) } }
+      }
+      return reply
+    }
+  }
+  return answerAt(method, path, query, body, ticket)
+}
+
+const TOOLS = new Set(['quizzes', 'add_quiz', 'reword_quiz', 'drop_quiz', 'quiz_state'])
+
+/** Adds one line to the text of a tool answer that is already built. */
+function addToAnswer(reply: Reply | null, line: string): void {
+  const result = (reply?.body as { result?: { content?: { type: string; text: string }[] } } | null)?.result
+  if (result?.content) result.content.push({ type: 'text', text: line })
 }
 
 export { MANIFEST }
