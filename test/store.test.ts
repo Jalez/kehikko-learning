@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { KEHIKOT_DIR, moduleFolder } from 'kehikot-module-protocol'
+import { KEHIKOT_DIR, KEHIKOT_IGNORE, moduleFolder } from 'kehikot-module-protocol'
 
 import { ID } from '../manifest.ts'
 import { dataFile, makeDir } from '../store.ts'
@@ -245,7 +245,7 @@ describe('the project’s .gitignore', () => {
     expect(question({ question: 'A second question entirely' }).ok).toBe(true)
     expect(readFileSync(gitignore(), 'utf8')).toBe(once)
 
-    const occurrences = once.split(`${KEHIKOT_DIR}/`).length - 1
+    const occurrences = once.split(KEHIKOT_IGNORE).length - 1
     expect(occurrences).toBe(1)
   })
 

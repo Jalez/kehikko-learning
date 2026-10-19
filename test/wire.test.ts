@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { AskFailed, resetServerStanding, serverStanding } from 'kehikot-module-protocol/client'
 
-import { TICKET, answer as door } from '../doors.ts'
+import { TICKET, answerAt as door } from '../doors.ts'
 import { answer, files, openEpic, retake } from '../src/store/ask.ts'
 
 /**

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { KEHIKOT_DIR } from 'kehikot-module-protocol'
 
-import { TICKET, answer, stream } from '../doors.ts'
+import { TICKET, answerAt as answer, stream } from '../doors.ts'
 import { SETTLE_MS, watchQuizzes, watching } from '../quiz/live.ts'
 import { versionOf } from '../quiz/questions.ts'
 import type { QuizChange, QuizFile } from '../quiz/types.ts'
@@ -36,6 +36,8 @@ describe('watching quiz files', () => {
     const open = stream('GET', '/api/watch', new URLSearchParams({ project: dir, ticket: TICKET }), (change) => seen.push(change))
     if (!open || !('close' in open)) throw new Error('the watch did not open')
 
+    /* The watch opens once the host has vouched for the folder. */
+    await settle()
     const reply = save(dir, QUIZ, null)
     await settle()
     expect(seen).toEqual([{ epic: 'thesis', version: (reply?.body as { file: QuizFile }).file.version }])

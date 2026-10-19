@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { KEHIKOT_DIR } from 'kehikot-module-protocol'
 
-import { TICKET, answer } from '../doors.ts'
+import { TICKET, answerAt as answer } from '../doors.ts'
 
 /**
  * The shuffle, asked of the doors: the page is sent each question's options in
