@@ -1,6 +1,6 @@
 {
   "name": "kehikko-learning",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Questions about passages of a paper, kept as one Markdown file per epic, and what you answered. An agent writes them; a person answers them. An app: its own store, its own page, its own port. A host may frame it, and then it learns which project it is standing in and which epic is open.",
