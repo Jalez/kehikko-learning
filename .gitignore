@@ -8,9 +8,11 @@
 # every checkout afterwards failed with ELOOP.
 node_modules
 
-# There is no build here. `run.sh` runs Vite, there is no `build` script, and a
-# checked-in `dist` would be a second answer to "what does this page say" that
-# disagrees with the first the moment somebody edits `src/`.
+# The build. Made on the machine that runs it (`bun run build`, which a host runs
+# when it installs or updates this module), stamped with the commit, and served
+# by `serve.ts` only while that stamp is the checkout's HEAD. A checked-in copy
+# would be a second answer to "what does this page say", which disagrees with the
+# first the moment somebody edits `src/`.
 dist
 
 # This app's own store: every question somebody wrote and every answer somebody
@@ -19,3 +21,8 @@ dist
 # the whole of what "an app" means here — the directory can be copied to another
 # machine, run, and be somebody's questions.
 data
+
+# Written by `build.ts` for the length of a build and taken away after. Left
+# behind by a killed build, it would be what Vite answers at `/`, with no
+# ticket in it.
+/index.html

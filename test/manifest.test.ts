@@ -201,14 +201,13 @@ describe('the shape of the repository', () => {
     expect(existsSync(join(here, 'index.html'))).toBe(false)
   })
 
-  test('there is no build script, because a build here cannot succeed', () => {
-    /* Several modules in this workspace carry a `"build": "vite build"` that
-       fails for want of an index.html. A missing build announces itself; a stale
-       `dist` served with a 200 does not, and that has cost whole afternoons. */
+  test('the build script is the protocol\'s buildModule, which writes the page for the length of a build', () => {
+    /* `vite build` alone cannot succeed here: the page is generated, and there is no committed
+       index.html to start from. `build.ts` writes one, builds, takes it away and stamps the commit. */
     const packaged = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8')) as {
       scripts: Record<string, string>
     }
-    expect(packaged.scripts.build).toBeUndefined()
+    expect(packaged.scripts.build).toBe('bun run build.ts')
   })
 
   test('there is no tailwind.config.js — the house stack is Tailwind v4, CSS-first', () => {
