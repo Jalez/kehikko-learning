@@ -285,7 +285,10 @@ export const MANIFEST: Manifest = manifestSchema.parse({
     + 'and do not print the correct option into anything a reader can see: the answer is withheld here until the '
     + 'person has actually chosen, and telling them is the one thing that makes this module worthless.',
   entry: '/app',
-  modes: [{ id: 'learning', label: 'Learning', scope: 'epic' }],
+  /* What its content belongs to (protocol 2.29.0): one mode per scope, the default first. */
+  modes: [
+    { id: 'learning', label: 'Learning', scope: 'epic', scopeSays: 'the questions written for the open epic’s paper' },
+  ],
   mcp: {
     url: '/mcp',
     transport: 'http',
