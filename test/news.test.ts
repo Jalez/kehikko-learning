@@ -20,8 +20,8 @@ afterEach(() => stopWatching())
 
 const EPIC = 'thesis'
 const QUIZ = '## Which half? \n<!-- id: q1 -->\n- [ ] the page\n- [x] the manifest\n'
-/* Longer than the settling (50 ms) and a file event's arrival. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 250))
+/* Longer than the settling (100 ms) and a file event's arrival. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 400))
 
 function project(name: string): string {
   const dir = join(home, name)
@@ -78,7 +78,8 @@ describe('the questions stream', () => {
     await settle()
     writeFileSync(join(dir, KEHIKOT_DIR, 'learning', `${EPIC}.md`), QUIZ)
     await settle()
-    expect(heard.length).toBeGreaterThan(1)
+    /* One edit, one piece of news, however many file events it made. */
+    expect(heard).toEqual([NEWS, NEWS])
     close()
   })
 
@@ -88,11 +89,10 @@ describe('the questions stream', () => {
     await settle()
     mkdirSync(join(dir, KEHIKOT_DIR, 'learning'), { recursive: true })
     await settle()
-    const before = heard.length
-    expect(before).toBeGreaterThan(1)
     writeFileSync(join(dir, KEHIKOT_DIR, 'learning', `${EPIC}.md`), QUIZ)
     await settle()
-    expect(heard.length).toBeGreaterThan(before)
+    /* The folder appearing empty says nothing new; the file in it is one piece of news. */
+    expect(heard).toEqual([NEWS, NEWS])
     close()
   })
 

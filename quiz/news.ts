@@ -1,5 +1,5 @@
-import { existsSync, watch, type FSWatcher } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, readdirSync, statSync, watch, type FSWatcher } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 import { events, publish, resolveDoorProject, watching } from 'kehikot-module-protocol/serve'
 
@@ -35,11 +35,37 @@ export function folderOf(project: string | null | undefined): string | null {
   return path === null ? null : dirname(path)
 }
 
-/* Several writes in one breath (a write, then the watcher seeing it) are one piece of news. */
-const SETTLE_MS = 50
+/*
+ * One change is one piece of news. A write through this server is seen twice (`put`, then the
+ * watcher), and macOS reports one save as several file events, so news is gathered for a moment and
+ * then sent only when the folder really differs from what was last told: its files' names, sizes
+ * and modification times (`stamp`). Never on a clock: the gathering is one timeout per change.
+ */
+const SETTLE_MS = 100
 const settling = new Map<string, ReturnType<typeof setTimeout>>()
+const told = new Map<string, string>()
 
-/** Say that the questions in `dir` changed. Nothing is sent when no page follows them. */
+/** What the folder holds, as names, sizes and times; '' when it is not there. Half-written files are left out. */
+export function stamp(dir: string): string {
+  try {
+    return readdirSync(dir)
+      .filter((name) => !name.endsWith('.tmp'))
+      .sort()
+      .map((name) => {
+        try {
+          const one = statSync(join(dir, name))
+          return `${name}:${one.size}:${one.mtimeMs}`
+        } catch {
+          return ''
+        }
+      })
+      .join('\n')
+  } catch {
+    return ''
+  }
+}
+
+/** Say that the questions in `dir` changed. Nothing is sent when no page follows them, or nothing differs. */
 export function changed(dir: string | null | undefined): void {
   if (!dir || settling.has(dir)) return
   if (watching(topicOf(dir)) === 0) return
@@ -47,6 +73,9 @@ export function changed(dir: string | null | undefined): void {
     dir,
     setTimeout(() => {
       settling.delete(dir)
+      const now = stamp(dir)
+      if (told.get(dir) === now) return
+      told.set(dir, now)
       publish(topicOf(dir), NEWS)
     }, SETTLE_MS),
   )
@@ -112,6 +141,7 @@ export function stopWatching(): void {
   for (const dir of [...watchers.keys()]) stop(dir)
   for (const timer of settling.values()) clearTimeout(timer)
   settling.clear()
+  told.clear()
 }
 
 /**
@@ -123,6 +153,8 @@ export const questionsStream = events((path, query) => {
   const named = query.get('project')
   const dir = folderOf(named)
   if (!named || !dir) return null
+  /* What the page reads as it opens is what it has been told. */
+  told.set(dir, stamp(dir))
   void resolveDoorProject(named).then((at) => {
     if (!at.ok || watching(topicOf(dir)) === 0) return
     const root = rootOf(at.path)
