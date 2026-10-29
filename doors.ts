@@ -1,5 +1,5 @@
 import { DONE_OUTPUT_SCHEMA, doneAnswer, doorContext, linesOf, type DoneState } from 'kehikot-module-protocol'
-import { DOOR_PROJECT_SAYS, establishBuild, mintTicket, refuseTicket, resolveDoorProject, type Reply } from 'kehikot-module-protocol/serve'
+import { DOOR_PROJECT_SAYS, establishBuild, mintTicket, refuseTicket, resolveDoorProject, streams, type Reply, type Stream } from 'kehikot-module-protocol/serve'
 
 import { ID, MANIFEST, VERSION } from './manifest.ts'
 import {
@@ -29,6 +29,7 @@ import {
   type QuestionState,
 } from './quiz/questions.ts'
 import { poke, watchQuizzes } from './quiz/live.ts'
+import { questionsStream } from './quiz/news.ts'
 import { MAX_PROJECT, usablePath } from './quiz/projects.ts'
 import type { QuizChange } from './quiz/types.ts'
 
@@ -907,7 +908,7 @@ export function answerAt(
  * because an `EventSource` cannot carry a header — though nothing it sends is
  * a word of any file.
  */
-export function stream(
+export function watchStream(
   method: string,
   path: string,
   query: URLSearchParams,
@@ -935,6 +936,13 @@ export function stream(
     },
   }
 }
+
+/**
+ * The doors' one stream option: the editor's `/api/watch` above, and beside it the reading page's
+ * `/api/questions/events` (`quiz/news.ts`), which says the questions changed so the page reads them
+ * again instead of asking on a clock. The first that answers wins.
+ */
+export const stream: Stream = streams(watchStream, questionsStream)
 
 /**
  * Every door, asked of the host first.

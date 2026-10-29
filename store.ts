@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join } from 'node:path'
 import { kehikotDir, moduleDir, withKehikotIgnored, within } from 'kehikot-module-protocol'
 
 import { ID } from './manifest.ts'
+import { wrote } from './quiz/news.ts'
 
 /**
  * Where this app keeps what is its own: inside the project it is about, in
@@ -89,6 +90,8 @@ export function put(file: string, text: string): void {
   const temporary = `${file}.${process.pid}.tmp`
   writeFileSync(temporary, text)
   renameSync(temporary, file)
+  /* A page reading these questions is told over its stream, not left to ask. */
+  wrote(file)
 }
 
 /** The largest file a quote is looked for in. A paper's chapter is far smaller. */

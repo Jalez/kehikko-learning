@@ -77,8 +77,9 @@ there is something to point at, and says which of the others it is.
 and question id, and only answering adds to it: an answer is a record of what a
 person did, not material to edit.
 
-An edit made in any editor shows within three seconds, because the page asks
-again that often and the server reads the file each time.
+An edit made in any editor shows as soon as it is saved: the server watches this
+folder while a page is open on it and tells the page, which reads the file again.
+Nothing is asked on a clock, and nothing at all while the page is hidden.
 
 ### Editing it in the page
 
@@ -183,7 +184,7 @@ KEPT stays in file order — the Markdown, `answers.json`, the editor, the MCP
 door — so nothing was migrated.
 
 - The order is `shownOrder(salt + id, options)` in `quiz/order.ts`: pure, so the
-  server remembers nothing per reader, and the same on every poll, after a reload
+  server remembers nothing per reader, and the same on every re-read, after a reload
   and across a restart.
 - The salt is per epic, in `order.json` beside the answers, and is never sent. It
   is minted the first time an epic's questions are served to the page (the one
@@ -193,7 +194,7 @@ door — so nothing was migrated.
 - A position only means something in the order it was shown in, so the questions
   come with that order's name (`order`, from `orderTag`) and `POST /api/answer`
   sends it back. An answer naming any order but the current one — the quiz open
-  in two tabs, asked again in one, pressed in the other before its next poll —
+  in two tabs, asked again in one, pressed in the other before it reads again —
   is refused with 409 and a sentence, nothing is recorded, and the page reads
   again. The name is one short string per epic, a one-way hash of the salt: it
   says which order and nothing about what the order is.
@@ -597,7 +598,7 @@ tool's argument validation without a browser.
 
   The bound is narrow and it is what the capability was granted under: it points
   when a **person presses a question's source**, and never on a load, a
-  greeting, a context, a poll, or an answer. `dev/pointing.mjs` sits where a
+  greeting, a context, a re-read, or an answer. `dev/pointing.mjs` sits where a
   host sits and counts, because a claim about runtime behaviour cannot be
   settled by reading a file.
 
@@ -607,7 +608,7 @@ tool's argument validation without a browser.
   way to teach somebody to press yes without reading.
 - `extensions: { emits: [], consumes: [] }`. Checklist announces MCP calls onto a
   notifications panel and is right to. Here, what an agent writes lands in the
-  container in front of the reader within three seconds, as a question they can
+  container in front of the reader as soon as it is written, as a question they can
   answer — the container IS the notification, and a line on a panel two inches away
   would be telling somebody about a thing they are looking at.
 - `modes: [{ scope: 'epic' }]`, and `guidance` under the protocol's 1024

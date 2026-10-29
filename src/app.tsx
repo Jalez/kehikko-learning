@@ -5,7 +5,7 @@ import { Cover, coverFor, useFocus, useServerStanding, type CoverState } from 'k
 
 import { ID } from '../manifest.ts'
 
-import { answer, files, openEpic, retake, type Asked, type Standing } from '@/store/ask.ts'
+import { answer, files, openEpic, questionsChanged, retake, type Asked, type Standing } from '@/store/ask.ts'
 import { useKehikot, type GotoHandler } from '@/wire/use-kehikot.ts'
 import { QuizEditor } from '@/view/editor.tsx'
 import { QuizView } from '@/view/quiz.tsx'
@@ -22,30 +22,18 @@ import { containersFrom } from '@/wire/use-kehikot.ts'
 /** Whether this page is in a frame. Unframed, it prints its own heading. */
 const framed = typeof window !== 'undefined' && window.parent !== window
 
-/**
- * How often the container looks for questions that arrived through the MCP door.
+/*
+ * Questions that arrive through the MCP door — or an answer from another tab, a retake, a file
+ * edited by hand — are not looked for on a clock. The server says so over one held stream
+ * (`questionsChanged`, `quiz/news.ts`), and the page reads `/api/questions` again when it does.
  *
- * ## Why a poll, and not the notifications extension
+ * Still no notifications extension, and the argument is in `manifest.ts`: what an agent writes
+ * through this door lands in the container in front of the reader, as a question they can answer,
+ * so the container IS the notification.
  *
- * Checklist announces MCP calls onto a notifications panel and drives its own
- * refresh off the same queue. This module declares no extensions at all, and the
- * argument is in `manifest.ts`: what an agent writes through this door lands in
- * the container in front of the reader, as a question they can answer, so the container IS
- * the notification and a second line on a panel two inches away would be telling
- * somebody about a thing they are looking at.
- *
- * That leaves the refresh, which is what this is. Three seconds because the
- * realistic case is an agent writing a handful of questions while somebody reads
- * the chapter they are about, and a question that appears within a few seconds
- * of being written feels like it was written for you. It is a `GET` against
- * loopback returning a few kilobytes; the cost of being wrong about the interval
- * is nothing.
- *
- * The poll never runs while an answer is in flight, and never replaces the list
- * out from under a card the reader is looking at with a version that has fewer
- * attempts on it — see `refresh` below.
+ * A read never lands while an answer is in flight, and never replaces the list out from under a
+ * card the reader is looking at with a version that has fewer attempts on it — see `refresh` below.
  */
-const EVERY_MS = 3000
 
 export function App() {
   const [questions, setQuestions] = useState<Asked[]>([])
@@ -267,7 +255,7 @@ export function App() {
    * Everything below this line — the cards, the ladder, which question is being
    * shown — is about the narrowed list, because those are all statements about
    * what a reader is looking at. `questions` stays whole above it, because that
-   * is what a press, an answer and the poll all act on: narrowing is a view of
+   * is what a press, an answer and a re-read all act on: narrowing is a view of
    * the store and never an edit to it.
    *
    * Nothing is drawn about the questions a narrowing leaves out: the ones on
@@ -361,7 +349,7 @@ export function App() {
    * What this container is showing, told to the canvas whenever it changes.
    *
    * The distinct documents of the questions ON SCREEN, compared as a string
-   * so that a context re-stating the same canvas — or a poll returning the
+   * so that a context re-stating the same canvas — or a re-read returning the
    * same list — sends nothing. Sent as `[]` when nothing is on screen,
    * because "showing nothing" is a state the canvas has to be able to move
    * back into. Not sent before the host has greeted: there is nobody to tell,
@@ -420,15 +408,14 @@ export function App() {
     return card ? partsOf(card, rungs.header) : []
   }, [cards, at, rungs.header])
 
-  /* Held in a ref as well as in state so the poll can read the current pair
-     without being re-created — and therefore re-scheduled — on every context
-     change. */
+  /* Held in a ref as well as in state so a read can check the current pair
+     without being re-created on every context change. */
   useEffect(() => setEditing(false), [projectPath, epic])
 
   const standing = useRef<{ project: string | null; epic: string | null }>({ project: null, epic: null })
   standing.current = { project: projectPath, epic }
 
-  /* Set while an answer is in flight, so a poll landing in the middle cannot
+  /* Set while an answer is in flight, so a read landing in the middle cannot
      overwrite the reply to a press with a read that started before it. */
   const writing = useRef(false)
 
@@ -448,7 +435,7 @@ export function App() {
     if (writing.current) return
     if ('error' in opened) {
       /* Nothing answered: `ask` has already said so to `useServerStanding`, which is what draws
-         the cover below. The next tick — or Try again — asks again; what was read stays. */
+         the cover below. The next news — or Try again — asks again; what was read stays. */
       if (opened.kind === 'refused') setTrouble(opened.error)
       return
     }
@@ -463,22 +450,21 @@ export function App() {
     setTrouble(opened.trouble)
   }, [])
 
-  /* One effect for the first read of every new (project, epic) pair, and one
-     interval that keeps it current. Separated because the first read must happen
-     immediately on a switch and the interval must not be restarted by one. */
+  /* Every new (project, epic) pair starts empty and follows the project's questions: the stream
+     says so once as it opens — which is the first read — and again at each change, and again each
+     time it reopens (after a drop, or when the page is shown again). Never on a clock; nothing at
+     all while the page is hidden. With no project there is nothing to follow, and `refresh` says so. */
   useEffect(() => {
     if (where === 'listening') return
     setQuestions([])
     setOrder(null)
     setDealt(null)
-    void refresh()
+    if (!projectPath) {
+      void refresh()
+      return
+    }
+    return questionsChanged(projectPath, () => void refresh())
   }, [where, projectPath, epic, refresh])
-
-  useEffect(() => {
-    if (where === 'listening') return
-    const timer = setInterval(() => void refresh(), EVERY_MS)
-    return () => clearInterval(timer)
-  }, [where, refresh])
 
   /**
    * Answer one question.

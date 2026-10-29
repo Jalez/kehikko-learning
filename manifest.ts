@@ -86,7 +86,7 @@ export const PREFERRED_PORT = 7950
  *   The sibling notes module reached the same conclusion from the same place,
  *   and its manifest carries the longer version of the argument. What both keep
  *   is the BOUND, and the bound is narrow: nothing here points on a context, on
- *   a load, on a poll bringing back a question an agent has just written, on an
+ *   a load, on a re-read bringing back a question an agent has just written, on an
  *   answer being given, or on any conclusion this app reached by itself. It
  *   points when a person presses the source of a question, and never otherwise.
  *   That is a claim about runtime behaviour, so it is checked the only honest

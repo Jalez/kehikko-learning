@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { KEHIKOT_DIR } from 'kehikot-module-protocol'
 
-import { TICKET, answerAt as answer, stream } from '../doors.ts'
+import { TICKET, answerAt as answer, watchStream as stream } from '../doors.ts'
 import { SETTLE_MS, watchQuizzes, watching } from '../quiz/live.ts'
 import { versionOf } from '../quiz/questions.ts'
 import type { QuizChange, QuizFile } from '../quiz/types.ts'

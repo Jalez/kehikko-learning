@@ -1,4 +1,4 @@
-import { PAGE_STALE, answered, ask, follow, ticket, type Asked as Reply, type AskFailure, type Attachment } from 'kehikot-module-protocol/client'
+import { PAGE_STALE, answered, ask, follow, subscribe, ticket, type Asked as Reply, type AskFailure, type Attachment } from 'kehikot-module-protocol/client'
 
 import type { Asked, Attempt, HistoryEntry, QuizChange, QuizFile, Standing } from '../../quiz/types.ts'
 
@@ -95,6 +95,17 @@ export async function openEpic(project: string, epic: string | null): Promise<Op
     file: typeof body.file === 'string' ? body.file : null,
     trouble: typeof body.trouble === 'string' ? body.trouble : null,
   }
+}
+
+/**
+ * Hear when a project's questions changed: once as the stream opens (and again each time it
+ * reopens: after a drop, or when the page is shown again), then at every change — an agent's write,
+ * an answer or a retake from another tab, a file edited by hand. Never on a clock, and closed while
+ * the page is hidden. What arrives says only that there is news; `openEpic` is what reads.
+ * Returns the function that stops it.
+ */
+export function questionsChanged(project: string, onChange: () => void): () => void {
+  return subscribe('/api/questions/events', () => onChange(), { query: { project }, probe: true })
 }
 
 /** What comes back from having chosen: the verdict, and the key, now earned. */
