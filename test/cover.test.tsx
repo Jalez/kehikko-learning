@@ -120,8 +120,10 @@ describe('the not-ready moments, each as the one shared cover', () => {
     expect(cover()).toBeNull()
     expect(document.documentElement.innerHTML).not.toContain(WHY)
     expect(document.documentElement.innerHTML).not.toContain('[x]')
-    /* Nothing but the questions route was asked: the file is the editor's, and nobody pressed Edit. */
-    expect(new Set(asked)).toEqual(new Set(['GET /api/questions']))
+    /* Nothing but the questions route was asked: the file is the editor's, and nobody pressed Edit.
+       (The questions' stream is served in-process here, and its server asks the HOST about the folder
+       before watching it, through this same `fetch`; that is the server's, not the page's.) */
+    expect(new Set(asked.filter((one) => !one.includes(' /host/')))).toEqual(new Set(['GET /api/questions']))
   })
 
   test('its own server not answering says so — where a read used to die uncaught — and Try again asks again', async () => {

@@ -87,7 +87,7 @@ export interface Kehikot {
    * Point every container on the canvas at a passage (`passage.set`).
    *
    * Called when a person presses the source of a question, and at no other time — not on a load,
-   * not on a context, not when the poll brings back a question. `manifest.ts` carries the
+   * not on a context, not when a re-read brings back a question. `manifest.ts` carries the
    * argument for why a module that is otherwise a consumer of passages may produce one at all,
    * and `dev/pointing.mjs` is the probe that counts whether it is still true. Fire and forget:
    * every refusal is swallowed.

@@ -1,6 +1,6 @@
 {
   "name": "kehikko-learning",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "description": "Questions about passages of a paper, kept as one Markdown file per epic, and what you answered. An agent writes them; a person answers them. An app: its own store, its own page, its own port. A host may frame it, and then it learns which project it is standing in and which epic is open.",
@@ -20,7 +20,7 @@
     "@uiw/react-codemirror": "^4.25.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "kehikot-module-protocol": "git+ssh://git@github.com/Jalez/kehikko-protocol.git#v2.29.0",
+    "kehikot-module-protocol": "git+ssh://git@github.com/Jalez/kehikko-protocol.git#v2.32.0",
     "lucide-react": "^1.33.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

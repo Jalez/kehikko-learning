@@ -6,6 +6,7 @@ import { findQuote, normaliseQuote, resolveSource, uncitable } from 'kehikot-mod
 import { z } from 'zod'
 
 import { citedText, dataFile, makeDir, put, rootOf } from '../store.ts'
+import { wrote as fileGone } from './news.ts'
 import { history, kept, record } from './history.ts'
 import { emptyQuiz, idOf, keyOf, parseQuiz, quizProblems, serialiseQuiz, writable, type Question, type Quiz } from './format.ts'
 import { migrate, type Answers, type Stored } from './migrate.ts'
@@ -805,7 +806,10 @@ export function undoQuiz(projectPath: string | null | undefined, epic: string, i
   if (!entry) return { status: 404, error: `There is no entry "${id.slice(0, 40)}" in the history of ${epic}.` }
   if (entry.before === null) {
     const { path } = dataFile(projectPath, `${epic}.md`)
-    if (path !== null && existsSync(path)) rmSync(path)
+    if (path !== null && existsSync(path)) {
+      rmSync(path)
+      fileGone(path)
+    }
   } else {
     const wrote = save(projectPath, `${epic}.md`, entry.before)
     if (wrote) return { error: wrote }

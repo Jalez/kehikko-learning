@@ -13,10 +13,11 @@ import { App } from '../src/app.tsx'
 /**
  * One quiz open in two places, and "Ask these again" pressed in the other.
  *
- * That press deals every question's options in a new order. This page does not know until its
- * next poll, and a press made before then is a position in the order it is still showing. The
- * whole page against the real doors: such a press is refused and said, nothing is recorded, the
- * page reads again, and the next press is the option whose words were pressed.
+ * That press deals every question's options in a new order. This page does not know until it
+ * reads again (its stream says so a moment later), and a press made before then is a position in
+ * the order it is still showing. The whole page against the real doors: such a press is refused
+ * and said, nothing is recorded, the page reads again, and the next press is the option whose
+ * words were pressed.
  */
 
 const realFetch = globalThis.fetch
@@ -85,7 +86,7 @@ const press = async (words: string) => {
 /** The options as this page is drawing them, top to bottom. */
 const drawn = () => [...document.querySelectorAll('[data-question] button')].map((one) => one.textContent ?? '').filter((one) => IN_FILE.some((option) => one.includes(option)))
 
-describe('asked again somewhere else, and pressed here before the next poll', () => {
+describe('asked again somewhere else, and pressed here before it reads again', () => {
   test('the press is refused and said, nothing is recorded, and the next press is the words that were pressed', async () => {
     render(<App />)
     await greet()

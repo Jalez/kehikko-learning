@@ -12,3 +12,7 @@ GlobalRegistrator.register()
 
 /* The host's `is-project` answer, which every door asks before it works on a folder. */
 import './host.ts'
+
+/* An `EventSource` for the page: the module's own stream door, in-process (`test/events.ts`). */
+import { DoorSource } from './events.ts'
+globalThis.EventSource = DoorSource as unknown as typeof EventSource
