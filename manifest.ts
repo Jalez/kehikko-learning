@@ -67,7 +67,7 @@ export const PREFERRED_PORT = 7950
  *   read this origin's `/api` and ask it for the whole store, so the CORS
  *   argument above is not hygiene here, it is the second half of the mechanism.
  *
- * - **`uses: ['passage:set', 'showing:set']` — two capabilities, and this
+ * - **`uses: ['passage:set', 'showing:set', 'state:keep']` — three capabilities, and this
  *   paragraph used to say there were none.** What stood here was "nothing is
  *   asked for, and that is not an oversight", on the argument that this app
  *   needs the context and nothing else. That was right about the default and
@@ -135,6 +135,22 @@ export const PREFERRED_PORT = 7950
  *   the opposite discipline from `passage:set`, and `wire/use-kehikot.ts` says
  *   so beside each.
  *
+ * - **`state:keep` — declared, and this paragraph used to argue against it.**
+ *   It said a kept string would have nothing to hold: the epic decides which
+ *   questions are shown and the project which store they came out of, both in
+ *   the context. That stopped being true when the editor gained its Pane switch
+ *   — Source or Preview in front where only one fits — which is a way of
+ *   looking a person picks and expects to find again. The host now keeps one
+ *   value per container (this module on this kehikko, 2.51.0) and hands it back
+ *   in the greeting, so the pane is as it was left after a restart.
+ *
+ *   What is still NOT in it is the scope offered over `kehikot.filters` —
+ *   `all`, `file`, `section`, how narrow the reader likes this container. The
+ *   host remembers that per container already and hands it back in
+ *   `context.filters`; a second copy under `state.set` would be two records of
+ *   one preference, and they would disagree the first time one was written and
+ *   the other was not. See `src/wire/scope.ts`.
+ *
  * - **Everything else — still not asked for, and each for its own reason.**
  *   The context itself is not a capability: it arrives in the greeting and on
  *   every switch whether anything was declared or not, so consuming a passage
@@ -171,20 +187,6 @@ export const PREFERRED_PORT = 7950
  *     the feature it could not have delivered. `passage:set` is what carried it.
  *   - **`stage:report` — no.** Saying where work stands belongs to whoever is
  *     doing it. Getting a question wrong is not a stage.
- *   - **`state:keep` — no, and this is the one worth arguing.** Checklist
- *     declares it because a person has to PICK which list a container is showing and
- *     the pick has to stick per kehikko.
- *
- *     There is a pick here now, and it is still not this: the scope offered over
- *     `kehikot.filters` — `all`, `file`, `section`, how narrow the reader likes
- *     this container — is remembered by the HOST per container and arrives back
- *     in `context.filters`. Keeping a second copy under `state.set` would be two
- *     records of one preference, and they would disagree the first time one was
- *     written and the other was not. See `src/wire/scope.ts`.
- *
- *     Nothing else here is picked: the epic decides which questions are shown,
- *     the project decides which store they came out of, and both arrive in the
- *     context. A kept string would still have nothing to hold.
  *   - **Tracker access — no, and there is no capability for it.** This app never
  *     speaks to GitHub or GitLab, holds no token, and has no code path that
  *     could.
@@ -327,7 +329,7 @@ export const MANIFEST: Manifest = manifestSchema.parse({
   reacts: ['passage', 'containers', 'parts'],
   declares: {
     protocol: `>=${PROTOCOL} <${PROTOCOL + 1}`,
-    uses: ['passage:set', 'showing:set'],
+    uses: ['passage:set', 'showing:set', 'state:keep'],
     storage: true,
     prompt: false,
   },

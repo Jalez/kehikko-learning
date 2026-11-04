@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'r
 
 import type { EpicPart, FilterChoice, FilterGroup, FooterItemInput, HeaderItemInput, Passage } from 'kehikot-module-protocol'
 import type { HostEvents } from 'kehikot-module-protocol/client'
-import { useHost, type Host } from 'kehikot-module-protocol/client/react'
+import { useHost, type Host, type KeepsFor } from 'kehikot-module-protocol/client/react'
 
 /**
  * What this page reads off the host: the protocol's `useHost`, and the three things this module
@@ -23,12 +23,14 @@ import { useHost, type Host } from 'kehikot-module-protocol/client/react'
  *   it once with `containersFrom`, memoised on the string.
  * - **`show`**, which says which documents this container is showing (`showing.set`).
  *
- * ## Why there is no kept state here
+ * - **`keeps`**, this container's kept view (`state:keep`, 2.51.0): which of Source and Preview is
+ *   in front in the editor where only one fits. Read with `useKept`.
  *
- * The one pick a reader makes — how narrow this container is, `wire/scope.ts` — is a filter
- * choice, which the host already stores per container and hands back in `context.filters`. A
- * second copy under `state.set` would be two records of one preference. So `state:keep` is still
- * not declared; see `manifest.ts`.
+ * ## What is not kept here
+ *
+ * How narrow this container is, `wire/scope.ts`, is a filter choice, which the host already stores
+ * per container and hands back in `context.filters`. A second copy under `state.set` would be two
+ * records of one preference, so it is not in `keeps`; see `manifest.ts`.
  */
 
 /** Whether anything is out there, and whether we have stopped waiting to find out. */
@@ -118,6 +120,8 @@ export interface Kehikot {
   press: MutableRefObject<PressHandler>
   /** A host has pressed a header item, now or on an earlier load: it draws the header, and the page need not. */
   pressed: boolean
+  /** This container's kept view, which the host keeps per container and hands back in the greeting. Read with `useKept`. */
+  keeps: KeepsFor
 }
 
 export type GotoHandler = NonNullable<HostEvents['onGoto']>
@@ -185,10 +189,11 @@ export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
     [request],
   )
 
-  const { where, epic, projectPath, project, passage, chosen, parts, resize, filters, point, header, footer, drawsFooter } = host
+  const { where, epic, projectPath, project, passage, chosen, parts, resize, filters, point, header, footer, drawsFooter, kept, read, remember } = host
+  const keeps = useMemo<KeepsFor>(() => ({ kept, read, remember }), [kept, read, remember])
   return useMemo(
-    () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, press, pressed }),
-    [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, pressed],
+    () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, press, pressed, keeps }),
+    [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, pressed, keeps],
   )
 }
 
