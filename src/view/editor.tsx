@@ -1,5 +1,5 @@
 import { linesOf } from 'kehikot-module-protocol'
-import { useServerStanding } from 'kehikot-module-protocol/client/react'
+import { useKept, useServerStanding, type KeepsFor } from 'kehikot-module-protocol/client/react'
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 
 import type { Files, HistoryEntry } from '@/store/ask.ts'
@@ -12,6 +12,7 @@ import { editorFooter } from '@/view/footer.ts'
 import { headerOf } from '@/view/header.ts'
 import type { FooterItemInput, HeaderItemInput } from 'kehikot-module-protocol'
 import type { PressHandler } from '@/wire/use-kehikot.ts'
+import { useKeeps } from '@/wire/keeps.ts'
 
 import { parseQuiz, quizProblems } from '../../quiz/format.ts'
 
@@ -73,6 +74,7 @@ export function QuizEditor({
   header,
   footer,
   press,
+  keeps,
   fallback = header === undefined,
 }: {
   files: Files
@@ -96,11 +98,16 @@ export function QuizEditor({
   footer?: (items: FooterItemInput[]) => void
   /** Where the host's presses on those items arrive. */
   press?: MutableRefObject<PressHandler>
+  /** This container's kept view (`state:keep`): which pane is in front is read from it and written to it. Without it, the pane is this editor's alone. */
+  keeps?: KeepsFor
   /** Draw the "⋯" menu in the page: nobody frames it, or no host that draws the header has pressed one yet. */
   fallback?: boolean
 }) {
   const doc = useQuiz({ files, project, epic, ...(saveDelay === undefined ? {} : { saveDelay }) })
-  const [tab, setTab] = useState<'source' | 'preview'>('source')
+  /* Which pane is in front where only one fits: a way of looking, kept by the host for this container
+     (this module on this kehikko) and back after a restart, and the next time the editor opens. */
+  const unkept = useKeeps({})
+  const [tab, setTab] = useKept<'source' | 'preview'>(keeps ?? unkept, 'pane', 'source', (value) => value === 'source' || value === 'preview')
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [trouble, setTrouble] = useState<string | null>(null)

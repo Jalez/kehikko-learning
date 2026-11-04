@@ -84,7 +84,7 @@ export function App() {
     )
   }, [])
 
-  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell, header, footer, drawsFooter, press, pressed } = useKehikot(
+  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell, header, footer, drawsFooter, press, pressed, keeps } = useKehikot(
     ID,
     onGoto,
   )
@@ -721,6 +721,7 @@ export function App() {
         header={header}
         footer={footed ? footer : undefined}
         press={press}
+        keeps={keeps}
         /* Drawn by the page itself where nobody frames it, or no host has pressed one of these items yet. */
         fallback={where !== 'hosted' || !pressed}
         onDone={() => {

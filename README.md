@@ -602,9 +602,13 @@ tool's argument validation without a browser.
   host sits and counts, because a claim about runtime behaviour cannot be
   settled by reading a file.
 
-  `live:read`, `epics:read`, `steps:read`, `selection:set`, `view:navigate`,
-  `stage:report` and `state:keep` were each considered and each rejected, in the
-  essay in `manifest.ts`. A capability asked for and never used is the fastest
+  `state:keep` is declared too: which of Source and Preview is in front in the
+  editor is kept per container and is back after a restart. The narrowing scope
+  is not in it — the host keeps that as a filter choice already.
+
+  `live:read`, `epics:read`, `steps:read`, `selection:set`, `view:navigate` and
+  `stage:report` were each considered and each rejected, in the essay in
+  `manifest.ts`. A capability asked for and never used is the fastest
   way to teach somebody to press yes without reading.
 - `extensions: { emits: [], consumes: [] }`. Checklist announces MCP calls onto a
   notifications panel and is right to. Here, what an agent writes lands in the

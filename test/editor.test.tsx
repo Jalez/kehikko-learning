@@ -535,6 +535,44 @@ describe('the header: what this editor declares, and nothing it draws itself', (
     expect(press.current({ item: 'nope' })).toContain('Nothing here')
   })
 
+  test('the pane in front is read from what the host kept for this container, and a press keeps it', async () => {
+    const { files } = fake()
+    let kept: unknown = { pane: 'preview', other: 1 }
+    const wrote: [unknown, number | undefined][] = []
+    const keeps = {
+      read: () => ({ kept }),
+      remember: ((next: unknown, after?: number) => {
+        kept = next
+        wrote.push([next, after])
+      }) as never,
+    }
+    const press = { current: (() => 'not yet') as (p: { item: string; value?: string | boolean }) => string | void }
+    const declared: unknown[][] = []
+    const draw = () => (
+      <QuizEditor files={files} project="/p" epic="thesis" file={null} onDone={() => {}} saveDelay={0} editor={FakeEditor} header={(items) => declared.push(items)} press={press} keeps={{ ...keeps, kept }} fallback={false} />
+    )
+    const view = render(draw())
+    await waitFor(() => expect(view.container.querySelector('textarea')).toBeTruthy())
+    /* The kept pane is in front from the first render. */
+    expect(view.container.querySelector('[data-preview]')?.className).toContain('block')
+    expect(((declared.at(-1) as { id: string; value?: string }[]).find((one) => one.id === 'pane'))?.value).toBe('preview')
+    await act(async () => void press.current({ item: 'pane', value: 'source' }))
+    expect(wrote).toEqual([[{ pane: 'source', other: 1 }, 300]])
+    view.rerender(draw())
+    await waitFor(() => expect(((declared.at(-1) as { id: string; value?: string }[]).find((one) => one.id === 'pane'))?.value).toBe('source'))
+  })
+
+  test('a kept pane that is not one of the two is ignored', async () => {
+    const { files } = fake()
+    const declared: unknown[][] = []
+    const keeps = { kept: { pane: 'sideways' }, read: () => ({ kept: { pane: 'sideways' } }), remember: (() => {}) as never }
+    const view = render(
+      <QuizEditor files={files} project="/p" epic="thesis" file={null} onDone={() => {}} saveDelay={0} editor={FakeEditor} header={(items) => declared.push(items)} keeps={keeps} fallback={false} />,
+    )
+    await waitFor(() => expect(view.container.querySelector('textarea')).toBeTruthy())
+    expect(((declared.at(-1) as { id: string; value?: string }[]).find((one) => one.id === 'pane'))?.value).toBe('source')
+  })
+
   test('a failed save is said on Done, and the sentence is in the page', async () => {
     const { state, files } = fake()
     const { declared, area, container } = await hosted(files)
