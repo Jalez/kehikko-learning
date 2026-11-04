@@ -176,3 +176,51 @@ describe('the not-ready moments, each as the one shared cover', () => {
     expect(document.documentElement.innerHTML).not.toContain(WHY)
   })
 })
+
+describe('a host that draws the footer', () => {
+  /* What the page posted to its host, by type: in a test the page is its own parent. */
+  const posted = (type: string) => {
+    const seen: unknown[] = []
+    const hear = (event: MessageEvent) => {
+      if ((event.data as { type?: string })?.type === type) seen.push((event.data as { items: unknown }).items)
+    }
+    window.addEventListener('message', hear)
+    return { seen, stop: () => window.removeEventListener('message', hear) }
+  }
+
+  test('is told the score in the footer and Edit in the header; the page draws no score, and a press of Edit opens the editor', async () => {
+    const footers = posted('kehikot.footer')
+    const headers = posted('kehikot.header')
+    render(<App />)
+    await act(async () => {
+      window.postMessage({ type: 'kehikot.hello', protocol: 2, session: 's', state: null, header: true, footer: true, context: { theme: 'dark', ...here() } }, '*')
+      await new Promise((resolve) => setTimeout(resolve, 40))
+    })
+    await waitFor(() => expect(screen.getAllByText('What does a manifest settle?').length).toBeGreaterThan(0))
+    type Item = { id: string; kind: string; text?: string }
+    await waitFor(() => expect((footers.seen.at(-1) as Item[] | undefined)?.find((one) => one.id === 'score')?.text).toBe('1 asked · 0 answered · 0 right'))
+    expect((headers.seen.at(-1) as Item[]).map((one) => `${one.kind}:${one.id}`)).toEqual(['run:edit'])
+    expect(document.body.textContent).not.toContain('1 asked')
+    await act(async () => {
+      window.postMessage({ type: 'kehikot.press', protocol: 2, id: 'p1', item: 'edit' }, '*')
+      await new Promise((resolve) => setTimeout(resolve, 80))
+    })
+    await waitFor(() => expect(document.querySelector('[data-editor="open"]')).toBeTruthy())
+    /* The editor's own rows now: Done and History, and the save in the footer. */
+    await waitFor(() => expect((headers.seen.at(-1) as Item[]).map((one) => one.id)).toContain('done'))
+    await waitFor(() => expect((footers.seen.at(-1) as Item[]).map((one) => one.id)).toContain('save'))
+    footers.stop()
+    headers.stop()
+  })
+
+  test('a host that does not say so is told no footer, and the page draws its score as before', async () => {
+    const footers = posted('kehikot.footer')
+    render(<App />)
+    await greet(here())
+    await waitFor(() => expect(screen.getAllByText('What does a manifest settle?').length).toBeGreaterThan(0))
+    await settle(40)
+    expect(document.body.textContent).toContain('1 asked · 0 answered · 0 right')
+    expect(footers.seen).toEqual([])
+    footers.stop()
+  })
+})

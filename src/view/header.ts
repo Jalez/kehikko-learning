@@ -5,7 +5,9 @@ import { LIMITS, type HeaderItemInput } from 'kehikot-module-protocol'
  *
  * The host draws these as its View and Run menus in the row the container already has, so the
  * editor spends no row of its own on Source / Preview, Done, History or the save status: none is
- * drawn in the page. (The page keeps its alerts: a failed save, a conflict, a server that is away.)
+ * drawn in the page. (The page keeps its alerts: a failed save, a conflict, a server that is away.
+ * With a host that draws the footer, the save is said there instead — `view/footer.ts` — and a
+ * failed one is not drawn in the page or on Done.)
  *
  * A pure function of what the editor knows that is not typed text. A keystroke moves the save
  * through unsaved, saving and saved, and none of those is in this list — only a save that FAILED
@@ -27,6 +29,8 @@ export interface HeaderState {
   failed: boolean
   /** The text has not been read yet. */
   reading: boolean
+  /** The host draws the footer, which says whether the words are saved: Done keeps its state and says no result of its own. */
+  footed?: boolean
 }
 
 export function headerOf(state: HeaderState): HeaderItemInput[] {
@@ -52,7 +56,7 @@ export function headerOf(state: HeaderState): HeaderItemInput[] {
     label: 'Done',
     icon: 'check',
     state: state.failed ? 'failed' : 'idle',
-    ...(state.failed ? { result: 'not saved' } : {}),
+    ...(state.failed && !state.footed ? { result: 'not saved' } : {}),
     /* Leaving with a conflict unanswered would drop one side without anybody choosing it. */
     ...(state.conflict ? { disabled: 'These questions changed on disk: choose which version stays first.' } : state.busy ? { disabled: 'Something is being done just now.' } : {}),
   })

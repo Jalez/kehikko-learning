@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'react'
 
-import type { EpicPart, FilterChoice, FilterGroup, HeaderItemInput, Passage } from 'kehikot-module-protocol'
+import type { EpicPart, FilterChoice, FilterGroup, FooterItemInput, HeaderItemInput, Passage } from 'kehikot-module-protocol'
 import type { HostEvents } from 'kehikot-module-protocol/client'
 import { useHost, type Host } from 'kehikot-module-protocol/client/react'
 
@@ -107,6 +107,13 @@ export interface Kehikot {
    * client replays the last one after every greeting. Call it with `[]` to take the menus away.
    */
   header: (items: HeaderItemInput[]) => void
+  /**
+   * Whether the host draws this container's footer: its greeting says (protocol 2.38.0), `null`
+   * from one that does not and before the greeting. Only `true` means declare one.
+   */
+  drawsFooter: boolean | null
+  /** Declare what the container's footer carries (`kehikot.footer`): the whole list, every time; `[]` takes it away. */
+  footer: (items: FooterItemInput[]) => void
   /** Where the open editor puts what takes a press. The host's presses reach it through here. */
   press: MutableRefObject<PressHandler>
   /** A host has pressed a header item, now or on an earlier load: it draws the header, and the page need not. */
@@ -115,8 +122,8 @@ export interface Kehikot {
 
 export type GotoHandler = NonNullable<HostEvents['onGoto']>
 
-/** What takes a press on one of this page's header items: nothing for "taken", a sentence for "not taken, and why". */
-export type PressHandler = (press: { item: string; value?: string | boolean }) => string | void
+/** What takes a press on one of this page's header items, or its footer's (`place: 'footer'`): nothing for "taken", a sentence for "not taken, and why". */
+export type PressHandler = (press: { item: string; value?: string | boolean; place?: 'header' | 'footer' }) => string | void
 /** With nothing open there is nothing declared, so nothing to press. */
 export const NO_PRESS: PressHandler = () => 'Nothing is open to press that on.'
 
@@ -178,10 +185,10 @@ export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
     [request],
   )
 
-  const { where, epic, projectPath, project, passage, chosen, parts, resize, filters, point, header } = host
+  const { where, epic, projectPath, project, passage, chosen, parts, resize, filters, point, header, footer, drawsFooter } = host
   return useMemo(
-    () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, press, pressed }),
-    [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, pressed],
+    () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, press, pressed }),
+    [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, pressed],
   )
 }
 

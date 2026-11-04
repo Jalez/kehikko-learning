@@ -6,7 +6,8 @@ import { Cover, coverFor, useFocus, useServerStanding, type CoverState } from 'k
 import { ID } from '../manifest.ts'
 
 import { answer, files, openEpic, questionsChanged, retake, type Asked, type Standing } from '@/store/ask.ts'
-import { useKehikot, type GotoHandler } from '@/wire/use-kehikot.ts'
+import { NO_PRESS, useKehikot, type GotoHandler, type PressHandler } from '@/wire/use-kehikot.ts'
+import { FOOT, HEAD, quizFooter, quizHeader } from '@/view/footer.ts'
 import { QuizEditor } from '@/view/editor.tsx'
 import { QuizView } from '@/view/quiz.tsx'
 import { NoEpic } from '@/view/nowhere.tsx'
@@ -83,10 +84,16 @@ export function App() {
     )
   }, [])
 
-  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell, header, press, pressed } = useKehikot(
+  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell, header, footer, drawsFooter, press, pressed } = useKehikot(
     ID,
     onGoto,
   )
+  /*
+   * The host draws the footer (protocol 2.38.0): the counter, the arrows, the score and what went
+   * wrong are declared there, the parts, the retake and Edit in the header, and the page draws no
+   * row of controls (`view/footer.ts`). With any other host, nothing changes.
+   */
+  const footed = where === 'hosted' && drawsFooter === true
 
   /*
    * The host's list of containers, inflated once from the string the wire
@@ -389,8 +396,8 @@ export function App() {
   )
 
   const rungs = useMemo(
-    () => ladder({ frame, epic: epic ?? '', cards, fits, shown, measure }),
-    [frame, epic, cards, fits, shown, measure],
+    () => ladder({ frame, epic: epic ?? '', cards, fits, shown, measure, rowless: footed }),
+    [frame, epic, cards, fits, shown, measure, footed],
   )
 
   const at = Math.min(Math.max(shown, 0), Math.max(0, cards.length - 1))
@@ -712,6 +719,7 @@ export function App() {
         at={editing.at}
         onUnsaved={setUnsaved}
         header={header}
+        footer={footed ? footer : undefined}
         press={press}
         /* Drawn by the page itself where nobody frames it, or no host has pressed one of these items yet. */
         fallback={where !== 'hosted' || !pressed}
@@ -740,8 +748,87 @@ export function App() {
         onShow={show}
         part={part}
         onPart={setPart}
+        footed={footed}
       />
     )
+
+  /*
+   * With a host that draws the footer, the questions declare both rows themselves; the editor
+   * declares its own while it is open, so nothing is said here then. Each is declared again only
+   * when its JSON differs. Under a cover, or with no paper open, both are empty.
+   */
+  const quizShown = footed && !editing && cover === null && Boolean(projectPath && epic)
+  const answeredCount = visible.filter((question) => question.attempts.length).length
+  const footerSaid = !footed || editing
+    ? null
+    : JSON.stringify(
+        quizShown
+          ? quizFooter({
+              asked: visible.length,
+              answered: answeredCount,
+              right: visible.filter((question) => question.attempts.at(-1)?.right).length,
+              at: rungs.rung === 'list' ? null : at,
+              epic: epic ?? '',
+              file,
+              trouble: trouble ?? dealt,
+            })
+          : [],
+      )
+  const headerSaid = !footed || editing
+    ? null
+    : JSON.stringify(
+        quizShown && visible.length
+          ? quizHeader({ parts: rungs.rung === 'part' ? parts : [], part, answered: answeredCount > 0, busy })
+          : quizShown
+            ? quizHeader({ parts: [], part, answered: false, busy })
+            : [],
+      )
+  useEffect(() => {
+    if (footerSaid !== null) footer(JSON.parse(footerSaid))
+  }, [footer, footerSaid])
+  useEffect(() => {
+    if (headerSaid !== null) header(JSON.parse(headerSaid))
+  }, [header, headerSaid])
+
+  /* What a press on those items does: the same as the page's own row did. */
+  const quizPress = useRef<PressHandler>(NO_PRESS)
+  quizPress.current = ({ item, value, place }) => {
+    if (!quizShown) return 'Nothing is open to press that on.'
+    if (place === 'footer') {
+      if (item !== FOOT.BACK && item !== FOOT.NEXT) return `Nothing in this footer is called ${item}.`
+      if (rungs.rung === 'list') return 'Every question is on screen.'
+      const to = item === FOOT.BACK ? at - 1 : at + 1
+      if (to < 0) return 'This is the first question.'
+      if (to >= visible.length) return 'This is the last question.'
+      show(to)
+      return
+    }
+    if (item === HEAD.PART) {
+      if (rungs.rung !== 'part' || typeof value !== 'string' || !parts.includes(value as Part)) return 'That part is not one this question has on screen.'
+      setPart(value as Part)
+      return
+    }
+    if (item === HEAD.RETAKE) {
+      if (!answeredCount) return 'Nothing has been answered yet.'
+      if (busy) return 'Something is being done just now.'
+      void onRetake()
+      return
+    }
+    if (item === HEAD.EDIT) {
+      const question = rungs.rung === 'list' ? undefined : visible[at]
+      setEditing({ at: question ? { id: question.id, question: question.question } : null })
+      return
+    }
+    return `Nothing here is called ${item}.`
+  }
+  /* The questions take the presses while they are on screen with a footer; the editor takes them while it is open. */
+  useEffect(() => {
+    if (!footed || editing) return
+    press.current = (pressing) => quizPress.current(pressing)
+    return () => {
+      press.current = NO_PRESS
+    }
+  }, [footed, editing, press])
 
   return (
     <div
