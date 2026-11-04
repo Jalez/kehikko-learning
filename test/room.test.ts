@@ -478,3 +478,14 @@ describe('which parts a question splits into', () => {
     expect(questionLines(MEDIUM, SIZES.narrow.width, roughly)).toBeGreaterThan(2)
   })
 })
+
+describe('with a host that draws the footer', () => {
+  test('no row is reserved under the card, so the card is given that room', () => {
+    const frame = SIZES.narrow
+    const cards = [LONG, MEDIUM, SHORT]
+    const kept = climb(frame, cards)
+    const rowless = ladder({ frame, epic: 'modes-are-modules', cards, fits: room(frame), shown: 0, measure: roughly, rowless: true })
+    expect(kept.rung).not.toBe('list')
+    expect(rowless.available).toBeGreaterThan(kept.available)
+  })
+})

@@ -545,6 +545,43 @@ describe('the header: what this editor declares, and nothing it draws itself', (
     expect(done).toMatchObject({ state: 'failed', result: 'not saved' })
   })
 
+  test('with a host that draws the footer, the save is said there: not on Done, not in the page', async () => {
+    const { state, files } = fake()
+    const declared: unknown[][] = []
+    const footed: { id: string; text?: string; level?: string }[][] = []
+    const press = { current: (() => 'not yet') as (p: { item: string; value?: string | boolean }) => string | void }
+    const view = render(
+      <QuizEditor
+        files={files}
+        project="/p"
+        epic="thesis"
+        file=".kehikot/learning/thesis.md"
+        onDone={() => {}}
+        saveDelay={0}
+        editor={FakeEditor}
+        header={(items) => declared.push(items)}
+        footer={(items) => footed.push(items as { id: string }[])}
+        press={press}
+        fallback={false}
+      />,
+    )
+    await waitFor(() => expect(view.container.querySelector('textarea')).toBeTruthy())
+    await saved(view.container)
+    await waitFor(() => expect(footed.at(-1)?.find((one) => one.id === 'save')?.text).toBe('saved'))
+    expect(footed.at(-1)?.find((one) => one.id === 'file')?.text).toBe('.kehikot/learning/thesis.md')
+    state.fail = 'the disk is full'
+    type(view.container.querySelector('textarea') as HTMLTextAreaElement, 'x\n')
+    await waitFor(() => expect(footed.at(-1)?.find((one) => one.id === 'save')).toMatchObject({ level: 'critical' }))
+    expect(footed.at(-1)?.find((one) => one.id === 'save')?.text).toContain('the disk is full')
+    expect(view.container.querySelector('[role="alert"]')).toBeNull()
+    const done = (declared.at(-1) as { id: string; state?: string; result?: string }[]).find((one) => one.id === 'done')
+    expect(done?.state).toBe('failed')
+    expect(done?.result).toBeUndefined()
+    /* Going away takes the footer with it. */
+    view.unmount()
+    expect(footed.at(-1)).toEqual([])
+  })
+
   test('with no host to draw them, the page offers one ⋯ and the same items behind it', async () => {
     const { container } = await open(fake().files)
     expect(container.querySelectorAll('[data-header-fallback]')).toHaveLength(1)

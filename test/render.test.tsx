@@ -751,3 +751,51 @@ describe('the row of controls at the paged rungs', () => {
     expect(container.textContent).not.toMatch(/elsewhere|outside|picked parts/)
   })
 })
+
+describe('with a host that draws the footer', () => {
+  const answered: Asked = { ...unanswered, attempts: [{ chose: KEY, right: true, at: '2026-11-04T00:00:00Z' }] }
+  const draw = (rung: 'part' | 'list', footed: boolean) =>
+    render(
+      <QuizView
+        epic="modes-are-modules"
+        file=".kehikot/learning/modes-are-modules.md"
+        onEdit={() => {}}
+        questions={[answered, { ...unanswered, id: 'e5f6a7b8' }]}
+        onAnswer={() => {}}
+        onPoint={() => {}}
+        pointed={null}
+        onRetake={() => {}}
+        trouble="The answer was not recorded."
+        busy={false}
+        room={rung === 'part' ? TIGHT : ROOMY}
+        ladder={rung === 'part' ? { rung: 'part', available: 200, heights: [200, 200], snap: false, header: 0 } : undefined}
+        parts={['question', 'options']}
+        part="options"
+        footed={footed}
+      />,
+    )
+
+  test('the paged rungs draw no row: the counter, the score and the trouble are the footer’s, the rest the header’s', () => {
+    const { container } = draw('part', true)
+    expect(container.querySelector('[data-controls]')).toBeNull()
+    expect(container.textContent).not.toContain('1 / 2')
+    expect(container.textContent).not.toContain('The answer was not recorded.')
+    expect(container.textContent).not.toContain('Ask again')
+    cleanup()
+    const before = draw('part', false).container
+    expect(before.querySelector('[data-controls]')?.textContent).toContain('1 / 2')
+    expect(before.textContent).toContain('The answer was not recorded.')
+  })
+
+  test('the list keeps the paper’s name and draws no score, no retake and no Edit line', () => {
+    const { container } = draw('list', true)
+    expect(container.textContent).toContain('modes-are-modules')
+    expect(container.textContent).not.toContain('2 asked')
+    expect(container.textContent).not.toContain('Ask these again')
+    expect(container.querySelector('[data-file="quiz"]')).toBeNull()
+    cleanup()
+    const before = draw('list', false).container
+    expect(before.textContent).toContain('2 asked · 1 answered · 1 right')
+    expect(before.textContent).toContain('Ask these again')
+  })
+})

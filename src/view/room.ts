@@ -829,8 +829,14 @@ export function ladder(input: {
   fits: Room
   shown: number
   measure: Measure
+  /**
+   * The paged rungs draw no row of controls under the card: the host draws the footer, which holds
+   * the counter, the arrows and the score, and the header holds the parts, the retake and Edit. So
+   * nothing is reserved for the row, and the card is given its room.
+   */
+  rowless?: boolean
 }): Ladder {
-  const { frame, epic, cards, fits, shown, measure } = input
+  const { frame, epic, cards, fits, shown, measure, rowless = false } = input
 
   /*
    * Unmeasured, or nothing to show. The same answer `room()` gives and for the
@@ -858,7 +864,7 @@ export function ladder(input: {
   }
 
   const whole = cards.map((card) => wholeHeight(card, frame.width, measure))
-  const available = frame.height - 2 * m.pagePad - controlsHeight(cards.length, frame.width, measure)
+  const available = frame.height - 2 * m.pagePad - (rowless ? 0 : controlsHeight(cards.length, frame.width, measure))
   const at = Math.min(Math.max(shown, 0), cards.length - 1)
   const rung: Rung = (whole[at] ?? 0) <= available ? 'one' : 'part'
   const card = cards[at]

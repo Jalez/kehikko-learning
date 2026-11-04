@@ -8,8 +8,9 @@ import { MarkdownEditor, type Editor } from '@/view/markdown-editor.tsx'
 import { useQuiz } from '@/view/use-quiz.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { HeaderFallback } from '@/view/header-fallback.tsx'
+import { editorFooter } from '@/view/footer.ts'
 import { headerOf } from '@/view/header.ts'
-import type { HeaderItemInput } from 'kehikot-module-protocol'
+import type { FooterItemInput, HeaderItemInput } from 'kehikot-module-protocol'
 import type { PressHandler } from '@/wire/use-kehikot.ts'
 
 import { parseQuiz, quizProblems } from '../../quiz/format.ts'
@@ -70,6 +71,7 @@ export function QuizEditor({
   editor: EditorPane = MarkdownEditor,
   onUnsaved,
   header,
+  footer,
   press,
   fallback = header === undefined,
 }: {
@@ -87,6 +89,11 @@ export function QuizEditor({
   onUnsaved?: (unsaved: boolean) => void
   /** Declare the container's header items (`kehikot.header`). Without it, nobody frames this editor and it draws its own way to them. */
   header?: (items: HeaderItemInput[]) => void
+  /**
+   * Declare the container's footer (`kehikot.footer`): given only when the host draws one. Whether
+   * what was typed is saved, and whether changes on disk are heard, are said there and not in the page.
+   */
+  footer?: (items: FooterItemInput[]) => void
   /** Where the host's presses on those items arrive. */
   press?: MutableRefObject<PressHandler>
   /** Draw the "⋯" menu in the page: nobody frames it, or no host that draws the header has pressed one yet. */
@@ -186,6 +193,7 @@ export function QuizEditor({
     conflict: doc.conflict,
     failed: doc.state === 'failed',
     reading: doc.text === null,
+    footed: footer !== undefined,
   })
   const itemsKey = JSON.stringify(items)
   useEffect(() => {
@@ -193,6 +201,13 @@ export function QuizEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [header, itemsKey])
   useEffect(() => () => header?.([]), [header])
+
+  /* The footer, the same way: declared again only when its JSON differs, and taken away on the way out. */
+  const footSaid = footer ? JSON.stringify(editorFooter({ said, bad: doc.state === 'failed' || doc.state === 'conflict', detached: doc.watching === 'detached', file })) : null
+  useEffect(() => {
+    if (footer && footSaid !== null) footer(JSON.parse(footSaid))
+  }, [footer, footSaid])
+  useEffect(() => () => footer?.([]), [footer])
 
   const onPress: PressHandler = ({ item, value }) => {
     if (item === 'pane') {
@@ -231,12 +246,12 @@ export function QuizEditor({
         {said}
       </span>
       {fallback ? <HeaderFallback items={items} onPress={onPress} className="absolute top-0 right-0" /> : null}
-      {doc.state === 'failed' ? (
+      {doc.state === 'failed' && !footer ? (
         <p role="alert" className="min-w-0 pr-6 text-[0.65rem] leading-4 text-wrong [overflow-wrap:anywhere]" title={file ?? undefined}>
           {said}
         </p>
       ) : null}
-      {doc.watching === 'detached' ? (
+      {doc.watching === 'detached' && !footer ? (
         <p data-watch="detached" className="min-w-0 pr-6 text-[0.65rem] leading-4 text-muted-foreground">
           not hearing changes on disk — reconnecting
         </p>

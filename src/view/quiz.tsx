@@ -533,6 +533,7 @@ export function QuizView({
   onShow = () => {},
   part = 'options',
   onPart = () => {},
+  footed = false,
 }: {
   epic: string
   /**
@@ -580,6 +581,12 @@ export function QuizView({
   onShow?: (at: number) => void
   part?: Part
   onPart?: (part: Part) => void
+  /**
+   * The host draws the footer, and the header beside it (`view/footer.ts`): the counter, the arrows,
+   * the score and what went wrong are the footer's, and the parts, the retake and Edit the header's.
+   * So the page draws none of them — no row under the card, no score under the paper's name.
+   */
+  footed?: boolean
 }) {
   const answered = questions.filter((question) => question.attempts.length).length
   const right = questions.filter((question) => question.attempts.at(-1)?.right).length
@@ -638,7 +645,7 @@ export function QuizView({
     const showing = parts.includes(part) ? part : 'options'
     return (
       <section className="flex min-w-0 flex-col gap-1.5">
-        {trouble ? (
+        {trouble && !footed ? (
           <p className="rounded border border-wrong/40 bg-wrong/5 px-2 py-1.5 text-[0.7rem] leading-4 text-wrong">
             {trouble}
           </p>
@@ -750,6 +757,7 @@ export function QuizView({
           host's side: zero `passage.set` for a load, a context, an answer or a
           part switch, and exactly one for a press of the source.
         */}
+        {footed ? null : (
         <div
           data-controls={ladder.rung}
           title={`${epic} — ${score}${file ? ` — edit these in ${file}` : ''}`}
@@ -828,6 +836,7 @@ export function QuizView({
             </Button>
           ) : null}
         </div>
+        )}
       </section>
     )
   }
@@ -852,10 +861,10 @@ export function QuizView({
       */}
       <div className="flex min-w-0 snap-start flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <h2 className="text-[0.8rem] font-semibold [overflow-wrap:anywhere] @sm/container:text-sm">{epic}</h2>
-        <span className="text-[0.65rem] text-muted-foreground">{score}</span>
+        {footed ? null : <span className="text-[0.65rem] text-muted-foreground">{score}</span>}
       </div>
 
-      {trouble ? (
+      {trouble && !footed ? (
         <p className="rounded border border-wrong/40 bg-wrong/5 px-2 py-1.5 text-[0.7rem] leading-4 text-wrong">
           {trouble}
         </p>
@@ -878,7 +887,7 @@ export function QuizView({
         ))}
       </ul>
 
-      {answered ? (
+      {answered && !footed ? (
         <div className="min-w-0">
           <Button
             type="button"
@@ -896,7 +905,7 @@ export function QuizView({
           ) : null}
         </div>
       ) : null}
-      {file ? (
+      {file && !footed ? (
         <p data-file="quiz" className="text-[0.6rem] leading-4 text-muted-foreground">
           {onEdit ? (
             <button type="button" data-edit="list" onClick={() => onEdit()} title={EDIT_NOTE} className="font-medium underline underline-offset-2 hover:text-foreground">
