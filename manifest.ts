@@ -1,5 +1,49 @@
 import { MANIFEST_KIND, PROTOCOL, manifestSchema, type Manifest } from 'kehikot-module-protocol'
 import pkg from './package.json'
+/* This module's introduction (protocol 2.57.0): slides the host shows in its introduction dialog. Also
+   read as a file from the repository, so a person can watch it before the module runs or is installed. */
+import intro from './intro.json'
+
+/** "How to use" (protocol 2.52.0). Each string one line of plain text. */
+export const HELP = {
+  summary: 'Multiple-choice questions about the paper you are reading, each tied to the exact words it asks about, with what you answered kept so you can come back to it.',
+  sections: [
+    {
+      title: 'What it shows',
+      points: [
+        'The questions written about the open epic’s paper, one card at a time: what is asked, the options, and once answered, whether you were right and why.',
+        'Each question’s source: the words in the paper it rests on. Press it to point the paper at them; if the paper changed and the words are gone, it says so.',
+        'The bottom row says which question of how many you are on, with the one before and after, and the score: asked, answered and right.',
+        'With parts picked in the bar, only the questions about those parts.',
+      ],
+    },
+    {
+      title: 'How to use it',
+      points: [
+        'Pick an option to answer. The explanation shows right away, and the answer is kept per question.',
+        'The header’s scope keeps the questions about This document or This passage, or Anywhere in the paper. Only the choices that apply now are offered.',
+        'Ask again forgets what you answered for this paper, so the questions are asked afresh.',
+        'Edit opens the questions as Markdown beside what they will ask: the ticked option is the right one, and Why: starts the explanation. It saves as you type; History and Undo put back an earlier version. Done goes back to answering.',
+      ],
+    },
+    {
+      title: 'What agents can do',
+      points: [
+        'Write a question about a passage with add_quiz, quoting the paper’s exact words; it is refused unless the words are in the file exactly once.',
+        'Sharpen one with reword_quiz, keeping its answers unless the options or the right one change, and remove one with drop_quiz.',
+        'Read the questions and how they were answered with quizzes, and wait for you to answer with quiz_state.',
+      ],
+    },
+    {
+      title: 'Rules',
+      points: [
+        'An epic’s questions are one Markdown file in the project, under .kehikot/learning, that you or an agent can edit. Answers are kept beside it and change only by answering.',
+        'A question with no ticked option, or two, is not asked, and the page says so.',
+        'If the file changed on disk while you edit, nothing is written over it: you choose Take what is on disk or Keep mine.',
+      ],
+    },
+  ],
+}
 
 export const ID = 'kehikot.learning'
 /** The module's version: package.json's, the one place it is written. A release is tagged with it. */
@@ -286,6 +330,9 @@ export const MANIFEST: Manifest = manifestSchema.parse({
     + 'because a question somebody got wrong is the part of your explanation that did not work. Do NOT answer them '
     + 'and do not print the correct option into anything a reader can see: the answer is withheld here until the '
     + 'person has actually chosen, and telling them is the one thing that makes this module worthless.',
+  /* "How to use" (protocol 2.52.0), and the introduction (protocol 2.57.0). */
+  help: HELP,
+  intro,
   entry: '/app',
   /* What its content belongs to (protocol 2.29.0): one mode per scope, the default first. */
   modes: [
