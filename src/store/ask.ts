@@ -1,5 +1,7 @@
 import { PAGE_STALE, answered, ask, follow, subscribe, ticket, type Asked as Reply, type AskFailure, type Attachment } from 'kehikot-module-protocol/client'
 
+import type { ShownProposal } from 'kehikot-module-protocol/proposals'
+
 import type { Asked, Attempt, HistoryEntry, QuizChange, QuizFile, Standing } from '../../quiz/types.ts'
 
 /**
@@ -163,6 +165,30 @@ export async function retake(project: string, epic: string): Promise<{ questions
     questions: Array.isArray(asked.body?.questions) ? (asked.body.questions as Asked[]) : [],
     order: typeof asked.body?.order === 'string' ? asked.body.order : null,
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Proposed changes (protocol 2.71.0)
+ * ------------------------------------------------------------------ */
+
+/** The person's answer to one proposal: accept as proposed, with `final` (their text) or `hunks` (the indexes taken), or decline with a `reason`. */
+export interface ProposalAnswer {
+  decision: 'accept' | 'decline'
+  reason?: string
+  final?: string
+  hunks?: number[]
+}
+
+/** The proposed changes to an epic's questions: open ones, measured against the file now, and the recent settled ones. Carries the ticket: a proposal quotes the file. */
+export async function proposals(project: string, epic: string): Promise<{ proposals: ShownProposal[]; settled: ShownProposal[] } | Failed> {
+  const asked = await ask<{ proposals: ShownProposal[]; settled: ShownProposal[] }>('/api/proposals', { query: { project, epic }, ticket: true })
+  if (!asked.ok) return { error: asked.error, kind: asked.kind }
+  return { proposals: asked.body?.proposals ?? [], settled: asked.body?.settled ?? [] }
+}
+
+/** Answer one proposal. Throws the door's sentence when it refuses (the file moved under it, say). */
+export async function answerProposal(project: string, epic: string, id: string, answer: ProposalAnswer): Promise<ShownProposal> {
+  return answered(await ask<{ proposal: ShownProposal }>('/api/proposal', { body: { project, epic, id, ...answer } })).proposal
 }
 
 /* ------------------------------------------------------------------ *

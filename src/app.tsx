@@ -5,7 +5,10 @@ import { Cover, coverFor, useFocus, useServerStanding, type CoverState } from 'k
 
 import { ID } from '../manifest.ts'
 
-import { answer, files, openEpic, questionsChanged, retake, type Asked, type Standing } from '@/store/ask.ts'
+import { ProposalView, useProposalWalk } from 'kehikot-module-protocol/client/proposals'
+import type { ShownProposal } from 'kehikot-module-protocol/proposals'
+
+import { answer, answerProposal, files, openEpic, proposals as readProposals, questionsChanged, retake, type Asked, type Standing } from '@/store/ask.ts'
 import { NO_PRESS, useKehikot, type GotoHandler, type PressHandler } from '@/wire/use-kehikot.ts'
 import { FOOT, HEAD, quizFooter, quizHeader } from '@/view/footer.ts'
 import { QuizEditor } from '@/view/editor.tsx'
@@ -455,7 +458,31 @@ export function App() {
     setOrder(opened.order)
     setFile(opened.file)
     setTrouble(opened.trouble)
+    /* The proposed changes to these questions (protocol 2.71.0), read with them: the door says the
+       questions changed when one is filed or answered, so this is never asked on a clock. */
+    if (!where_ || !which) return
+    const proposed = await readProposals(where_, which)
+    if (standing.current.project !== where_ || standing.current.epic !== which) return
+    setProposed('error' in proposed ? [] : proposed.proposals)
   }, [])
+
+  const [proposed, setProposed] = useState<ShownProposal[]>([])
+  const [proposalSaid, setProposalSaid] = useState<Record<string, string>>({})
+  const [deciding, setDeciding] = useState<string | null>(null)
+  const walk = useProposalWalk(proposed)
+  const onProposal = async (id: string, decision: { decision: 'accept' | 'decline'; reason?: string; final?: string; hunks?: number[] }) => {
+    if (!projectPath || !epic) return
+    setDeciding(id)
+    try {
+      const settled = await answerProposal(projectPath, epic, id, decision)
+      setProposalSaid((now) => ({ ...now, [id]: settled.status === 'accepted' ? 'Accepted and written to the questions.' : 'Declined.' }))
+    } catch (e) {
+      setProposalSaid((now) => ({ ...now, [id]: e instanceof Error ? e.message : String(e) }))
+    } finally {
+      setDeciding(null)
+      void refresh()
+    }
+  }
 
   /* Every new (project, epic) pair starts empty and follows the project's questions: the stream
      says so once as it opens — which is the first read — and again at each change, and again each
@@ -730,6 +757,22 @@ export function App() {
         }}
       />
     ) : (
+      <>
+      {walk.open.length ? (
+        <section aria-label="proposed changes" className="max-h-[45%] overflow-y-auto">
+          {walk.open.map((one) => (
+            <ProposalView
+              key={one.id}
+              proposal={one}
+              current={one.id === walk.current}
+              busy={deciding === one.id}
+              said={proposalSaid[one.id] ?? null}
+              onAccept={(take) => void onProposal(one.id, { decision: 'accept', ...take })}
+              onDecline={(reason) => void onProposal(one.id, { decision: 'decline', reason })}
+            />
+          ))}
+        </section>
+      ) : null}
       <QuizView
         epic={epic}
         file={file}
@@ -751,6 +794,7 @@ export function App() {
         onPart={setPart}
         footed={footed}
       />
+      </>
     )
 
   /*
@@ -764,15 +808,19 @@ export function App() {
     ? null
     : JSON.stringify(
         quizShown
-          ? quizFooter({
-              asked: visible.length,
-              answered: answeredCount,
-              right: visible.filter((question) => question.attempts.at(-1)?.right).length,
-              at: rungs.rung === 'list' ? null : at,
-              epic: epic ?? '',
-              file,
-              trouble: trouble ?? dealt,
-            })
+          ? [
+              ...quizFooter({
+                asked: visible.length,
+                answered: answeredCount,
+                right: visible.filter((question) => question.attempts.at(-1)?.right).length,
+                at: rungs.rung === 'list' ? null : at,
+                epic: epic ?? '',
+                file,
+                trouble: trouble ?? dealt,
+              }),
+              /* The proposed changes: the count, with Previous and Next proposal beside it. */
+              ...walk.footer,
+            ]
           : [],
       )
   const headerSaid = !footed || editing
@@ -796,6 +844,8 @@ export function App() {
   quizPress.current = ({ item, value, place }) => {
     if (!quizShown) return 'Nothing is open to press that on.'
     if (place === 'footer') {
+      const walked = walk.press(item)
+      if (walked !== null) return walked
       if (item !== FOOT.BACK && item !== FOOT.NEXT) return `Nothing in this footer is called ${item}.`
       if (rungs.rung === 'list') return 'Every question is on screen.'
       const to = item === FOOT.BACK ? at - 1 : at + 1

@@ -141,10 +141,49 @@ describe('the MCP door', () => {
     expect(reply?.body).toBeNull()
   })
 
-  test('the five tools, and no more', () => {
+  test('the five tools, the four for proposed changes, and no more', () => {
     const reply = answer('POST', '/mcp', nothing, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)
     const tools = (reply?.body as { result?: { tools?: { name: string }[] } }).result?.tools ?? []
-    expect(tools.map((t) => t.name).sort()).toEqual(['add_quiz', 'drop_quiz', 'quiz_state', 'quizzes', 'reword_quiz'])
+    expect(tools.map((t) => t.name).sort()).toEqual(['add_quiz', 'drop_quiz', 'list_proposals', 'propose_change', 'quiz_state', 'quizzes', 'read_proposal', 'reword_quiz', 'withdraw_proposal'])
+  })
+
+  test('an agent proposes a change to the questions; the person accepts it, and it is written through the undo trail', () => {
+    added()
+    const file = join(A, KEHIKOT_DIR, 'learning', 'modes-are-modules.md')
+    const before = readFileSync(file, 'utf8')
+    const filed = tool('propose_change', { project: A, epic: 'modes-are-modules', find: 'What does a manifest settle?', replace: 'What does a manifest decide?', why: 'Decide reads better.', agent: 'claude' })
+    expect(filed.isError).toBe(false)
+    const id = /Filed as (p-[0-9a-f]+)/.exec(filed.text)?.[1] ?? ''
+    expect(id).toBeTruthy()
+    expect(existsSync(join(A, KEHIKOT_DIR, 'learning', 'proposals', 'all.json'))).toBe(true)
+    expect(readFileSync(file, 'utf8')).toBe(before)
+
+    const listed = answer('GET', '/api/proposals', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, TICKET)
+    expect((listed?.body as { proposals: { id: string; status: string }[] }).proposals).toEqual([expect.objectContaining({ id, status: 'pending' })])
+    expect(answer('GET', '/api/proposals', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)?.status).toBe(403)
+
+    const accepted = answer('POST', '/api/proposal', nothing, { project: A, epic: 'modes-are-modules', id, decision: 'accept' }, TICKET)
+    expect(accepted?.status).toBe(200)
+    expect(readFileSync(file, 'utf8')).toContain('What does a manifest decide?')
+    const trail = answer('GET', '/api/history', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, TICKET)
+    expect((trail?.body as { entries: { summary: string; agent: string }[] }).entries[0]).toMatchObject({ agent: 'person', summary: 'accepted a proposal by claude: Decide reads better.' })
+    expect(tool('list_proposals', { project: A, epic: 'modes-are-modules' }).text).toContain('state: accepted')
+  })
+
+  test('declined with a reason the agent reads; stale once the file moved under it', () => {
+    added()
+    const filed = tool('propose_change', { project: A, epic: 'modes-are-modules', find: 'What does a manifest settle?', replace: 'Settled by whom?', why: 'Shorter.' })
+    const id = /Filed as (p-[0-9a-f]+)/.exec(filed.text)?.[1] ?? ''
+    const declined = answer('POST', '/api/proposal', nothing, { project: A, epic: 'modes-are-modules', id, decision: 'decline', reason: 'It loses the point.' }, TICKET)
+    expect(declined?.status).toBe(200)
+    expect(tool('read_proposal', { project: A, epic: 'modes-are-modules', id }).text).toContain('Declined reason: It loses the point.')
+
+    const again = tool('propose_change', { project: A, epic: 'modes-are-modules', find: 'What does a manifest settle?', replace: 'Settled how?', why: 'Shorter.' })
+    const second = /Filed as (p-[0-9a-f]+)/.exec(again.text)?.[1] ?? ''
+    tool('reword_quiz', { project: A, epic: 'modes-are-modules', id: shown()[0]!.id, question: 'What does a manifest fix?' })
+    const listed = answer('GET', '/api/proposals', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, TICKET)
+    expect((listed?.body as { proposals: { id: string; status: string }[] }).proposals).toEqual([expect.objectContaining({ id: second, status: 'stale' })])
+    expect(answer('POST', '/api/proposal', nothing, { project: A, epic: 'modes-are-modules', id: second, decision: 'accept' }, TICKET)?.status).toBe(409)
   })
 
   test('there is deliberately no tool that answers a question', () => {
@@ -631,6 +670,10 @@ describe('quiz_state', () => {
       add_quiz: 'writes',
       reword_quiz: 'destroys',
       drop_quiz: 'destroys',
+      propose_change: 'writes',
+      list_proposals: 'reads',
+      read_proposal: 'reads',
+      withdraw_proposal: 'writes',
     })
     expect(MANIFEST.mcp?.subjects).toEqual([expect.objectContaining({ kind: 'question', done: 'quiz_state' })])
   })
