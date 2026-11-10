@@ -161,6 +161,8 @@ describe('the MCP door', () => {
     const listed = answer('GET', '/api/proposals', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, TICKET)
     expect((listed?.body as { proposals: { id: string; status: string }[] }).proposals).toEqual([expect.objectContaining({ id, status: 'pending' })])
     expect(answer('GET', '/api/proposals', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, null)?.status).toBe(403)
+    const counted = answer('GET', '/api/proposals/count', new URLSearchParams({ project: A, epic: 'modes-are-modules' }), null, TICKET)
+    expect(counted?.body).toEqual({ ok: true, open: 1 })
 
     const accepted = answer('POST', '/api/proposal', nothing, { project: A, epic: 'modes-are-modules', id, decision: 'accept' }, TICKET)
     expect(accepted?.status).toBe(200)

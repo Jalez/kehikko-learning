@@ -816,17 +816,20 @@ export function answerAt(
    * `/api/history` lists the writes that can be undone and `/api/undo` undoes one.
    */
   /*
-   * Proposed changes to an epic's questions (protocol 2.71.0): what is open, measured against the
-   * file as it is now, and the person's answer. Behind the ticket like the editor's doors: an open
-   * proposal quotes the file, key and all.
+   * Proposed changes to an epic's questions (protocol 2.71.0): how many are open, what is open
+   * (measured against the file as it is now), and the person's answer. Behind the ticket like the
+   * editor's doors: an open proposal quotes the file, key and all, so the page reads the list only
+   * when the person presses Review, as it reads the file only on Edit; the count it reads freely.
    */
-  if (path === '/api/proposals' || path === '/api/proposal') {
+  if (path === '/api/proposals' || path === '/api/proposals/count' || path === '/api/proposal') {
     const refused = refuseTicket(ticket, TICKET, 'that did not come from this app’s own page')
     if (refused) return refused
     const from = method === 'GET' ? { project: query.get('project'), epic: query.get('epic') } : (body ?? {})
     const project = usablePath(from.project)
     const epic = str(from.epic, MAX_EPIC)
     if (!project || !epic) return bad('that did not say which project and which epic.')
+    /* The count alone carries no word of the file: what the page reads with the questions. */
+    if (path === '/api/proposals/count' && method === 'GET') return ok({ ok: true, open: openProposals(SITE, project, epic).length })
     if (path === '/api/proposals' && method === 'GET') {
       return ok({ ok: true, proposals: openProposals(SITE, project, epic).map(shown), settled: settledProposals(SITE, project, epic).slice(0, 20).map(shown) })
     }

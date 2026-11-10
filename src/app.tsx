@@ -5,10 +5,10 @@ import { Cover, coverFor, useFocus, useServerStanding, type CoverState } from 'k
 
 import { ID } from '../manifest.ts'
 
-import { ProposalView, useProposalWalk } from 'kehikot-module-protocol/client/proposals'
+import { ProposalView, proposalsFooter, proposalsFooterPress, useProposalWalk } from 'kehikot-module-protocol/client/proposals'
 import type { ShownProposal } from 'kehikot-module-protocol/proposals'
 
-import { answer, answerProposal, files, openEpic, proposals as readProposals, questionsChanged, retake, type Asked, type Standing } from '@/store/ask.ts'
+import { answer, answerProposal, files, openEpic, proposals as readProposals, proposalsCount, questionsChanged, retake, type Asked, type Standing } from '@/store/ask.ts'
 import { NO_PRESS, useKehikot, type GotoHandler, type PressHandler } from '@/wire/use-kehikot.ts'
 import { FOOT, HEAD, quizFooter, quizHeader } from '@/view/footer.ts'
 import { QuizEditor } from '@/view/editor.tsx'
@@ -458,18 +458,35 @@ export function App() {
     setOrder(opened.order)
     setFile(opened.file)
     setTrouble(opened.trouble)
-    /* The proposed changes to these questions (protocol 2.71.0), read with them: the door says the
-       questions changed when one is filed or answered, so this is never asked on a clock. */
+    /* How many changes are proposed to these questions (protocol 2.71.0), read with them: the door
+       says the questions changed when one is filed or answered, so this is never asked on a clock.
+       The COUNT only: a proposal quotes the file, key and all, so the list is read on Review, as
+       the file is on Edit. A list already on screen is read again, so it follows the door. */
     if (!where_ || !which) return
-    const proposed = await readProposals(where_, which)
+    const count = await proposalsCount(where_, which)
     if (standing.current.project !== where_ || standing.current.epic !== which) return
-    setProposed('error' in proposed ? [] : proposed.proposals)
+    setProposedOpen(typeof count === 'number' ? count : 0)
+    if (reviewing.current) void review(where_, which)
   }, [])
 
-  const [proposed, setProposed] = useState<ShownProposal[]>([])
+  const [proposedOpen, setProposedOpen] = useState(0)
+  /* Null until the person presses Review: the list quotes the file. */
+  const [proposed, setProposed] = useState<ShownProposal[] | null>(null)
+  const reviewing = useRef(false)
+  const review = useCallback(async (where_: string, which: string) => {
+    reviewing.current = true
+    const read = await readProposals(where_, which)
+    if (standing.current.project !== where_ || standing.current.epic !== which) return
+    setProposed('error' in read ? [] : read.proposals)
+  }, [])
+  /* Another epic: the list is the editor's kind of thing, and is not carried across. */
+  useEffect(() => {
+    reviewing.current = false
+    setProposed(null)
+  }, [projectPath, epic])
   const [proposalSaid, setProposalSaid] = useState<Record<string, string>>({})
   const [deciding, setDeciding] = useState<string | null>(null)
-  const walk = useProposalWalk(proposed)
+  const walk = useProposalWalk(proposed ?? [])
   const onProposal = async (id: string, decision: { decision: 'accept' | 'decline'; reason?: string; final?: string; hunks?: number[] }) => {
     if (!projectPath || !epic) return
     setDeciding(id)
@@ -758,6 +775,14 @@ export function App() {
       />
     ) : (
       <>
+      {proposedOpen > 0 && proposed === null && projectPath && epic ? (
+        <p role="status" className="flex items-center gap-2 rounded border px-2 py-1 text-[0.75rem]">
+          <span className="min-w-0 flex-1">{proposedOpen === 1 ? '1 change is proposed to these questions.' : `${proposedOpen} changes are proposed to these questions.`}</span>
+          <button type="button" className="rounded border px-2 py-0.5" onClick={() => void review(projectPath, epic)}>
+            Review
+          </button>
+        </p>
+      ) : null}
       {walk.open.length ? (
         <section aria-label="proposed changes" className="max-h-[45%] overflow-y-auto">
           {walk.open.map((one) => (
@@ -819,7 +844,7 @@ export function App() {
                 trouble: trouble ?? dealt,
               }),
               /* The proposed changes: the count, with Previous and Next proposal beside it. */
-              ...walk.footer,
+              ...(proposed === null ? proposalsFooter({ open: proposedOpen }) : walk.footer),
             ]
           : [],
       )
@@ -844,6 +869,11 @@ export function App() {
   quizPress.current = ({ item, value, place }) => {
     if (!quizShown) return 'Nothing is open to press that on.'
     if (place === 'footer') {
+      if (proposed === null && proposalsFooterPress(item)) {
+        if (!proposedOpen || !projectPath || !epic) return 'Nothing is proposed.'
+        void review(projectPath, epic)
+        return 'The proposals are being read; press again to walk them.'
+      }
       const walked = walk.press(item)
       if (walked !== null) return walked
       if (item !== FOOT.BACK && item !== FOOT.NEXT) return `Nothing in this footer is called ${item}.`

@@ -179,6 +179,13 @@ export interface ProposalAnswer {
   hunks?: number[]
 }
 
+/** How many proposed changes are open on an epic's questions: a number, and no word of the file. */
+export async function proposalsCount(project: string, epic: string): Promise<number | Failed> {
+  const asked = await ask<{ open: number }>('/api/proposals/count', { query: { project, epic }, ticket: true })
+  if (!asked.ok) return { error: asked.error, kind: asked.kind }
+  return typeof asked.body?.open === 'number' ? asked.body.open : 0
+}
+
 /** The proposed changes to an epic's questions: open ones, measured against the file now, and the recent settled ones. Carries the ticket: a proposal quotes the file. */
 export async function proposals(project: string, epic: string): Promise<{ proposals: ShownProposal[]; settled: ShownProposal[] } | Failed> {
   const asked = await ask<{ proposals: ShownProposal[]; settled: ShownProposal[] }>('/api/proposals', { query: { project, epic }, ticket: true })

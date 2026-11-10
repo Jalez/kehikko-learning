@@ -20,7 +20,7 @@
     "@uiw/react-codemirror": "^4.25.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "kehikot-module-protocol": "git+https://github.com/Jalez/kehikko-protocol.git#53a5cce5df9822a19c85b6057fea07c6c6a2a33b",
+    "kehikot-module-protocol": "git+https://github.com/Jalez/kehikko-protocol.git#528e877f45b9a38be02b595ec1580cb2b324285f",
     "lucide-react": "^1.33.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
