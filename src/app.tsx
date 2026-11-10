@@ -87,7 +87,7 @@ export function App() {
     )
   }, [])
 
-  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell, header, footer, drawsFooter, press, pressed, keeps } = useKehikot(
+  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell, header, footer, drawsFooter, press, pressed, keeps, ready } = useKehikot(
     ID,
     onGoto,
   )
@@ -429,6 +429,9 @@ export function App() {
      overwrite the reply to a press with a read that started before it. */
   const writing = useRef(false)
 
+  /* The first read is on screen: the questions, or the words for why there are none. */
+  const [read, setRead] = useState(false)
+
   const refresh = useCallback(async () => {
     const { project: where_, epic: which } = standing.current
     /* No project, nothing to fetch. There is no longer anything this app could
@@ -439,6 +442,7 @@ export function App() {
       setQuestions([])
       setOrder(null)
       setTrouble(null)
+      setRead(true)
       return
     }
     const opened = await openEpic(where_, which)
@@ -458,6 +462,7 @@ export function App() {
     setOrder(opened.order)
     setFile(opened.file)
     setTrouble(opened.trouble)
+    setRead(true)
     /* How many changes are proposed to these questions (protocol 2.71.0), read with them: the door
        says the questions changed when one is filed or answered, so this is never asked on a clock.
        The COUNT only: a proposal quotes the file, key and all, so the list is read on Review, as
@@ -750,6 +755,14 @@ export function App() {
    */
   const holding = editing !== false && unsaved
   const cover: CoverState | null = holding ? null : coverFor({ where, projectPath, server })
+
+  /* The host's cover stays up until this page is drawn (protocol 2.70.0): the first read adopted, a
+     cover of this page's own that is not "waiting", or the screen for no epic. Never held back for
+     visibility: a covered page is a hidden page. */
+  const drawn = read || (cover !== null && cover !== 'waiting') || (projectPath !== null && !epic)
+  useEffect(() => {
+    if (drawn) ready()
+  }, [drawn, ready])
 
   const screen =
     !projectPath ? null : !epic ? (
