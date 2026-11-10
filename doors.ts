@@ -28,6 +28,9 @@ import {
   type Keyed,
   type QuestionState,
 } from './quiz/questions.ts'
+import { answerProposalTool, decideProposal, isProposalTool, openProposals, proposalTools, settledProposals, shown } from 'kehikot-module-protocol/proposals'
+
+import { PROPOSALS, SITE } from './proposals.ts'
 import { poke, watchQuizzes } from './quiz/live.ts'
 import { questionsStream } from './quiz/news.ts'
 import { MAX_PROJECT, usablePath } from './quiz/projects.ts'
@@ -699,7 +702,7 @@ function mcp(rpc: Rpc): Reply {
   if (typeof rpc.method === 'string' && rpc.method.startsWith('notifications/')) {
     return { status: 202, body: null }
   }
-  if (rpc.method === 'tools/list') return reply({ tools: tools() })
+  if (rpc.method === 'tools/list') return reply({ tools: [...tools(), ...proposalTools(PROPOSALS)] })
 
   if (rpc.method === 'tools/call') {
     const name = String(rpc.params?.name ?? '')
@@ -707,7 +710,7 @@ function mcp(rpc: Rpc): Reply {
 
     /* Whether this is a tool at all is settled BEFORE the project is: a caller
        who misremembered the tool's name should be told that. */
-    if (name !== 'quizzes' && name !== 'add_quiz' && name !== 'reword_quiz' && name !== 'drop_quiz' && name !== 'quiz_state') {
+    if (name !== 'quizzes' && name !== 'add_quiz' && name !== 'reword_quiz' && name !== 'drop_quiz' && name !== 'quiz_state' && !isProposalTool(name)) {
       const shown = name.length > 60 ? `${name.slice(0, 60)}…` : name
       return text(`no tool "${shown}" here`, true)
     }
@@ -726,6 +729,11 @@ function mcp(rpc: Rpc): Reply {
       if (name === 'quiz_state') {
         const { said, structuredContent } = stateAnswer(project, args)
         return reply({ content: [{ type: 'text', text: said }], structuredContent })
+      }
+      /* Proposed changes (protocol 2.71.0): propose_change, list_proposals, read_proposal, withdraw_proposal. */
+      if (isProposalTool(name)) {
+        const said = answerProposalTool(SITE, PROPOSALS, name, { ...args, project })
+        return text(typeof said === 'string' ? said : '')
       }
       const said = call(name, args, project)
       /* An editor open on this project hears of an agent's write at once. */
@@ -807,6 +815,42 @@ export function answerAt(
    * typed (409 with what is there now when the file moved under them),
    * `/api/history` lists the writes that can be undone and `/api/undo` undoes one.
    */
+  /*
+   * Proposed changes to an epic's questions (protocol 2.71.0): how many are open, what is open
+   * (measured against the file as it is now), and the person's answer. Behind the ticket like the
+   * editor's doors: an open proposal quotes the file, key and all, so the page reads the list only
+   * when the person presses Review, as it reads the file only on Edit; the count it reads freely.
+   */
+  if (path === '/api/proposals' || path === '/api/proposals/count' || path === '/api/proposal') {
+    const refused = refuseTicket(ticket, TICKET, 'that did not come from this app’s own page')
+    if (refused) return refused
+    const from = method === 'GET' ? { project: query.get('project'), epic: query.get('epic') } : (body ?? {})
+    const project = usablePath(from.project)
+    const epic = str(from.epic, MAX_EPIC)
+    if (!project || !epic) return bad('that did not say which project and which epic.')
+    /* The count alone carries no word of the file: what the page reads with the questions. */
+    if (path === '/api/proposals/count' && method === 'GET') return ok({ ok: true, open: openProposals(SITE, project, epic).length })
+    if (path === '/api/proposals' && method === 'GET') {
+      return ok({ ok: true, proposals: openProposals(SITE, project, epic).map(shown), settled: settledProposals(SITE, project, epic).slice(0, 20).map(shown) })
+    }
+    if (path === '/api/proposal' && method === 'POST') {
+      const decision = str(body?.decision, 10)
+      if (decision !== 'accept' && decision !== 'decline') return bad('a proposal is accepted or declined, and this said neither.')
+      const hunks = Array.isArray(body?.hunks) ? (body!.hunks as unknown[]).filter((one): one is number => typeof one === 'number') : undefined
+      const answered = decideProposal(
+        SITE,
+        project,
+        str(body?.id, 80),
+        decision === 'accept'
+          ? { kind: 'accept', ...(typeof body?.final === 'string' ? { final: body.final } : {}), ...(hunks ? { hunks } : {}) }
+          : { kind: 'decline', reason: str(body?.reason, 400) },
+      )
+      if (!answered.ok) return { status: answered.stale ? 409 : 400, body: { ok: false, error: answered.why, stale: answered.stale } }
+      return ok({ ok: true, proposal: answered.proposal })
+    }
+    return bad('that was not a request this door takes.')
+  }
+
   if (path === '/api/quiz' || path === '/api/history' || path === '/api/undo') {
     /* `refuseTicket` marks the refusal, so a page that is merely older than this process — the
        server restarted under it — is told so by its `ask()` instead of being called a stranger. */

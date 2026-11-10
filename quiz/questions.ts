@@ -788,6 +788,21 @@ export function writeQuiz(
   return readQuiz(projectPath, epic)
 }
 
+/**
+ * Write an epic's file as an accepted proposal leaves it (protocol 2.71.0, `proposals.ts`): the
+ * text the person accepted, recorded in the undo trail under the person's name with the proposal's
+ * summary. Answers the trouble, or null when written.
+ */
+export function writeProposed(projectPath: string | null | undefined, epic: string, text: string, summary: string): string | null {
+  const out = opened(projectPath, epic)
+  if (!('held' in out)) return out.error
+  if (text.length > MAX_QUIZ_CHARS) return `That is longer than ${MAX_QUIZ_CHARS} characters, which is more than this module keeps.`
+  const wrote = save(projectPath, `${epic}.md`, text.replace(/\r\n/g, '\n'))
+  if (wrote) return wrote
+  record(projectPath, epic, out.held.text, { agent: 'person', summary })
+  return null
+}
+
 /** An epic's undo trail, newest first. */
 export function quizHistory(projectPath: string | null | undefined, epic: string): { entries: HistoryEntry[] } | Refused {
   const out = opened(projectPath, epic)
