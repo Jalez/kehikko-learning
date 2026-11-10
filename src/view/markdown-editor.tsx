@@ -39,6 +39,8 @@ export function MarkdownEditor({ value, onChange, reveal }: EditorProps) {
   const extensions = useMemo(() => [markdown({ base: markdownLanguage }), EditorView.lineWrapping], [])
   return (
     <CodeMirror
+      /* The editor searches itself (its own ⌘F panel); the host's find bar (protocol 2.69.0) skips it. */
+      data-kehikot-find-skip=""
       className="quiz-editor h-full"
       height="100%"
       value={value}
