@@ -1,0 +1,210 @@
+[
+  {
+    "name": "the questions, one part in front",
+    "state": true,
+    "header": [
+      {
+        "kind": "switch",
+        "id": "part",
+        "label": "Part",
+        "agents": true,
+        "value": "options",
+        "options": [
+          {
+            "id": "question",
+            "label": "question"
+          },
+          {
+            "id": "options",
+            "label": "options"
+          },
+          {
+            "id": "why",
+            "label": "why"
+          }
+        ]
+      },
+      {
+        "kind": "run",
+        "id": "retake",
+        "label": "Ask again",
+        "icon": "refresh"
+      },
+      {
+        "kind": "run",
+        "id": "edit",
+        "label": "Edit",
+        "icon": "pencil"
+      }
+    ],
+    "footer": [
+      {
+        "kind": "run",
+        "id": "back",
+        "label": "The question before",
+        "icon": "chevron-left",
+        "disabled": null
+      },
+      {
+        "kind": "text",
+        "id": "position",
+        "text": "3 / 8"
+      },
+      {
+        "kind": "run",
+        "id": "next",
+        "label": "The question after",
+        "icon": "chevron-right",
+        "disabled": null
+      },
+      {
+        "kind": "text",
+        "id": "score",
+        "text": "8 asked · 3 answered · 2 right",
+        "align": "end",
+        "tooltip": "every-epic-aims-at-a-paper — 8 asked · 3 answered · 2 right — edit these in .kehikot/learning/every-epic-aims-at-a-paper/questions.md"
+      }
+    ]
+  },
+  {
+    "name": "the list, with proposed changes waiting",
+    "state": true,
+    "header": [
+      {
+        "kind": "run",
+        "id": "edit",
+        "label": "Edit",
+        "icon": "pencil"
+      }
+    ],
+    "footer": [
+      {
+        "kind": "text",
+        "id": "score",
+        "text": "8 asked · 0 answered · 0 right",
+        "align": "end",
+        "tooltip": "every-epic-aims-at-a-paper — 8 asked · 0 answered · 0 right — edit these in .kehikot/learning/every-epic-aims-at-a-paper/questions.md"
+      },
+      {
+        "kind": "run",
+        "id": "proposal-prev",
+        "label": "Previous proposal",
+        "icon": "chevron-left",
+        "align": "center",
+        "actsOn": "proposals"
+      },
+      {
+        "kind": "text",
+        "id": "proposals",
+        "text": "2 proposed changes",
+        "align": "center",
+        "tooltip": "Press Next proposal to go to the first one."
+      },
+      {
+        "kind": "run",
+        "id": "proposal-next",
+        "label": "Next proposal",
+        "icon": "chevron-right",
+        "align": "center",
+        "actsOn": "proposals"
+      }
+    ]
+  },
+  {
+    "name": "the editor, narrow",
+    "state": true,
+    "header": [
+      {
+        "kind": "switch",
+        "id": "pane",
+        "label": "Pane",
+        "icon": "columns-2",
+        "agents": true,
+        "value": "source",
+        "options": [
+          {
+            "id": "source",
+            "label": "Source"
+          },
+          {
+            "id": "preview",
+            "label": "Preview"
+          }
+        ]
+      },
+      {
+        "kind": "run",
+        "id": "done",
+        "label": "Done",
+        "icon": "check",
+        "state": "idle"
+      },
+      {
+        "kind": "run",
+        "id": "history",
+        "label": "History",
+        "icon": "history",
+        "agents": true
+      }
+    ],
+    "footer": [
+      {
+        "kind": "text",
+        "id": "save",
+        "text": "saved",
+        "tooltip": "saved"
+      },
+      {
+        "kind": "text",
+        "id": "file",
+        "text": ".kehikot/learning/every-epic-aims-at-a-paper/questions.md",
+        "align": "end",
+        "optional": true,
+        "tooltip": "Editing .kehikot/learning/every-epic-aims-at-a-paper/questions.md."
+      }
+    ]
+  },
+  {
+    "name": "the editor, a save failed",
+    "state": true,
+    "header": [
+      {
+        "kind": "run",
+        "id": "done",
+        "label": "Done",
+        "icon": "check",
+        "state": "failed"
+      },
+      {
+        "kind": "run",
+        "id": "history",
+        "label": "Hide history",
+        "icon": "history",
+        "agents": true
+      }
+    ],
+    "footer": [
+      {
+        "kind": "text",
+        "id": "save",
+        "text": "not saved: the disk is full",
+        "level": "critical",
+        "tooltip": "not saved: the disk is full"
+      },
+      {
+        "kind": "text",
+        "id": "watch",
+        "text": "not hearing changes on disk — reconnecting",
+        "level": "warn"
+      },
+      {
+        "kind": "text",
+        "id": "file",
+        "text": ".kehikot/learning/every-epic-aims-at-a-paper/questions.md",
+        "align": "end",
+        "optional": true,
+        "tooltip": "Editing .kehikot/learning/every-epic-aims-at-a-paper/questions.md."
+      }
+    ]
+  }
+]

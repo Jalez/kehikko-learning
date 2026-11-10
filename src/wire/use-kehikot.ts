@@ -122,6 +122,8 @@ export interface Kehikot {
   pressed: boolean
   /** This container's kept view, which the host keeps per container and hands back in the greeting. Read with `useKept`. */
   keeps: KeepsFor
+  /** Say what this page shows is drawn, so the host lifts its cover (protocol 2.70.0). Once is enough. */
+  ready: () => void
 }
 
 export type GotoHandler = NonNullable<HostEvents['onGoto']>
@@ -173,7 +175,12 @@ export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
         return press.current(pressing)
       },
     },
-    { reloadWhenStale: false },
+    {
+      reloadWhenStale: false,
+      /* The kept view (protocol 2.70.0) keeps the scroll. The editor's pane is kept by the editor itself
+         (`useKept`), and the part switch follows the question in front: neither is pressed back. */
+      keepView: { except: ['pane', 'part'] },
+    },
   )
 
   const containers = useMemo(() => flattenContainers(host.containers), [host.containers])
@@ -189,11 +196,11 @@ export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
     [request],
   )
 
-  const { where, epic, projectPath, project, passage, chosen, parts, resize, filters, point, header, footer, drawsFooter, kept, read, remember } = host
+  const { where, epic, projectPath, project, passage, chosen, parts, resize, filters, point, header, footer, drawsFooter, kept, read, remember, ready } = host
   const keeps = useMemo<KeepsFor>(() => ({ kept, read, remember }), [kept, read, remember])
   return useMemo(
-    () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, press, pressed, keeps }),
-    [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, pressed, keeps],
+    () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, press, pressed, keeps, ready }),
+    [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, pressed, keeps, ready],
   )
 }
 

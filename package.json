@@ -1,6 +1,6 @@
 {
   "name": "kehikko-learning",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "private": true,
   "type": "module",
   "description": "Questions about passages of a paper, kept as one Markdown file per epic, and what you answered. An agent writes them; a person answers them. An app: its own store, its own page, its own port. A host may frame it, and then it learns which project it is standing in and which epic is open.",
@@ -10,7 +10,9 @@
     "start": "bun run serve.ts",
     "register": "bun run register.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "rows": "bun dev/rows.ts",
+    "check:rows": "kehikot-check-rows"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",

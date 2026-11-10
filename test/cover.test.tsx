@@ -86,6 +86,29 @@ const greet = async (context: Record<string, unknown>) => {
 const cover = () => document.querySelector('[data-cover]')
 const here = () => ({ project: 'thesis', projectPath: dir, epic: EPIC })
 
+describe('the host\'s cover (protocol 2.70.0)', () => {
+  test('is held at the greeting and lifted once, when the questions are drawn, whether or not the page is visible', async () => {
+    const said: string[] = []
+    const hear = (event: MessageEvent) => {
+      const type = (event.data as { type?: unknown } | null)?.type
+      if (typeof type === 'string') said.push(type)
+    }
+    window.addEventListener('message', hear)
+    try {
+      render(<App />)
+      await greet(here())
+      /* The host hides the page it covers: drawn is said all the same. */
+      await act(async () => void window.postMessage({ type: 'kehikot.visible', visible: false }, '*'))
+      await waitFor(() => expect(screen.getAllByText('What does a manifest settle?').length).toBeGreaterThan(0))
+      await waitFor(() => expect(said.filter((type) => type === 'kehikot.drawn')).toHaveLength(1))
+      await settle(60)
+      expect(said.filter((type) => type === 'kehikot.drawn')).toHaveLength(1)
+    } finally {
+      window.removeEventListener('message', hear)
+    }
+  })
+})
+
 describe('the not-ready moments, each as the one shared cover', () => {
   test('before anything has greeted the page it is waiting — never "no project" — and then unhosted', async () => {
     render(<App />)
