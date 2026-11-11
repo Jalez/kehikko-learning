@@ -30,7 +30,7 @@ folder it is in.
 ## The file
 
 `<project>/.kehikot/learning/<epic>.md`. It works the way a
-[Slides](../kehikko-slides) deck does, so a person who can edit one can edit
+slide deck in the module that shows slides does, so a person who can edit one can edit
 the other, and it can be typed by hand:
 
 ```md
@@ -56,7 +56,7 @@ Sources:
   two, is not asked, and both the page and `quizzes` say so.
 - Everything after a line that is exactly `Why:` is the explanation.
 - `[^1]` on the question is the passage it rests on, and `Sources:` lists them in
-  Slides' exact syntax: `[^1]: <project-relative path> | "<exact words>"`. One
+  slide decks' exact syntax: `[^1]: <project-relative path> | "<exact words>"`. One
   list at the bottom is how this module writes it; a list after each question
   reads the same.
 - `<!-- id: … -->` is the name a reader's answers are filed under. A question
@@ -65,7 +65,7 @@ Sources:
   keeps its answers.
 
 **The passage is found by its words, not by byte offsets**, on every read — the
-rule and the code are the ones Slides uses, shared through
+rule and the code are the ones slide decks use, shared through
 `kehikot-module-protocol` (its citations, 0.33.0).
 A run of whitespace in the quote matches any run in the file and nothing else is
 forgiven, so each source is one of `holds`, `ambiguous` (the words occur more
@@ -84,9 +84,9 @@ Nothing is asked on a clock, and nothing at all while the page is hidden.
 ### Editing it in the page
 
 **Edit** opens the file in the page: the Markdown beside what it will ask, the
-way Slides shows a deck beside its slides, and as `Source` / `Preview` tabs
+way the module that shows slides puts a deck beside its slides, and as `Source` / `Preview` tabs
 where the container is narrower than 672px. **Done** goes back to answering.
-The source is typed into the editor Slides opens a deck in — CodeMirror 6 with
+The source is typed into the editor the module that shows slides opens a deck in — CodeMirror 6 with
 the same Markdown colouring, the same keys and the same light and dark.
 
 - What is typed is saved as typed, a beat after the last keystroke. A file with
@@ -98,7 +98,7 @@ the same Markdown colouring, the same keys and the same light and dark.
   is on disk* or *Keep mine*.
 - The disk is listened to while the editor is open (`GET /api/watch`,
   server-sent events of `{ epic, version }` behind the page's ticket, the way
-  Slides watches a deck). A change made elsewhere with nothing typed since the
+  the module that shows slides watches a deck). A change made elsewhere with nothing typed since the
   last save is simply taken; with something typed and unsaved it raises the
   same question at once, rather than at the next save.
 - Nothing typed is lost by leaving. **Done** waits for the save — one already
@@ -610,7 +610,7 @@ tool's argument validation without a browser.
   `stage:report` were each considered and each rejected, in the essay in
   `manifest.ts`. A capability asked for and never used is the fastest
   way to teach somebody to press yes without reading.
-- `extensions: { emits: [], consumes: [] }`. Checklist announces MCP calls onto a
+- `extensions: { emits: [], consumes: [] }`. A sibling module announces MCP calls onto a
   notifications panel and is right to. Here, what an agent writes lands in the
   container in front of the reader as soon as it is written, as a question they can
   answer — the container IS the notification, and a line on a panel two inches away
@@ -689,9 +689,9 @@ each question and when, and the byte range. A quote's line breaks become
 spaces, which is how a source line spells it. A `questions.json` that will not
 parse is not moved and not treated as empty.
 
-## What is shared with Slides, and what is only copied
+## What is shared with the module that shows slides, and what is only copied
 
-The format is Slides' on purpose — a heading per unit, `[^n]` markers, a
+The format is slide decks' on purpose — a heading per unit, `[^n]` markers, a
 `Sources:` list in the same syntax, words rather than offsets, the same four
 statuses, the same press that points the paper.
 
@@ -703,9 +703,9 @@ Both modules import them; neither keeps a copy.
 
 **Still copied**, and candidates for the same move: `store.ts`'s `citedText`
 and the fence around the project folder, its atomic write (`put`),
-`quiz/history.ts` (Slides' undo trail in the same shape), `quiz/live.ts`
-(Slides' `live.ts` for quiz files) and `src/view/use-quiz.ts` (its `useDeck`).
+`quiz/history.ts` (the slide module's undo trail in the same shape), `quiz/live.ts`
+(the slide module's `live.ts` for quiz files) and `src/view/use-quiz.ts` (its `useDeck`).
 All but the last read or write the disk, which the protocol's root does not do,
-so they need a decision about where in it they live. The editor is Slides' too, and also a copy (`src/view/markdown-editor.tsx`
+so they need a decision about where in it they live. The editor is the slide module's too, and also a copy (`src/view/markdown-editor.tsx`
 of its `src/editor/deck-editor.tsx`): sharing sixty lines through the protocol
 would hand CodeMirror to the host and to every module that installs it.

@@ -1,4 +1,4 @@
-import { MANIFEST_KIND, PROTOCOL, manifestSchema, type Manifest } from 'kehikot-module-protocol'
+import { MANIFEST_KIND, MODULE_FOLDERS, PROTOCOL, manifestSchema, moduleFolder, type Manifest } from 'kehikot-module-protocol'
 import pkg from './package.json'
 /* This module's introduction (protocol 2.57.0): slides the host shows in its introduction dialog. Also
    read as a file from the repository, so a person can watch it before the module runs or is installed. */
@@ -94,7 +94,7 @@ export const PREFERRED_PORT = 7950
  *   page's fetches to its own `/api` are cross-origin, so the server would have
  *   to answer every origin with permissive CORS, and permissive CORS means any
  *   page in any tab can read this origin, including `/app` and the write ticket
- *   printed into it. Journeys had exactly that hole and it was demonstrated
+ *   printed into it. A sibling module had exactly that hole and it was demonstrated
  *   rather than theorised. Declaring storage closes it at the root: with a real
  *   origin this page's scripts and its `/api` calls are ordinary same-origin
  *   requests, no CORS header is sent at all, and a stranger reading `/app` gets
@@ -245,8 +245,8 @@ export const PREFERRED_PORT = 7950
  *     could.
  *
  * - **`extensions: { emits: [], consumes: [] }` — empty, and here is the
- *   argument, because Checklist reached the opposite conclusion on nearly the
- *   same facts.** Checklist announces an agent coming through its MCP door, on
+ *   argument, because a sibling module reached the opposite conclusion on nearly the
+ *   same facts.** That module announces an agent coming through its MCP door, on
  *   the ground that a notification is for what you would otherwise miss. That is
  *   right there and wrong here, for one reason: what an agent writes through
  *   THIS door lands in the container in front of the reader within three seconds, as
@@ -388,6 +388,15 @@ export const MANIFEST: Manifest = manifestSchema.parse({
     uses: ['passage:set', 'showing:set', 'state:keep', 'agents:message'],
     storage: true,
     prompt: false,
+  },
+  /* The folder under `.kehikot/` this module is the only writer of (protocol 2.85.0), so a module
+     that shows the project's files can say whose a file is without naming this one. There is no
+     `cue.targets`: no tool here shows anything on the page — a walk-through has nothing to call. */
+  services: {
+    [MODULE_FOLDERS]: {
+      name: 'Learning',
+      folders: [{ folder: moduleFolder(ID), says: 'The questions written about each epic\'s paper, one Markdown file per epic, and how they were answered.', derived: false }],
+    },
   },
   health: '/healthz',
 })

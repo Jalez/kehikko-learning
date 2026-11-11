@@ -19,7 +19,7 @@ export interface EditorProps {
 export type Editor = ComponentType<EditorProps>
 
 /**
- * The quiz file's Markdown in CodeMirror 6 — the editor Slides opens a deck in:
+ * The quiz file's Markdown in CodeMirror 6 — the editor the module that shows slides opens a deck in:
  * the same packages at the same versions, the same language, the same
  * `basicSetup` and so the same keys, and the same rules in `index.css`.
  *

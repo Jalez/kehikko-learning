@@ -46,7 +46,7 @@ export interface QuizDoc {
 }
 
 /**
- * One epic's quiz file, open in the editor: Slides' `useDeck`, for a quiz.
+ * One epic's quiz file, open in the editor: the slide module's deck hook, for a quiz.
  *
  * Typing saves a beat after the last keystroke, against the version last seen.
  * A save the server refuses because the file moved — an agent wrote, or

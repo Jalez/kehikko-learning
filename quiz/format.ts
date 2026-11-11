@@ -2,8 +2,8 @@ import { CITE_MARKER, markersIn, parseSource, serialiseSource, uncitable, type C
 
 /**
  * An epic's questions are one Markdown file, and this is the only place that
- * reads or writes one. It works the way a Slides deck does (`deck/format.ts`
- * there), so a person who can edit one can edit the other.
+ * reads or writes one. It works the way a slide deck's file does in the
+ * module that shows slides, so a person who can edit one can edit the other.
  *
  * ```md
  * # Anything above the first question is yours, and is kept as it is.
@@ -30,8 +30,8 @@ import { CITE_MARKER, markersIn, parseSource, serialiseSource, uncitable, type C
  * - Everything after a line that is exactly `Why:` is the explanation, shown
  *   once the reader has answered.
  * - A `[^1]` on the question is the passage it rests on, and a line that is
- *   exactly `Sources:` opens the list of them, in Slides' syntax:
- *   `[^1]: <project-relative path> | "<exact words>"` (the protocol's citations, shared with Slides). One list
+ *   exactly `Sources:` opens the list of them, in the slide decks' syntax:
+ *   `[^1]: <project-relative path> | "<exact words>"` (the protocol's citations, shared with slide decks). One list
  *   at the bottom is how this module writes it; a list after each question
  *   reads the same, because labels are the file's and not a question's.
  * - `<!-- id: … -->` is the name a reader's answers are filed under (they are
