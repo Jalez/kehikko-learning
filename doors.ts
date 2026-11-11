@@ -1,4 +1,4 @@
-import { DONE_OUTPUT_SCHEMA, doneAnswer, doorContext, linesOf, type DoneState } from 'kehikot-module-protocol'
+import { DONE_OUTPUT_SCHEMA, PLACE_PARAM, doneAnswer, doorContext, linesOf, type DoneState } from 'kehikot-module-protocol'
 import { DOOR_PROJECT_SAYS, establishBuild, mintTicket, refuseTicket, resolveDoorProject, streams, type Reply, type Stream } from 'kehikot-module-protocol/serve'
 
 import { ID, MANIFEST, VERSION } from './manifest.ts'
@@ -30,6 +30,7 @@ import {
 } from './quiz/questions.ts'
 import { answerProposalTool, decideProposal, isProposalTool, openProposals, proposalTools, settledProposals, shown } from 'kehikot-module-protocol/proposals'
 
+import { placeToken, rememberFiler } from './digest.ts'
 import { PROPOSALS, SITE } from './proposals.ts'
 import { poke, watchQuizzes } from './quiz/live.ts'
 import { questionsStream } from './quiz/news.ts'
@@ -680,7 +681,7 @@ interface Rpc {
   params?: { name?: string; arguments?: Record<string, unknown> }
 }
 
-function mcp(rpc: Rpc): Reply {
+function mcp(rpc: Rpc, place: string | null = null): Reply {
   const reply = (result: unknown) => ok({ jsonrpc: '2.0', id: rpc.id ?? null, result })
   const text = (s: string, isError = false) =>
     reply({ content: [{ type: 'text', text: s }], ...(isError ? { isError } : {}) })
@@ -733,6 +734,8 @@ function mcp(rpc: Rpc): Reply {
       /* Proposed changes (protocol 2.71.0): propose_change, list_proposals, read_proposal, withdraw_proposal. */
       if (isProposalTool(name)) {
         const said = answerProposalTool(SITE, PROPOSALS, name, { ...args, project })
+        /* Whose it is, so the session hears once what became of its proposals (`digest.ts`). */
+        if (typeof said === 'string' && name === 'propose_change') rememberFiler(said, place)
         return text(typeof said === 'string' ? said : '')
       }
       const said = call(name, args, project)
@@ -774,7 +777,8 @@ export function answerAt(
     if (!body || typeof body.method !== 'string') {
       return { status: 400, body: { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'not a request' } } }
     }
-    return mcp(body as Rpc)
+    /* The calling session's place token, when its door URL carries one: who to tell about its proposals. */
+    return mcp(body as Rpc, placeToken(query.get(PLACE_PARAM)))
   }
 
   /*

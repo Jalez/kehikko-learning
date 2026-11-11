@@ -111,7 +111,7 @@ export const PREFERRED_PORT = 7950
  *   read this origin's `/api` and ask it for the whole store, so the CORS
  *   argument above is not hygiene here, it is the second half of the mechanism.
  *
- * - **`uses: ['passage:set', 'showing:set', 'state:keep']` — three capabilities, and this
+ * - **`uses: ['passage:set', 'showing:set', 'state:keep', 'agents:message']` — four capabilities, and this
  *   paragraph used to say there were none.** What stood here was "nothing is
  *   asked for, and that is not an oversight", on the argument that this app
  *   needs the context and nothing else. That was right about the default and
@@ -194,6 +194,15 @@ export const PREFERRED_PORT = 7950
  *   `context.filters`; a second copy under `state.set` would be two records of
  *   one preference, and they would disagree the first time one was written and
  *   the other was not. See `src/wire/scope.ts`.
+ *
+ * - **`agents:message` — declared for one sentence to one session.** It is
+ *   `messages.notify` alone, from the server, never from the page: when the
+ *   person has answered every change an agent session proposed to an epic's
+ *   questions and decided nothing more for 30 s, that session is told once
+ *   what they decided, with the reasons for what they declined (`digest.ts`,
+ *   the protocol's follow-up digest). The session is the one whose
+ *   `propose_change` call carried its place token; without one, nothing is
+ *   sent, and `list_proposals` says the same either way.
  *
  * - **Everything else — still not asked for, and each for its own reason.**
  *   The context itself is not a capability: it arrives in the greeting and on
@@ -376,7 +385,7 @@ export const MANIFEST: Manifest = manifestSchema.parse({
   reacts: ['passage', 'containers', 'parts'],
   declares: {
     protocol: `>=${PROTOCOL} <${PROTOCOL + 1}`,
-    uses: ['passage:set', 'showing:set', 'state:keep'],
+    uses: ['passage:set', 'showing:set', 'state:keep', 'agents:message'],
     storage: true,
     prompt: false,
   },

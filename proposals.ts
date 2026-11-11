@@ -1,6 +1,7 @@
 import type { ProposalDoorOptions, ProposalSite } from 'kehikot-module-protocol/proposals'
 import { fileKeeper } from 'kehikot-module-protocol/proposals/store'
 
+import { digestSettled, digestSite } from './digest.ts'
 import { ID } from './manifest.ts'
 import { poke } from './quiz/live.ts'
 import { changed, folderOf } from './quiz/news.ts'
@@ -36,4 +37,8 @@ export const SITE: ProposalSite = {
   onChanged(project) {
     changed(folderOf(project))
   },
+  /* The filer hears once, when the person has answered all its proposals on those questions (`digest.ts`). */
+  onSettled: digestSettled,
 }
+
+digestSite(SITE)

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { run } from 'kehikot-module-protocol/run'
 
+import { stopDigester } from './digest.ts'
 import { answer, BUILD, MANIFEST, stream, TICKET } from './doors.ts'
 import { ID, PREFERRED_PORT } from './manifest.ts'
 
@@ -23,4 +24,6 @@ await run({
   stream,
   build: BUILD,
   ticket: TICKET,
+  /* A digest still waiting for its quiet while is dropped; `list_proposals` keeps every decision. */
+  onStop: stopDigester,
 })

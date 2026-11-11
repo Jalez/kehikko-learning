@@ -83,7 +83,7 @@ describe('the manifest', () => {
     expect(MANIFEST.declares?.storage).toBe(true)
   })
 
-  test('asks for exactly three capabilities: to point the canvas at a passage, to say what it shows, and to keep its view', () => {
+  test('asks for exactly four capabilities: to point the canvas at a passage, to say what it shows, to keep its view, and to tell a proposing agent once', () => {
     /* This test used to assert `[]`, and then `['passage:set']`, and the essay
        in manifest.ts argued for each in turn. The first exception was that every
        question here is ANCHORED — so a question IS a passage, and a container
@@ -101,7 +101,7 @@ describe('the manifest', () => {
        by `dev/pointing.mjs` from where a host sits — and the second is sent by
        the program when the documents on screen change, compared as a string,
        and never on a press. */
-    expect(MANIFEST.declares?.uses).toEqual(['passage:set', 'showing:set', 'state:keep'])
+    expect(MANIFEST.declares?.uses).toEqual(['passage:set', 'showing:set', 'state:keep', 'agents:message'])
   })
 
   test('says which context fields it moves on, and only those', () => {
@@ -121,7 +121,7 @@ describe('the manifest', () => {
        module that no longer exists. This catches the declaration being changed
        without the argument. */
     const source = readFileSync(join(here, 'manifest.ts'), 'utf8')
-    expect(source).toContain("uses: ['passage:set', 'showing:set', 'state:keep']")
+    expect(source).toContain("uses: ['passage:set', 'showing:set', 'state:keep', 'agents:message']")
     expect(source).not.toContain('A kept string would still have nothing to hold')
     expect(source).toContain("reacts: ['passage', 'containers']")
     expect(source).not.toContain('nothing is asked for, and that is not an oversight')
