@@ -124,6 +124,8 @@ export interface Kehikot {
   keeps: KeepsFor
   /** Say what this page shows is drawn, so the host lifts its cover (protocol 2.70.0). Once is enough. */
   ready: () => void
+  /** Say the page is reading what a new project or epic asks for (protocol 2.84.0): the host may cover it saying `label`. */
+  loading: (label?: string | null) => void
 }
 
 export type GotoHandler = NonNullable<HostEvents['onGoto']>
@@ -196,11 +198,11 @@ export function useKehikot(id: string, onGoto: GotoHandler): Kehikot {
     [request],
   )
 
-  const { where, epic, projectPath, project, passage, chosen, parts, resize, filters, point, header, footer, drawsFooter, kept, read, remember, ready } = host
+  const { where, epic, projectPath, project, passage, chosen, parts, resize, filters, point, header, footer, drawsFooter, kept, read, remember, ready, loading } = host
   const keeps = useMemo<KeepsFor>(() => ({ kept, read, remember }), [kept, read, remember])
   return useMemo(
-    () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, press, pressed, keeps, ready }),
-    [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, pressed, keeps, ready],
+    () => ({ where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, press, pressed, keeps, ready, loading }),
+    [where, epic, projectPath, project, passage, chosen, containers, parts, resize, filters, point, show, header, footer, drawsFooter, pressed, keeps, ready, loading],
   )
 }
 
