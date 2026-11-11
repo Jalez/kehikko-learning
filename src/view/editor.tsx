@@ -18,7 +18,7 @@ import { parseQuiz, quizProblems } from '../../quiz/format.ts'
 
 /**
  * An epic's questions, open as the Markdown they are: the source beside what
- * it will ask, the way Slides shows a deck beside its slides. Where there is
+ * it will ask, the way the module that shows slides puts a deck beside its slides. Where there is
  * room for only one — narrower than 672px — they are two tabs.
  *
  * ## This is the one screen that holds the answers
@@ -38,9 +38,9 @@ import { parseQuiz, quizProblems } from '../../quiz/format.ts'
  * with something wrong in it is still saved — the sentences about what is
  * wrong stand above it, and are the same ones `quizzes` prints.
  *
- * The source is typed into the editor Slides opens a deck in (`editor`,
- * `markdown-editor.tsx`); a test hands this a textarea instead, as Slides'
- * tests do. It is not drawn until the file has been read, so there is never an
+ * The source is typed into the editor the module that shows slides opens a deck in (`editor`,
+ * `markdown-editor.tsx`); a test hands this a textarea instead, as that
+ * module's tests do. It is not drawn until the file has been read, so there is never an
  * empty editor to type into and have overwritten by the read.
  *
  * ## What is typed outlives this app's server

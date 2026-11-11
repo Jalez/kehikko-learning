@@ -261,7 +261,7 @@ export function whyEmpty(front: InFront, held: number, unresolved: number): stri
   return `Nothing on this kehikko is showing a document any of the ${count(held)} here is about.`
 }
 
-/** The last word of a module id, which is what the ids look like: `kehikot.journeys` is `journeys`. */
+/** The last word of a module id, which is what the ids look like: `kehikot.example` is `example`. */
 export function nameOf(module: string): string {
   const cut = module.lastIndexOf('.')
   return cut === -1 ? module : module.slice(cut + 1)

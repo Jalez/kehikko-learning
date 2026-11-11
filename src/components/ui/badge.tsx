@@ -10,8 +10,8 @@ import { cn } from '@/lib/utils.ts'
  *
  * shadcn ships this component with `whitespace-nowrap` in its base class list,
  * and in the normal case that is right: a badge saying "draft" or "over MCP" is
- * two words and a badge that wraps to two lines reads as two badges. Checklist
- * keeps it for exactly that reason and says so.
+ * two words and a badge that wraps to two lines reads as two badges. A sibling
+ * module keeps it for exactly that reason and says so.
  *
  * It cannot stay here. `white-space: nowrap` does not merely refuse to wrap — it
  * makes the element's MIN-CONTENT WIDTH the full width of its text, and

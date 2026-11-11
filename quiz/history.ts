@@ -5,8 +5,8 @@ import type { HistoryEntry } from './types.ts'
 
 /**
  * The undo trail: what an epic's quiz file held before each write, so a person
- * can put it back. Slides keeps the same trail for a deck (`recordedWrite` in
- * its `store.ts`), and this is that shape, in `history.json` beside the quiz
+ * can put it back. The module that shows slides keeps the same trail for a deck,
+ * and this is that shape, in `history.json` beside the quiz
  * files — it belongs in `kehikot-module-protocol` with the rest of what the two
  * share.
  *

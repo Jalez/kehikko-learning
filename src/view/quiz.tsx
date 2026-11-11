@@ -236,7 +236,7 @@ export function QuestionCard({
    *
    * The file says which words of which document the question rests on
    * (`[^1]` and its line under `Sources:`), and the server looks for them
-   * again every time, the way Slides resolves a citation. Found, the label is
+   * again every time, the way slide decks resolve a citation. Found, the label is
    * a press that turns the canvas to exactly those words. Not found — the
    * paper changed under the question, the file is gone, or the question names
    * no source — it is not a button: the same label, with the sentence that

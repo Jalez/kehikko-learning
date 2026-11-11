@@ -475,7 +475,7 @@ function inProject(root: string, path: string): string {
 /**
  * The label of the source for these words in this file, added to the quiz's
  * `Sources:` when it is not there. Refused unless the words are in the file
- * exactly once — Slides' rule for `cite_slide` — so a source cannot be written
+ * exactly once — the rule slide decks keep for a citation — so a source cannot be written
  * that already points nowhere.
  */
 function cite(held: Held, given: string, quoted: string): { label: string } | { error: string } {

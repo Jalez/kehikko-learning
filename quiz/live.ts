@@ -8,7 +8,7 @@ import type { QuizChange } from './types.ts'
 /**
  * What is pushed to an open editor: a quiz file changed, by any path — this
  * module's own routes, an agent over MCP, or a person editing the file on
- * disk. Slides' `live.ts`, for quiz files: plain listeners here, and
+ * disk. The slide module's file watching, for quiz files: plain listeners here, and
  * `vite.config.ts` turns them into server-sent events.
  *
  * What is told is `{ epic, version }` and never a word of the file, so nothing
