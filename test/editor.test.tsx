@@ -579,8 +579,11 @@ describe('the header: what this editor declares, and nothing it draws itself', (
     state.fail = 'the disk is full'
     type(area, 'x\n')
     await waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain('the disk is full'))
-    const done = (declared.at(-1) as { id: string; state?: string; result?: string }[]).find((one) => one.id === 'done')
-    expect(done).toMatchObject({ state: 'failed', result: 'not saved' })
+    /* The header is declared after the page draws the alert: wait for it rather than read it in the same tick. */
+    await waitFor(() => {
+      const done = (declared.at(-1) as { id: string; state?: string; result?: string }[]).find((one) => one.id === 'done')
+      expect(done).toMatchObject({ state: 'failed', result: 'not saved' })
+    })
   })
 
   test('with a host that draws the footer, the save is said there: not on Done, not in the page', async () => {
