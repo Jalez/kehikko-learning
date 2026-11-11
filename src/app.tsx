@@ -39,6 +39,12 @@ const framed = typeof window !== 'undefined' && window.parent !== window
  * card the reader is looking at with a version that has fewer attempts on it — see `refresh` below.
  */
 
+/** What the host's cover says while this page reads an epic's questions (protocol 2.84.0). */
+export const LOADING_QUESTIONS = 'Loading the questions…'
+
+/** One project and epic, as one string: what a read was for. */
+const pairOf = (project: string | null, epic: string | null): string => `${project ?? ''}\n${epic ?? ''}`
+
 export function App() {
   const [questions, setQuestions] = useState<Asked[]>([])
   /*
@@ -87,7 +93,7 @@ export function App() {
     )
   }, [])
 
-  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell, header, footer, drawsFooter, press, pressed, keeps, ready } = useKehikot(
+  const { where, epic, projectPath, project, passage, chosen, containers, parts: epicParts, resize, filters, point, show: tell, header, footer, drawsFooter, press, pressed, keeps, ready, loading } = useKehikot(
     ID,
     onGoto,
   )
@@ -429,8 +435,10 @@ export function App() {
      overwrite the reply to a press with a read that started before it. */
   const writing = useRef(false)
 
-  /* The first read is on screen: the questions, or the words for why there are none. */
-  const [read, setRead] = useState(false)
+  /* The project and epic whose questions (or the words for why there are none) are on screen. Another
+     pair is a switch still being read, so the page is not drawn and the host may cover it (2.84.0). */
+  const [readFor, setReadFor] = useState<string | null>(null)
+  const read = readFor === pairOf(projectPath, epic)
 
   const refresh = useCallback(async () => {
     const { project: where_, epic: which } = standing.current
@@ -442,7 +450,7 @@ export function App() {
       setQuestions([])
       setOrder(null)
       setTrouble(null)
-      setRead(true)
+      setReadFor(pairOf(where_, which))
       return
     }
     const opened = await openEpic(where_, which)
@@ -462,7 +470,7 @@ export function App() {
     setOrder(opened.order)
     setFile(opened.file)
     setTrouble(opened.trouble)
-    setRead(true)
+    setReadFor(pairOf(where_, which))
     /* How many changes are proposed to these questions (protocol 2.71.0), read with them: the door
        says the questions changed when one is filed or answered, so this is never asked on a clock.
        The COUNT only: a proposal quotes the file, key and all, so the list is read on Review, as
@@ -762,7 +770,8 @@ export function App() {
   const drawn = read || (cover !== null && cover !== 'waiting') || (projectPath !== null && !epic)
   useEffect(() => {
     if (drawn) ready()
-  }, [drawn, ready])
+    else loading(LOADING_QUESTIONS)
+  }, [drawn, ready, loading])
 
   const screen =
     !projectPath ? null : !epic ? (
