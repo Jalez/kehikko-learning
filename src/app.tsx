@@ -926,6 +926,7 @@ export function App() {
 
   return (
     <div
+      data-kehikot-page
       ref={shell}
       data-rung={rungs.rung}
       className="flex min-w-0 flex-col gap-2 p-2 text-foreground @sm/container:p-3"
