@@ -27,7 +27,7 @@ let dir = ''
 const OLD_WELL_KNOWN = '/.well-known/former-module.json'
 
 /* The options exactly as `vite.config.ts` passes them. */
-const handler = doorsHandler({ manifest: MANIFEST, answer, stream, build: BUILD, page: { title: 'Learning', ticket: TICKET } })
+const handler = doorsHandler({ manifest: MANIFEST, answer, stream, build: BUILD, page: { title: 'Quiz', ticket: TICKET } })
 
 interface Got {
   status: number

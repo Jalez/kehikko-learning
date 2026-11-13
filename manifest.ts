@@ -148,7 +148,7 @@ export const PREFERRED_PORT = 7950
  *   It also has a consequence beyond permissions, which is worth saying because
  *   it is half the reason the declaration matters: a registry showing what each
  *   module consumes and provides reads this field. Declaring `passage:set` is
- *   how a person browsing the modules discovers that Learning and a reader work
+ *   how a person browsing the modules discovers that Quiz and a reader work
  *   together at all.
  *
  * - **`showing:set` — declared, and it was not obvious.** The protocol's
@@ -305,7 +305,7 @@ export const MANIFEST: Manifest = manifestSchema.parse({
    */
   protocol: PROTOCOL,
   id: ID,
-  name: 'Learning',
+  name: 'Quiz',
   /* The icon a host draws beside the name: a key of the protocol's module icons, never a path
      or URL; the same key Kehikot's official list gives it. */
   icon: 'lucide:graduation-cap',
@@ -345,7 +345,7 @@ export const MANIFEST: Manifest = manifestSchema.parse({
   entry: '/app',
   /* What its content belongs to (protocol 2.29.0): one mode per scope, the default first. */
   modes: [
-    { id: 'learning', label: 'Learning', scope: 'epic', scopeSays: 'the questions written for the open epic’s paper' },
+    { id: 'learning', label: 'Quiz', scope: 'epic', scopeSays: 'the questions written for the open epic’s paper' },
   ],
   mcp: {
     url: '/mcp',
@@ -394,7 +394,7 @@ export const MANIFEST: Manifest = manifestSchema.parse({
      `cue.targets`: no tool here shows anything on the page — a walk-through has nothing to call. */
   services: {
     [MODULE_FOLDERS]: {
-      name: 'Learning',
+      name: 'Quiz',
       folders: [{ folder: moduleFolder(ID), says: 'The questions written about each epic\'s paper, one Markdown file per epic, and how they were answered.', derived: false }],
     },
   },

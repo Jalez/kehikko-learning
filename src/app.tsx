@@ -954,7 +954,7 @@ export function App() {
       */}
       {framed ? null : (
         <header className="min-w-0">
-          <h1 className="text-sm font-semibold">Learning</h1>
+          <h1 className="text-sm font-semibold">Quiz</h1>
           <p className="text-[0.7rem] leading-4 text-muted-foreground">
             Multiple-choice questions about passages of a paper. An agent writes them; you answer them. The correct
             option reaches this page only in the reply to an answer.
@@ -971,7 +971,7 @@ export function App() {
       {cover ? (
         <Cover
           state={cover}
-          name="Learning"
+          name="Quiz"
           onRetry={() => void refresh()}
           /* Why this page will not go on without a folder: a guessed one is somebody's questions written where they will never look. */
           detail={

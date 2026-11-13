@@ -117,7 +117,7 @@ describe('the not-ready moments, each as the one shared cover', () => {
     expect(document.body.textContent).not.toContain('No project')
     await settle(800)
     expect(cover()?.getAttribute('data-cover')).toBe('unhosted')
-    expect(document.body.textContent).toContain('Nothing is framing this page — open Learning in Kehikot.')
+    expect(document.body.textContent).toContain('Nothing is framing this page — open Quiz in Kehikot.')
     /* Where the questions live, and NOT a picker: choosing here would be the page deciding where it stands. */
     expect(document.body.textContent).toContain('.kehikot/learning/')
     expect(within(cover() as HTMLElement).queryAllByRole('button')).toHaveLength(0)
@@ -159,7 +159,7 @@ describe('the not-ready moments, each as the one shared cover', () => {
       await new Promise((resolve) => setTimeout(resolve, 60))
     })
     expect(cover()?.getAttribute('data-cover')).toBe('down')
-    expect(document.body.textContent).toContain('Learning’s own server is not answering.')
+    expect(document.body.textContent).toContain('Quiz’s own server is not answering.')
     down = false
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }))

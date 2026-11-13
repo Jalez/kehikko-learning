@@ -1,5 +1,5 @@
 /**
- * The Learning module, in a real browser, greeted the way a host greets it.
+ * The Quiz module, in a real browser, greeted the way a host greets it.
  *
  *   ./run.sh &                       # 7950
  *   node dev/probe.mjs               # exits non-zero on any finding
