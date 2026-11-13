@@ -43,7 +43,7 @@ export default defineConfig({
   base: './',
   plugins: [
     serves({ id: ID, prefer: PREFERRED_PORT }),
-    doors({ manifest: MANIFEST, answer, stream, build: BUILD, page: { title: 'Learning', ticket: TICKET } }),
+    doors({ manifest: MANIFEST, answer, stream, build: BUILD, page: { title: 'Quiz', ticket: TICKET } }),
     react(),
     tailwindcss(),
   ],

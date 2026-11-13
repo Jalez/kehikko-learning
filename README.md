@@ -1,4 +1,4 @@
-# Learning
+# Quiz
 
 A place to be asked questions about what you are reading, and to answer them.
 
